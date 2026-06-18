@@ -4,6 +4,12 @@
 
 Create or select a Conversational AI agent in ElevenLabs.
 
+The current public-safe snapshot for `Andrew Assistant Agent` is stored in:
+
+```text
+elevenlabs-setup/andrew-assistant-agent.config.json
+```
+
 For Twilio telephony through the register-call flow, configure audio formats as:
 
 - ASR user input audio format: `ulaw_8000`
