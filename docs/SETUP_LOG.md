@@ -1,0 +1,39 @@
+# Setup Log
+
+This log captures the prototype shape without publishing credentials or live provider identifiers.
+
+## 2026-06-18
+
+- Installed and verified the Twilio CLI locally.
+- Verified Twilio API access against the intended personal account.
+- Verified ElevenLabs API access.
+- Created or selected an ElevenLabs Conversational AI agent.
+- Set the ElevenLabs telephony audio formats to `ulaw_8000` for both ASR input and TTS output.
+- Built a local Fastify webhook that can register Twilio calls with ElevenLabs.
+- Built a Cloudflare Worker version of the webhook for public hosting.
+- Configured the Twilio number voice webhook to point at the Worker.
+- Confirmed the phone line could reach a simple TwiML test response.
+- Switched the call path back toward the ElevenLabs register-call flow.
+
+## Current Prototype
+
+The working path is:
+
+1. Caller dials a Twilio number.
+2. Twilio sends the voice webhook to the public Cloudflare Worker.
+3. The Worker validates the webhook token.
+4. The Worker calls ElevenLabs `register-call`.
+5. ElevenLabs returns TwiML.
+6. The Worker returns that TwiML to Twilio.
+7. Twilio connects the live call to the ElevenLabs agent.
+
+## Not Published
+
+The public repository intentionally omits:
+
+- Twilio Account SID, API keys, auth tokens, and recovery codes.
+- ElevenLabs API keys.
+- Cloudflare API tokens.
+- Live webhook tokens.
+- Local `wrangler.toml` deploy config.
+- Live phone numbers and provider account IDs.

@@ -1,0 +1,56 @@
+{
+  "tool_config": {
+    "type": "webhook",
+    "name": "send_claude_command",
+    "description": "Sends a confirmed command request to the Claude Code bridge. Use only after the caller confirms the exact command out loud.",
+    "response_timeout_secs": 20,
+    "api_schema": {
+      "url": "https://YOUR_PUBLIC_SERVER_URL/agent-command",
+      "method": "POST",
+      "request_headers": {
+        "Authorization": "Bearer YOUR_COMMAND_BRIDGE_TOKEN"
+      },
+      "content_type": "application/json",
+      "request_body_schema": {
+        "type": "object",
+        "required": ["command", "confirmed"],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The exact command or task request to send to the Claude Code bridge. Keep it short and explicit."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Set to true only after the caller verbally confirms the exact command."
+          },
+          "working_directory": {
+            "type": "string",
+            "description": "Optional working directory or repository path for Claude Code."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Optional Claude Code session identifier."
+          },
+          "caller_number": {
+            "type": "string",
+            "dynamic_variable": "caller_number"
+          }
+        }
+      },
+      "response_body_schema": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

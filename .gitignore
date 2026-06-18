@@ -1,0 +1,17 @@
+.DS_Store
+
+# Local dependencies and build output
+node_modules/
+dist/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+
+# Cloudflare local/deploy configuration.
+# Commit cloudflare-worker/wrangler.example.toml instead.
+wrangler.toml
+.wrangler/

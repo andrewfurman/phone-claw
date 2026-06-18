@@ -1,0 +1,25 @@
+{
+  "name": "phoneclaw",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claw Phone: a Twilio-to-ElevenLabs voice bridge with a future Claude Code command bridge.",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env fastify-app/server.mjs",
+    "check": "node --check fastify-app/server.mjs",
+    "tunnel": "npx --yes localtunnel --port 8000 --local-host 127.0.0.1",
+    "twilio": "twilio",
+    "worker:check": "node --check cloudflare-worker/twilio-elevenlabs-worker.mjs",
+    "worker:deploy": "wrangler deploy --config wrangler.toml"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@fastify/formbody": "^8.0.2",
+    "fastify": "^5.8.5",
+    "twilio": "^6.0.2"
+  },
+  "devDependencies": {
+    "wrangler": "^4.102.0"
+  }
+}

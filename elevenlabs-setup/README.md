@@ -1,0 +1,38 @@
+# ElevenLabs Setup
+
+## Agent
+
+Create or select a Conversational AI agent in ElevenLabs.
+
+For Twilio telephony through the register-call flow, configure audio formats as:
+
+- ASR user input audio format: `ulaw_8000`
+- TTS agent output audio format: `ulaw_8000`
+
+## Required Secret
+
+Set the API key locally in `.env`:
+
+```bash
+ELEVENLABS_API_KEY=...
+ELEVENLABS_AGENT_ID=agent_...
+```
+
+For Cloudflare Workers, store the API key as a Worker secret:
+
+```bash
+wrangler secret put ELEVENLABS_API_KEY
+```
+
+Keep the agent ID in local deploy config or environment variables. It is not an API secret, but avoid committing live operational identifiers in public examples.
+
+## Tool Call Starter
+
+`send_claude_command.json` is a starter ElevenLabs webhook tool config for the future Claude Code bridge.
+
+Before enabling it against a real command bridge:
+
+- Require verbal confirmation.
+- Authenticate every request.
+- Send jobs to a supervised worker, not directly to a shell.
+- Keep pushes, deletes, migrations, and deploys behind explicit approval.
