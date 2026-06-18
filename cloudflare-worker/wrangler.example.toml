@@ -15,4 +15,5 @@ enabled = true
 [vars]
 ELEVENLABS_AGENT_ID = "replace-with-elevenlabs-agent-id"
 ELEVENLABS_API_BASE = "https://api.elevenlabs.io"
+ELEVENLABS_TELEPHONY_AUDIO_FORMAT = "ulaw_8000"
 TWILIO_PHONE_NUMBER = "+15555550123"

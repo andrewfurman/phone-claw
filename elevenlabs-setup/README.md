@@ -9,6 +9,8 @@ For Twilio telephony through the register-call flow, configure audio formats as:
 - ASR user input audio format: `ulaw_8000`
 - TTS agent output audio format: `ulaw_8000`
 
+The app treats `ulaw_8000` as the single expected telephony audio format. This keeps the caller audio coming from Twilio and the agent audio going back to Twilio in the same codec/sample-rate family.
+
 ## Required Secret
 
 Set the API key locally in `.env`:
@@ -25,6 +27,20 @@ wrangler secret put ELEVENLABS_API_KEY
 ```
 
 Keep the agent ID in local deploy config or environment variables. It is not an API secret, but avoid committing live operational identifiers in public examples.
+
+## Verify Audio Format
+
+Check the live agent:
+
+```bash
+npm run elevenlabs:audio:check
+```
+
+If the agent drifts, patch both ASR and TTS formats back to `ulaw_8000`:
+
+```bash
+npm run elevenlabs:audio:fix
+```
 
 ## Tool Call Starter
 

@@ -9,6 +9,7 @@ This log captures the prototype shape without publishing credentials or live pro
 - Verified ElevenLabs API access.
 - Created or selected an ElevenLabs Conversational AI agent.
 - Set the ElevenLabs telephony audio formats to `ulaw_8000` for both ASR input and TTS output.
+- Added a repo check that verifies the live ElevenLabs agent still has ASR and TTS audio formats set to the same `ulaw_8000` value.
 - Built a local Fastify webhook that can register Twilio calls with ElevenLabs.
 - Built a Cloudflare Worker version of the webhook for public hosting.
 - Configured the Twilio number voice webhook to point at the Worker.

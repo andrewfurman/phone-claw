@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import Fastify from "fastify";
 import formbody from "@fastify/formbody";
 import twilio from "twilio";
+import { ELEVENLABS_TELEPHONY_AUDIO_FORMAT } from "../shared/telephony-audio-format.mjs";
 
 const { validateRequest } = twilio;
 
@@ -40,6 +41,7 @@ app.get("/health", async () => ({
   ok: true,
   elevenlabs_agent_configured: Boolean(elevenLabsAgentId),
   command_bridge_configured: Boolean(claudeBridgeUrl),
+  expected_elevenlabs_audio_format: ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
   twilio_signature_enforced: enforceTwilioSignature,
 }));
 
@@ -137,6 +139,7 @@ async function registerElevenLabsTwilioCall({
             caller_number: fromNumber,
             twilio_number: toNumber,
             twilio_call_sid: callSid || "",
+            telephony_audio_format: ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
           },
         },
       }),

@@ -1,3 +1,7 @@
+import {
+  ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
+} from "../shared/telephony-audio-format.mjs";
+
 const XML_HEADERS = {
   "content-type": "application/xml; charset=utf-8",
   "cache-control": "no-store",
@@ -19,6 +23,8 @@ export default {
           env.ELEVENLABS_API_KEY && env.ELEVENLABS_AGENT_ID
         ),
         command_bridge_configured: Boolean(env.CLAUDE_BRIDGE_URL),
+        expected_elevenlabs_audio_format:
+          env.ELEVENLABS_TELEPHONY_AUDIO_FORMAT || ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
         twilio_webhook_token_required: Boolean(env.TWILIO_WEBHOOK_TOKEN),
       });
     }
@@ -134,6 +140,8 @@ async function registerElevenLabsTwilioCall(
           caller_number: fromNumber,
           twilio_number: toNumber,
           twilio_call_sid: callSid || "",
+          telephony_audio_format:
+            env.ELEVENLABS_TELEPHONY_AUDIO_FORMAT || ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
         },
       },
     }),
