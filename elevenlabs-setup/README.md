@@ -70,3 +70,19 @@ The agent prompt tells the model to use `web_search` for current events, recent 
 `Andrew Assistant Agent` can also use `github_summary`, an authenticated webhook tool that returns read-only summaries of open GitHub issues and pull requests visible to the configured `GITHUB_READ_TOKEN`.
 
 Use a fine-grained read-only GitHub token where possible. The token should live only in local `.env` or Cloudflare Worker secrets and should not be committed.
+
+Run the live ElevenLabs GitHub tool test with:
+
+```bash
+npm run elevenlabs:github:test
+```
+
+The test opens real ElevenLabs WebSocket conversations, asks issue and pull request questions, then verifies the stored transcripts include successful `github_summary` tool calls.
+
+On macOS, run the audio-style test with:
+
+```bash
+npm run elevenlabs:github:audio:test
+```
+
+This generates a spoken GitHub pull request question with `say`, converts it to Twilio-style `ulaw_8000`, streams it into the agent, and verifies the agent transcribed the question, called `github_summary`, and answered.
