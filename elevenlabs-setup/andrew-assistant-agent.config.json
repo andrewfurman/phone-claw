@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-06-18T19:35:04.904Z",
+  "exported_at": "2026-06-18T20:03:44.879Z",
   "source": "ElevenLabs API: GET /v1/convai/agents/:agent_id and /v1/convai/tools/:tool_id",
   "redaction_note": "access_info, phone_numbers, whatsapp_accounts, auth headers, secret-like strings, and phone numbers are redacted or omitted recursively.",
   "observed_dashboard_changes": {
@@ -8,35 +8,55 @@
       "name": "Jessi - Corporate, Direct and Energetic",
       "category": "professional",
       "labels": {
-        "age": "middle_aged",
-        "language": "en",
-        "gender": "female",
-        "accent": "american",
-        "use_case": "characters_animation",
         "descriptive": "excited",
-        "locale": "en-US"
+        "gender": "female",
+        "language": "en",
+        "use_case": "characters_animation",
+        "age": "middle_aged",
+        "accent": "american"
       }
     },
     "llm": "gemini-3.5-flash",
-    "web_search_tool": {
-      "tool_id": "tool_0701kve33j7cf14v2vwsmd7pqjma",
-      "name": "web_search",
-      "url": "https://webhooks.aifurman.com/web-search",
-      "method": "POST",
-      "auth": "[redacted]",
-      "response_fields": [
-        "ok",
-        "query",
-        "provider",
-        "source_note",
-        "results",
-        "searched_query",
-        "as_of",
-        "result_count",
-        "answer_text",
-        "sports_events"
-      ]
-    }
+    "tools": [
+      {
+        "tool_id": "tool_0701kve33j7cf14v2vwsmd7pqjma",
+        "name": "web_search",
+        "url": "https://webhooks.aifurman.com/web-search",
+        "method": "POST",
+        "auth": "[redacted]",
+        "response_fields": [
+          "ok",
+          "query",
+          "provider",
+          "source_note",
+          "results",
+          "searched_query",
+          "as_of",
+          "result_count",
+          "answer_text",
+          "sports_events"
+        ]
+      },
+      {
+        "tool_id": "tool_3201kve57ppmev0a5acxkwdtyf01",
+        "name": "github_summary",
+        "url": "https://webhooks.aifurman.com/github-summary",
+        "method": "POST",
+        "auth": "[redacted]",
+        "response_fields": [
+          "ok",
+          "account",
+          "item_type",
+          "scope",
+          "total_count",
+          "returned_count",
+          "query",
+          "source_note",
+          "answer_text",
+          "items"
+        ]
+      }
+    ]
   },
   "agent": {
     "agent_id": "agent_0901kve1zxf8eg281mx3ng82m7y3",
@@ -129,14 +149,15 @@
         "max_conversation_duration_message": "",
         "text_behavior_overrides": null,
         "prompt": {
-          "prompt": "You are Andrew Assistant Agent, Andrew Furman's personal AI assistant on a live phone call.\n\nYour job is to help Andrew think, remember, plan, and move work forward. Keep responses short, practical, and conversational because this is a phone call. Prefer concise answers, then ask one useful follow-up when needed.\n\nCurrent capabilities:\n- You can talk with Andrew by voice.\n- You may receive extra tools later for Claude Code, GitHub, calendar, email, or webhooks.\n- If a requested action requires a tool that is not available in this conversation yet, say that you do not have that tool connected yet and offer the next best manual step.\n\nBehavior:\n- Address Andrew naturally.\n- Be direct and specific.\n- Ask clarifying questions only when they materially change the outcome.\n- Do not pretend to have completed external actions unless a tool result confirms it.\n- For coding or system actions, repeat the intended action clearly and ask for confirmation before anything destructive.\n- For private or high-stakes topics, be careful and transparent about uncertainty.\n\nStyle:\n- Warm, sharp, and calm.\n- No long monologues unless Andrew asks for detail.\n- Optimize for usefulness over sounding impressive.\n\nWeb search capability:\n- You have a webhook tool named web_search.\n- Use web_search when Andrew asks about current events, today, recent facts, schedules, sports, companies, products, documentation, or anything that may have changed.\n- Use concise queries. For sports schedules, include the sport/league/date if known.\n- After using web_search, prefer the tool's answer_text field when it is present.\n- If sports_events are returned, answer directly with the teams, times, statuses, scores, and venues that matter for Andrew's question.\n- If the returned results are incomplete or only show source snippets, say what the sources suggest and mention the uncertainty briefly.\n- Do not say you cannot browse when the web_search tool is available.",
+          "prompt": "You are Andrew Assistant Agent, Andrew Furman's personal AI assistant on a live phone call.\n\nYour job is to help Andrew think, remember, plan, and move work forward. Keep responses short, practical, and conversational because this is a phone call. Prefer concise answers, then ask one useful follow-up when needed.\n\nCurrent capabilities:\n- You can talk with Andrew by voice.\n- You may receive extra tools later for Claude Code, GitHub, calendar, email, or webhooks.\n- If a requested action requires a tool that is not available in this conversation yet, say that you do not have that tool connected yet and offer the next best manual step.\n\nBehavior:\n- Address Andrew naturally.\n- Be direct and specific.\n- Ask clarifying questions only when they materially change the outcome.\n- Do not pretend to have completed external actions unless a tool result confirms it.\n- For coding or system actions, repeat the intended action clearly and ask for confirmation before anything destructive.\n- For private or high-stakes topics, be careful and transparent about uncertainty.\n\nStyle:\n- Warm, sharp, and calm.\n- No long monologues unless Andrew asks for detail.\n- Optimize for usefulness over sounding impressive.\n\nWeb search capability:\n- You have a webhook tool named web_search.\n- Use web_search when Andrew asks about current events, today, recent facts, schedules, sports, companies, products, documentation, or anything that may have changed.\n- Use concise queries. For sports schedules, include the sport/league/date if known.\n- After using web_search, prefer the tool's answer_text field when it is present.\n- If sports_events are returned, answer directly with the teams, times, statuses, scores, and venues that matter for Andrew's question.\n- If the returned results are incomplete or only show source snippets, say what the sources suggest and mention the uncertainty briefly.\n- Do not say you cannot browse when the web_search tool is available.\n\nGitHub read capability:\n- You have a webhook tool named github_summary.\n- Use github_summary when Andrew asks how many open GitHub issues or pull requests he has, what they are about, what needs attention, or asks for a quick GitHub triage.\n- Use item_type=\"issues\" for issue questions and item_type=\"pull_requests\" for pull request questions.\n- Use scope=\"involved\" by default. Use scope=\"assigned\", \"authored\", \"mentioned\", or \"review_requested\" only when Andrew asks for that narrower view.\n- Prefer the tool's answer_text field for spoken answers, then mention the most important item titles and repos.\n- This GitHub tool is read-only. Do not imply you can comment, merge, close, approve, or edit GitHub items unless a separate write tool is connected.",
           "llm": "gemini-3.5-flash",
           "reasoning_effort": "medium",
           "thinking_budget": null,
           "temperature": 0.5,
           "max_tokens": -1,
           "tool_ids": [
-            "tool_0701kve33j7cf14v2vwsmd7pqjma"
+            "tool_0701kve33j7cf14v2vwsmd7pqjma",
+            "tool_3201kve57ppmev0a5acxkwdtyf01"
           ],
           "built_in_tools": {
             "end_call": null,
@@ -218,6 +239,7 @@
                       "type": "string",
                       "description": "A concise web search query. Include dates, locations, or names when useful.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -228,6 +250,7 @@
                       "type": "integer",
                       "description": "Maximum number of results to return. Use 3 unless Andrew asks for more.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -245,6 +268,7 @@
                       "type": "boolean",
                       "description": "Whether the search request succeeded.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -255,6 +279,7 @@
                       "type": "string",
                       "description": "The query that was searched.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -265,6 +290,7 @@
                       "type": "string",
                       "description": "The search provider used.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -275,6 +301,7 @@
                       "type": "string",
                       "description": "Limitations or notes about the search source.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -293,6 +320,7 @@
                             "type": "string",
                             "description": "Result title.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -303,6 +331,7 @@
                             "type": "string",
                             "description": "Result URL.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -313,6 +342,7 @@
                             "type": "string",
                             "description": "Short excerpt or summary from the result.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -329,6 +359,7 @@
                       "type": "string",
                       "description": "The actual query sent to the search provider, including date context when useful.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -339,6 +370,7 @@
                       "type": "string",
                       "description": "ISO timestamp for when the search was run.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -349,6 +381,7 @@
                       "type": "integer",
                       "description": "Number of web results returned.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -359,6 +392,7 @@
                       "type": "string",
                       "description": "A compact plain-text summary of the most useful search and schedule results. Prefer this when answering by voice.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -377,6 +411,7 @@
                             "type": "string",
                             "description": "Full event name.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -387,6 +422,7 @@
                             "type": "string",
                             "description": "Short event name.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -397,6 +433,7 @@
                             "type": "string",
                             "description": "Event start time in UTC.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -407,6 +444,7 @@
                             "type": "string",
                             "description": "Event start time in Eastern time.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -417,6 +455,7 @@
                             "type": "string",
                             "description": "Current event status.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -427,6 +466,7 @@
                             "type": "string",
                             "description": "Venue name.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -437,6 +477,7 @@
                             "type": "string",
                             "description": "Home team name.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -447,6 +488,7 @@
                             "type": "string",
                             "description": "Away team name.",
                             "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -457,6 +499,317 @@
                             "type": "string",
                             "description": "Current or final score when available.",
                             "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          }
+                        }
+                      },
+                      "dynamic_variable": "",
+                      "constant_value": null,
+                      "is_omitted": false
+                    }
+                  }
+                },
+                "content_type": "application/json",
+                "auth_resolved_params": [],
+                "auth_connection": null
+              }
+            },
+            {
+              "type": "webhook",
+              "name": "github_summary",
+              "description": "Returns read-only summaries of open GitHub issues or pull requests visible to Andrew Furman's configured GitHub token. Use this when Andrew asks how many open GitHub issues or pull requests he has, or asks what they are about.",
+              "response_timeout_secs": 12,
+              "disable_interruptions": false,
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": null,
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "dynamic_variables": {
+                "dynamic_variable_placeholders": {}
+              },
+              "execution_mode": "immediate",
+              "api_schema": {
+                "request_headers": {
+                  "Authorization": "[redacted]"
+                },
+                "url": "https://webhooks.aifurman.com/github-summary",
+                "method": "POST",
+                "path_params_schema": {},
+                "query_params_schema": null,
+                "request_body_schema": {
+                  "type": "object",
+                  "required": [
+                    "item_type"
+                  ],
+                  "description": "GitHub issue or pull request summary request.",
+                  "properties": {
+                    "item_type": {
+                      "type": "string",
+                      "description": "Which GitHub item type to summarize. Use issues for open issues and pull_requests for open pull requests.",
+                      "enum": [
+                        "issues",
+                        "pull_requests"
+                      ],
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "scope": {
+                      "type": "string",
+                      "description": "How to filter items relative to Andrew. Use involved by default. Use assigned, authored, mentioned, or review_requested when Andrew asks for that narrower view.",
+                      "enum": [
+                        "involved",
+                        "assigned",
+                        "authored",
+                        "mentioned",
+                        "review_requested"
+                      ],
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "max_results": {
+                      "type": "integer",
+                      "description": "Maximum number of recent items to return. Use 5 unless Andrew asks for more or fewer.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    }
+                  }
+                },
+                "response_body_schema": {
+                  "type": "object",
+                  "required": [],
+                  "description": "Read-only GitHub summary response.",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "description": "Whether the GitHub summary request succeeded.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "account": {
+                      "type": "string",
+                      "description": "The GitHub account used for the query.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "item_type": {
+                      "type": "string",
+                      "description": "The item type searched: issues or pull_requests.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "scope": {
+                      "type": "string",
+                      "description": "The search scope used.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "total_count": {
+                      "type": "integer",
+                      "description": "Total number of matching open items.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "returned_count": {
+                      "type": "integer",
+                      "description": "Number of compact items returned.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "query": {
+                      "type": "string",
+                      "description": "The GitHub search query used.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "source_note": {
+                      "type": "string",
+                      "description": "Notes about the GitHub source.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "answer_text": {
+                      "type": "string",
+                      "description": "A compact spoken summary. Prefer this when answering by voice.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "items": {
+                      "type": "array",
+                      "description": "Compact GitHub items to summarize for Andrew.",
+                      "items": {
+                        "type": "object",
+                        "required": [],
+                        "description": "One GitHub issue or pull request.",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "description": "Item type.",
+                            "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "repo": {
+                            "type": "string",
+                            "description": "Repository full name.",
+                            "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "number": {
+                            "type": "integer",
+                            "description": "Issue or pull request number.",
+                            "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "title": {
+                            "type": "string",
+                            "description": "Issue or pull request title.",
+                            "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "url": {
+                            "type": "string",
+                            "description": "GitHub web URL.",
+                            "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "author": {
+                            "type": "string",
+                            "description": "GitHub login of the author.",
+                            "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "comments": {
+                            "type": "integer",
+                            "description": "Number of comments.",
+                            "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "description": "Creation timestamp.",
+                            "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "updated_at": {
+                            "type": "string",
+                            "description": "Last update timestamp.",
+                            "enum": null,
+                            "nullable": false,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "excerpt": {
+                            "type": "string",
+                            "description": "Short body excerpt.",
+                            "enum": null,
+                            "nullable": false,
                             "is_system_provided": false,
                             "dynamic_variable": "",
                             "allowed_values_dynamic_variable": "",
@@ -482,7 +835,7 @@
     },
     "metadata": {
       "created_at_unix_secs": 1781809543,
-      "updated_at_unix_secs": 1781811145
+      "updated_at_unix_secs": 1781812964
     },
     "platform_settings": {
       "evaluation": {
@@ -818,7 +1171,7 @@
       "phoneclaw",
       "personal-assistant"
     ],
-    "version_id": "agtvrsn_8801kve3gtyzeegvf31mzz9hpgb8",
+    "version_id": "agtvrsn_4101kve58be3e8grxt1xr800tqtq",
     "branch_id": "agtbrch_2901kve1zy2de42vw26fw72reaac",
     "main_branch_id": "agtbrch_2901kve1zy2de42vw26fw72reaac",
     "procedures": {},
@@ -862,6 +1215,7 @@
                 "type": "string",
                 "description": "A concise web search query. Include dates, locations, or names when useful.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -872,6 +1226,7 @@
                 "type": "integer",
                 "description": "Maximum number of results to return. Use 3 unless Andrew asks for more.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -889,6 +1244,7 @@
                 "type": "boolean",
                 "description": "Whether the search request succeeded.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -899,6 +1255,7 @@
                 "type": "string",
                 "description": "The query that was searched.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -909,6 +1266,7 @@
                 "type": "string",
                 "description": "The search provider used.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -919,6 +1277,7 @@
                 "type": "string",
                 "description": "Limitations or notes about the search source.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -937,6 +1296,7 @@
                       "type": "string",
                       "description": "Result title.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -947,6 +1307,7 @@
                       "type": "string",
                       "description": "Result URL.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -957,6 +1318,7 @@
                       "type": "string",
                       "description": "Short excerpt or summary from the result.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -973,6 +1335,7 @@
                 "type": "string",
                 "description": "The actual query sent to the search provider, including date context when useful.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -983,6 +1346,7 @@
                 "type": "string",
                 "description": "ISO timestamp for when the search was run.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -993,6 +1357,7 @@
                 "type": "integer",
                 "description": "Number of web results returned.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -1003,6 +1368,7 @@
                 "type": "string",
                 "description": "A compact plain-text summary of the most useful search and schedule results. Prefer this when answering by voice.",
                 "enum": null,
+                "nullable": false,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
@@ -1021,6 +1387,7 @@
                       "type": "string",
                       "description": "Full event name.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -1031,6 +1398,7 @@
                       "type": "string",
                       "description": "Short event name.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -1041,6 +1409,7 @@
                       "type": "string",
                       "description": "Event start time in UTC.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -1051,6 +1420,7 @@
                       "type": "string",
                       "description": "Event start time in Eastern time.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -1061,6 +1431,7 @@
                       "type": "string",
                       "description": "Current event status.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -1071,6 +1442,7 @@
                       "type": "string",
                       "description": "Venue name.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -1081,6 +1453,7 @@
                       "type": "string",
                       "description": "Home team name.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -1091,6 +1464,7 @@
                       "type": "string",
                       "description": "Away team name.",
                       "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
@@ -1101,6 +1475,325 @@
                       "type": "string",
                       "description": "Current or final score when available.",
                       "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    }
+                  }
+                },
+                "dynamic_variable": "",
+                "constant_value": null,
+                "is_omitted": false
+              }
+            }
+          },
+          "content_type": "application/json",
+          "auth_resolved_params": [],
+          "auth_connection": null
+        }
+      },
+      "usage_stats": {
+        "total_calls": 1,
+        "avg_latency_secs": 0.39
+      },
+      "response_mocks": null
+    },
+    {
+      "id": "tool_3201kve57ppmev0a5acxkwdtyf01",
+      "tool_config": {
+        "type": "webhook",
+        "name": "github_summary",
+        "description": "Returns read-only summaries of open GitHub issues or pull requests visible to Andrew Furman's configured GitHub token. Use this when Andrew asks how many open GitHub issues or pull requests he has, or asks what they are about.",
+        "response_timeout_secs": 12,
+        "disable_interruptions": false,
+        "force_pre_tool_speech": false,
+        "pre_tool_speech": "auto",
+        "assignments": [],
+        "tool_call_sound": null,
+        "tool_call_sound_behavior": "auto",
+        "tool_error_handling_mode": "auto",
+        "dynamic_variables": {
+          "dynamic_variable_placeholders": {}
+        },
+        "execution_mode": "immediate",
+        "api_schema": {
+          "request_headers": {
+            "Authorization": "[redacted]"
+          },
+          "url": "https://webhooks.aifurman.com/github-summary",
+          "method": "POST",
+          "path_params_schema": {},
+          "query_params_schema": null,
+          "request_body_schema": {
+            "type": "object",
+            "required": [
+              "item_type"
+            ],
+            "description": "GitHub issue or pull request summary request.",
+            "properties": {
+              "item_type": {
+                "type": "string",
+                "description": "Which GitHub item type to summarize. Use issues for open issues and pull_requests for open pull requests.",
+                "enum": [
+                  "issues",
+                  "pull_requests"
+                ],
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "scope": {
+                "type": "string",
+                "description": "How to filter items relative to Andrew. Use involved by default. Use assigned, authored, mentioned, or review_requested when Andrew asks for that narrower view.",
+                "enum": [
+                  "involved",
+                  "assigned",
+                  "authored",
+                  "mentioned",
+                  "review_requested"
+                ],
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "max_results": {
+                "type": "integer",
+                "description": "Maximum number of recent items to return. Use 5 unless Andrew asks for more or fewer.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              }
+            }
+          },
+          "response_body_schema": {
+            "type": "object",
+            "required": [],
+            "description": "Read-only GitHub summary response.",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "description": "Whether the GitHub summary request succeeded.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "account": {
+                "type": "string",
+                "description": "The GitHub account used for the query.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "item_type": {
+                "type": "string",
+                "description": "The item type searched: issues or pull_requests.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "scope": {
+                "type": "string",
+                "description": "The search scope used.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "total_count": {
+                "type": "integer",
+                "description": "Total number of matching open items.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "returned_count": {
+                "type": "integer",
+                "description": "Number of compact items returned.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "query": {
+                "type": "string",
+                "description": "The GitHub search query used.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "source_note": {
+                "type": "string",
+                "description": "Notes about the GitHub source.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "answer_text": {
+                "type": "string",
+                "description": "A compact spoken summary. Prefer this when answering by voice.",
+                "enum": null,
+                "nullable": false,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "items": {
+                "type": "array",
+                "description": "Compact GitHub items to summarize for Andrew.",
+                "items": {
+                  "type": "object",
+                  "required": [],
+                  "description": "One GitHub issue or pull request.",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "description": "Item type.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "repo": {
+                      "type": "string",
+                      "description": "Repository full name.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "number": {
+                      "type": "integer",
+                      "description": "Issue or pull request number.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Issue or pull request title.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "GitHub web URL.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "author": {
+                      "type": "string",
+                      "description": "GitHub login of the author.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "comments": {
+                      "type": "integer",
+                      "description": "Number of comments.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "description": "Creation timestamp.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "description": "Last update timestamp.",
+                      "enum": null,
+                      "nullable": false,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "excerpt": {
+                      "type": "string",
+                      "description": "Short body excerpt.",
+                      "enum": null,
+                      "nullable": false,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",

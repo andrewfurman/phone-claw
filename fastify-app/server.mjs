@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import formbody from "@fastify/formbody";
 import twilio from "twilio";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
+import { githubSummary } from "../shared/github-summary.mjs";
 import {
   isAllowedCaller,
   lastFourDigits,
@@ -20,6 +21,7 @@ const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY;
 const elevenLabsAgentId = process.env.ELEVENLABS_AGENT_ID;
 const commandBridgeToken = process.env.COMMAND_BRIDGE_TOKEN;
 const webSearchToken = process.env.WEB_SEARCH_TOKEN || commandBridgeToken;
+const githubReadToken = process.env.GITHUB_READ_TOKEN;
 const claudeBridgeUrl = process.env.CLAUDE_BRIDGE_URL;
 const claudeBridgeToken = process.env.CLAUDE_BRIDGE_TOKEN;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
@@ -43,6 +45,7 @@ app.get("/", async () => ({
     twilio_inbound: "POST /twilio/inbound",
     twilio_outbound: "POST /twilio/outbound",
     web_search: "POST /web-search",
+    github_summary: "POST /github-summary",
     future_claude_tool: "POST /agent-command",
     health: "GET /health",
   },
@@ -53,6 +56,7 @@ app.get("/health", async () => ({
   elevenlabs_agent_configured: Boolean(elevenLabsAgentId),
   command_bridge_configured: Boolean(claudeBridgeUrl),
   web_search_configured: Boolean(webSearchToken),
+  github_read_configured: Boolean(githubReadToken),
   expected_elevenlabs_audio_format: ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
   allowed_caller_numbers_configured:
     parseAllowedCallerNumbers(process.env.ALLOWED_CALLER_NUMBERS).length > 0,
@@ -70,6 +74,10 @@ app.post("/twilio/outbound", async (request, reply) =>
 app.post("/agent-command", async (request, reply) => handleAgentCommand(request, reply));
 
 app.post("/web-search", async (request, reply) => handleWebSearch(request, reply));
+
+app.post("/github-summary", async (request, reply) =>
+  handleGithubSummary(request, reply)
+);
 
 try {
   await app.listen({ host, port });
@@ -286,6 +294,32 @@ async function handleWebSearch(request, reply) {
   const maxResults = body.max_results || body.maxResults || 5;
 
   const result = await basicWebSearch({ query, maxResults });
+  return reply.code(result.ok ? 200 : 400).send(result);
+}
+
+async function handleGithubSummary(request, reply) {
+  if (!webSearchToken) {
+    return reply.code(503).send({
+      ok: false,
+      status: "tool_auth_not_configured",
+      message: "WEB_SEARCH_TOKEN is not configured on this server.",
+    });
+  }
+
+  const authHeader = request.headers.authorization || "";
+  if (!secureEquals(authHeader, `Bearer ${webSearchToken}`)) {
+    return reply.code(401).send({ ok: false, status: "unauthorized" });
+  }
+
+  const body = request.body || {};
+  const result = await githubSummary({
+    githubToken: githubReadToken,
+    username: process.env.GITHUB_USERNAME,
+    itemType: body.item_type || body.itemType || body.type || body.kind,
+    scope: body.scope,
+    maxResults: body.max_results || body.maxResults || 5,
+  });
+
   return reply.code(result.ok ? 200 : 400).send(result);
 }
 

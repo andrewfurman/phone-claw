@@ -2,6 +2,7 @@ import {
   ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
 } from "../shared/telephony-audio-format.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
+import { githubSummary } from "../shared/github-summary.mjs";
 import {
   isAllowedCaller,
   lastFourDigits,
@@ -33,6 +34,7 @@ export default {
         ),
         command_bridge_configured: Boolean(env.CLAUDE_BRIDGE_URL),
         web_search_configured: Boolean(env.WEB_SEARCH_TOKEN || env.COMMAND_BRIDGE_TOKEN),
+        github_read_configured: Boolean(env.GITHUB_READ_TOKEN),
         expected_elevenlabs_audio_format:
           env.ELEVENLABS_TELEPHONY_AUDIO_FORMAT || ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
         allowed_caller_numbers_configured: parseAllowedCallerNumbers(
@@ -49,6 +51,7 @@ export default {
           twilio_inbound: "POST /twilio/inbound",
           twilio_outbound: "POST /twilio/outbound",
           web_search: "POST /web-search",
+          github_summary: "POST /github-summary",
           future_claude_tool: "POST /agent-command",
           health: "GET /health",
         },
@@ -84,6 +87,10 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/web-search") {
       return handleWebSearch(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/github-summary") {
+      return handleGithubSummary(request, env);
     }
 
     return json({ ok: false, error: "not_found" }, 404);
@@ -276,8 +283,8 @@ async function handleAgentCommand(request, env) {
 }
 
 async function handleWebSearch(request, env) {
-  const webSearchToken = env.WEB_SEARCH_TOKEN || env.COMMAND_BRIDGE_TOKEN;
-  if (!webSearchToken) {
+  const toolToken = env.WEB_SEARCH_TOKEN || env.COMMAND_BRIDGE_TOKEN;
+  if (!toolToken) {
     return json(
       {
         ok: false,
@@ -289,7 +296,7 @@ async function handleWebSearch(request, env) {
   }
 
   const authHeader = request.headers.get("authorization") || "";
-  if (authHeader !== `Bearer ${webSearchToken}`) {
+  if (authHeader !== `Bearer ${toolToken}`) {
     return json({ ok: false, status: "unauthorized" }, 401);
   }
 
@@ -298,6 +305,36 @@ async function handleWebSearch(request, env) {
   const maxResults = body.max_results || body.maxResults || 5;
 
   const result = await basicWebSearch({ query, maxResults });
+  return json(result, result.ok ? 200 : 400);
+}
+
+async function handleGithubSummary(request, env) {
+  const toolToken = env.WEB_SEARCH_TOKEN || env.COMMAND_BRIDGE_TOKEN;
+  if (!toolToken) {
+    return json(
+      {
+        ok: false,
+        status: "tool_auth_not_configured",
+        message: "WEB_SEARCH_TOKEN is not configured on this Worker.",
+      },
+      503
+    );
+  }
+
+  const authHeader = request.headers.get("authorization") || "";
+  if (authHeader !== `Bearer ${toolToken}`) {
+    return json({ ok: false, status: "unauthorized" }, 401);
+  }
+
+  const body = await parseRequestBody(request);
+  const result = await githubSummary({
+    githubToken: env.GITHUB_READ_TOKEN,
+    username: env.GITHUB_USERNAME,
+    itemType: body.item_type || body.itemType || body.type || body.kind,
+    scope: body.scope,
+    maxResults: body.max_results || body.maxResults || 5,
+  });
+
   return json(result, result.ok ? 200 : 400);
 }
 

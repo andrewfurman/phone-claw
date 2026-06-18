@@ -18,6 +18,7 @@ This log captures the prototype shape without publishing credentials or live pro
 - Added an inbound caller allow-list so only configured caller IDs reach the ElevenLabs agent.
 - Added an authenticated ElevenLabs `web_search` webhook tool backed by the Worker.
 - Added basic DuckDuckGo web results, a voice-friendly `answer_text` field, and prototype FIFA World Cup schedule enrichment.
+- Added a read-only GitHub summary endpoint for open issue and pull request questions.
 
 ## Current Prototype
 
@@ -32,6 +33,7 @@ The working path is:
 7. The Worker returns that TwiML to Twilio.
 8. Twilio connects the live call to the ElevenLabs agent.
 9. When needed, the agent can call the Worker's `web_search` tool for current information.
+10. When needed, the agent can call the Worker's `github_summary` tool for read-only GitHub issue and pull request summaries.
 
 ## Not Published
 

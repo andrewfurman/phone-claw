@@ -64,3 +64,9 @@ Before enabling it against a real command bridge:
 `Andrew Assistant Agent` has a webhook tool named `web_search` attached. It points at the hosted `/web-search` endpoint and is authenticated with `WEB_SEARCH_TOKEN`.
 
 The agent prompt tells the model to use `web_search` for current events, recent facts, schedules, sports, companies, products, docs, or anything that may have changed. The tool returns structured results and a compact `answer_text` field that the agent should prefer for spoken answers.
+
+## GitHub Summary Tool
+
+`Andrew Assistant Agent` can also use `github_summary`, an authenticated webhook tool that returns read-only summaries of open GitHub issues and pull requests visible to the configured `GITHUB_READ_TOKEN`.
+
+Use a fine-grained read-only GitHub token where possible. The token should live only in local `.env` or Cloudflare Worker secrets and should not be committed.

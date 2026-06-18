@@ -22,6 +22,7 @@ The local app mirrors the Worker endpoints, including:
 
 - `POST /twilio/inbound`
 - `POST /web-search`
+- `POST /github-summary`
 - `POST /agent-command`
 
 ## Expose Locally
