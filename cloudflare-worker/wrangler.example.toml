@@ -12,8 +12,14 @@ workers_dev = true
 [observability]
 enabled = true
 
+# Optional but recommended for after-the-fact Twilio call troubleshooting.
+[[kv_namespaces]]
+binding = "TWILIO_EVENT_LOGS"
+id = "replace-with-kv-namespace-id"
+
 [vars]
 ELEVENLABS_AGENT_ID = "replace-with-elevenlabs-agent-id"
 ELEVENLABS_API_BASE = "https://api.elevenlabs.io"
 ELEVENLABS_TELEPHONY_AUDIO_FORMAT = "ulaw_8000"
 TWILIO_PHONE_NUMBER = "+15555550123"
+TWILIO_EVENT_LOG_TTL_SECONDS = "604800"

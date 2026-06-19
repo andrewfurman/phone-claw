@@ -9,12 +9,20 @@ npm install -g twilio-cli
 twilio login
 ```
 
-Or use environment variables outside committed files:
+Or use environment variables outside committed files. The CLI supports either Account SID/Auth Token or Account SID/API Key/API Secret:
 
 ```bash
 export TWILIO_ACCOUNT_SID=AC...
 export TWILIO_AUTH_TOKEN=...
 ```
+
+```bash
+export TWILIO_ACCOUNT_SID=AC...
+export TWILIO_API_KEY=SK...
+export TWILIO_API_SECRET=...
+```
+
+The saved `twilio profiles:create` flow requires the account Auth Token. If you only have an API Key SID and API Secret, load those environment variables before running CLI commands.
 
 ## Number
 
@@ -51,6 +59,17 @@ twilio api:core:incoming-phone-numbers:update \
   --voice-url "https://YOUR_WEBHOOK_DOMAIN/twilio/inbound?token=YOUR_TWILIO_WEBHOOK_TOKEN" \
   --voice-method POST
 ```
+
+Also point the number's call status callback at the Worker for disconnect diagnostics:
+
+```bash
+twilio api:core:incoming-phone-numbers:update \
+  --sid PNxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+  --status-callback "https://YOUR_WEBHOOK_DOMAIN/twilio/call-status?token=YOUR_TWILIO_WEBHOOK_TOKEN" \
+  --status-callback-method POST
+```
+
+The Worker injects the separate Media Streams `statusCallback` into the ElevenLabs `<Stream>` TwiML for each call.
 
 For a simple phone-line test, temporarily point the number at:
 

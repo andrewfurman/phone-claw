@@ -11,6 +11,10 @@ import {
   parseAllowedCallerNumbers,
 } from "../shared/phone-numbers.mjs";
 import { ELEVENLABS_TELEPHONY_AUDIO_FORMAT } from "../shared/telephony-audio-format.mjs";
+import {
+  attachStreamStatusCallback,
+  buildTwilioEvent,
+} from "../shared/twilio-events.mjs";
 
 const { validateRequest } = twilio;
 
@@ -31,6 +35,7 @@ const enforceTwilioSignature =
 const outsideCoverageMessage =
   process.env.OUTSIDE_COVERAGE_MESSAGE ||
   "Thanks for calling Andrew's assistance line. Sorry we haven't set up outside coverage yet.";
+const twilioEvents = [];
 
 const app = Fastify({
   logger: true,
@@ -45,6 +50,9 @@ app.get("/", async () => ({
   endpoints: {
     twilio_inbound: "POST /twilio/inbound",
     twilio_outbound: "POST /twilio/outbound",
+    twilio_stream_status: "POST /twilio/stream-status",
+    twilio_call_status: "POST /twilio/call-status",
+    twilio_events: "GET /twilio/events",
     web_search: "POST /web-search",
     github_summary: "POST /github-summary",
     github_cli_ls: "POST /github-cli/ls",
@@ -64,6 +72,7 @@ app.get("/health", async () => ({
   allowed_caller_numbers_configured:
     parseAllowedCallerNumbers(process.env.ALLOWED_CALLER_NUMBERS).length > 0,
   twilio_signature_enforced: enforceTwilioSignature,
+  twilio_event_log_configured: true,
 }));
 
 app.post("/twilio/inbound", async (request, reply) =>
@@ -73,6 +82,16 @@ app.post("/twilio/inbound", async (request, reply) =>
 app.post("/twilio/outbound", async (request, reply) =>
   handleTwilioCall(request, reply, "outbound")
 );
+
+app.post("/twilio/stream-status", async (request, reply) =>
+  handleTwilioStatusCallback(request, reply, "twilio_stream_status")
+);
+
+app.post("/twilio/call-status", async (request, reply) =>
+  handleTwilioStatusCallback(request, reply, "twilio_call_status")
+);
+
+app.get("/twilio/events", async (request, reply) => handleTwilioEvents(request, reply));
 
 app.post("/agent-command", async (request, reply) => handleAgentCommand(request, reply));
 
@@ -153,6 +172,7 @@ async function handleTwilioCall(request, reply, direction) {
       fromNumber,
       toNumber,
       callSid: body.CallSid,
+      streamStatusCallbackUrl: twilioCallbackUrl(request, "/twilio/stream-status"),
     });
 
     return reply.code(200).type("application/xml").send(twiml);
@@ -170,6 +190,7 @@ async function registerElevenLabsTwilioCall({
   fromNumber,
   toNumber,
   callSid,
+  streamStatusCallbackUrl,
 }) {
   const response = await fetch(
     `${elevenLabsApiBase}/v1/convai/twilio/register-call`,
@@ -205,7 +226,58 @@ async function registerElevenLabsTwilioCall({
     );
   }
 
-  return extractTwiml(text, contentType);
+  return attachStreamStatusCallback(
+    extractTwiml(text, contentType),
+    streamStatusCallbackUrl
+  );
+}
+
+async function handleTwilioStatusCallback(request, reply, source) {
+  if (!isValidTwilioCallbackRequest(request)) {
+    return reply.code(403).send({ ok: false, status: "unauthorized" });
+  }
+
+  const event = buildTwilioEvent({ source, payload: request.body || {} });
+  twilioEvents.unshift(event);
+  twilioEvents.splice(100);
+
+  request.log.info(
+    {
+      event: "twilio_status_callback",
+      id: event.id,
+      source: event.source,
+      event_type: event.event_type,
+      call_sid: event.call_sid,
+      stream_sid: event.stream_sid,
+      stream_event: event.stream_event,
+      call_status: event.call_status,
+      from_last4: event.from_last4,
+      to_last4: event.to_last4,
+    },
+    "received Twilio status callback"
+  );
+
+  return reply.code(200).send({ ok: true });
+}
+
+async function handleTwilioEvents(request, reply) {
+  if (!isValidDiagnosticsRequest(request)) {
+    return reply.code(401).send({ ok: false, status: "unauthorized" });
+  }
+
+  const query = request.query || {};
+  const callSid = query.call_sid || query.callSid || "";
+  const limit = clampInteger(query.limit, 1, 100, 30);
+  const events = twilioEvents
+    .filter((event) => !callSid || event.call_sid === callSid)
+    .slice(0, limit);
+
+  return reply.code(200).send({
+    ok: true,
+    call_sid: callSid || null,
+    returned_count: events.length,
+    events,
+  });
 }
 
 async function handleAgentCommand(request, reply) {
@@ -409,6 +481,38 @@ function isValidTwilioRequest(request) {
   );
 }
 
+function isValidTwilioCallbackRequest(request) {
+  if (process.env.TWILIO_WEBHOOK_TOKEN) {
+    const token = request.query?.token;
+    if (token !== process.env.TWILIO_WEBHOOK_TOKEN) return false;
+  }
+
+  return isValidTwilioRequest(request);
+}
+
+function isValidDiagnosticsRequest(request) {
+  if (request.query?.token && request.query.token === process.env.TWILIO_WEBHOOK_TOKEN) {
+    return true;
+  }
+
+  if (!webSearchToken) return false;
+
+  const authHeader = request.headers.authorization || "";
+  return secureEquals(authHeader, `Bearer ${webSearchToken}`);
+}
+
+function twilioCallbackUrl(request, pathname) {
+  const url = new URL(publicRequestUrl(request));
+  url.pathname = pathname;
+  url.search = "";
+
+  if (process.env.TWILIO_WEBHOOK_TOKEN) {
+    url.searchParams.set("token", process.env.TWILIO_WEBHOOK_TOKEN);
+  }
+
+  return url.toString();
+}
+
 function publicRequestUrl(request) {
   const forwardedProto = firstHeaderValue(request.headers["x-forwarded-proto"]);
   const proto = forwardedProto || request.protocol || "https";
@@ -458,4 +562,10 @@ function secureEquals(left, right) {
   const rightBuffer = Buffer.from(String(right));
   if (leftBuffer.length !== rightBuffer.length) return false;
   return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function clampInteger(value, min, max, fallback = min) {
+  const number = Number.parseInt(value, 10);
+  if (Number.isNaN(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
 }

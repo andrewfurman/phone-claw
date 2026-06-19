@@ -24,6 +24,12 @@ wrangler secret put WEB_SEARCH_TOKEN
 wrangler secret put GITHUB_READ_TOKEN
 ```
 
+Create a KV namespace for Twilio stream/call event diagnostics, then add the returned ID to local `wrangler.toml`:
+
+```bash
+npx wrangler kv namespace create TWILIO_EVENT_LOGS --config wrangler.toml
+```
+
 Deploy from the repo root:
 
 ```bash
@@ -35,6 +41,9 @@ npm run worker:deploy
 - `GET /health`
 - `POST /twilio/inbound`
 - `POST /twilio/outbound`
+- `POST /twilio/stream-status`
+- `POST /twilio/call-status`
+- `GET /twilio/events`
 - `GET|POST /twilio/test-say`
 - `POST /web-search`
 - `POST /github-summary`
@@ -70,6 +79,14 @@ Supported request fields:
 - `max_results`: 1 to 8
 
 The response includes `total_count`, compact `items`, and a voice-friendly `answer_text`.
+
+## Twilio Diagnostics
+
+The Worker injects a Twilio Media Streams `statusCallback` into the ElevenLabs `<Stream>` TwiML. Twilio then posts `stream-started`, `stream-stopped`, and `stream-error` events to `POST /twilio/stream-status`.
+
+The Twilio phone number can also send broader call lifecycle callbacks to `POST /twilio/call-status`.
+
+When `TWILIO_EVENT_LOGS` is bound, recent events are stored in KV and can be read from `GET /twilio/events` with either the Twilio webhook token query parameter or the tool bearer token. Use `call_sid` to filter a specific call.
 
 ## GitHub CLI-Style Read Tools
 

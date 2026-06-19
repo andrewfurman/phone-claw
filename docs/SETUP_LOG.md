@@ -23,6 +23,8 @@ This log captures the prototype shape without publishing credentials or live pro
 - Added read-only GitHub CLI-style tools for repository folder/tree listing and file content reads.
 - Verified the hosted Worker can read a private organization repo using the configured Worker GitHub token.
 - Verified a live ElevenLabs WebSocket conversation called `github_cli_ls` and `github_cli_cat` successfully against a private repo.
+- Added Twilio Media Streams and call status callback endpoints.
+- Added KV-backed Twilio event logging so future call disconnects can be inspected after the call.
 
 ## Current Prototype
 
@@ -40,6 +42,8 @@ The working path is:
 10. When needed, the agent can call the Worker's `github_summary` tool for read-only GitHub issue and pull request summaries.
 11. When needed, the agent can call the Worker's `github_cli_ls` tool to list repository folders or recursive trees.
 12. When needed, the agent can call the Worker's `github_cli_cat` tool to read a specific repository file.
+13. Twilio stream and call status callbacks post diagnostic events back to the Worker.
+14. The Worker stores recent Twilio diagnostic events in KV for troubleshooting.
 
 ## Not Published
 

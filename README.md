@@ -62,6 +62,12 @@ wrangler secret put WEB_SEARCH_TOKEN
 wrangler secret put GITHUB_READ_TOKEN
 ```
 
+Create and bind a KV namespace for Twilio stream/call diagnostic callbacks:
+
+```bash
+npx wrangler kv namespace create TWILIO_EVENT_LOGS --config wrangler.toml
+```
+
 Deploy:
 
 ```bash
@@ -84,6 +90,10 @@ The ElevenLabs agent has read-only GitHub webhook tools:
 - `github_cli_cat` for GitHub CLI-style file content reads.
 
 The hosted Worker uses `GITHUB_READ_TOKEN` from Cloudflare secrets. Keep that token out of the public repo. Prefer a fine-grained read-only token for long-term use; the Worker code only exposes read-only endpoints.
+
+## Twilio Diagnostics
+
+The Worker adds a Media Streams `statusCallback` to the ElevenLabs TwiML and stores recent stream/call callback events in KV. Use `GET /twilio/events` with the configured auth token to inspect recent `stream-started`, `stream-stopped`, `stream-error`, and call lifecycle callbacks.
 
 ## Secret Handling
 

@@ -21,6 +21,9 @@ curl http://localhost:8000/health
 The local app mirrors the Worker endpoints, including:
 
 - `POST /twilio/inbound`
+- `POST /twilio/stream-status`
+- `POST /twilio/call-status`
+- `GET /twilio/events`
 - `POST /web-search`
 - `POST /github-summary`
 - `POST /github-cli/ls`
