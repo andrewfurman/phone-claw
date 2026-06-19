@@ -80,6 +80,7 @@ export default {
           otter_speech_get: "POST /cli/otter/speech-get",
           otter_speech_search: "POST /cli/otter/speech-search",
           github_cli_common: "POST /cli/github/common",
+          claude_code: "POST /cli/claude-code",
           future_claude_tool: "POST /agent-command",
           health: "GET /health",
         },
@@ -161,6 +162,7 @@ export default {
         "/cli/otter/speech-get",
         "/cli/otter/speech-search",
         "/cli/github/common",
+        "/cli/claude-code",
       ].includes(url.pathname)
     ) {
       return handleCliBridgeProxy(request, env, url.pathname);

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import Fastify from "fastify";
 import formbody from "@fastify/formbody";
 import twilio from "twilio";
+import { claudeCodeTool } from "./claude-code-tools.mjs";
 import {
   githubCliCommon,
   himalayaDraftCreate,
@@ -82,6 +83,7 @@ app.get("/", async () => ({
     otter_speech_get: "POST /cli/otter/speech-get",
     otter_speech_search: "POST /cli/otter/speech-search",
     github_cli_common: "POST /cli/github/common",
+    claude_code: "POST /cli/claude-code",
     future_claude_tool: "POST /agent-command",
     health: "GET /health",
   },
@@ -95,6 +97,7 @@ app.get("/health", async () => ({
   cli_bridge_token_configured: Boolean(cliBridgeToken),
   github_read_configured: Boolean(githubReadToken),
   github_write_configured: Boolean(githubWriteToken),
+  claude_code_bridge_configured: true,
   expected_elevenlabs_audio_format: ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
   allowed_caller_numbers_configured:
     parseAllowedCallerNumbers(process.env.ALLOWED_CALLER_NUMBERS).length > 0,
@@ -176,6 +179,10 @@ app.post("/cli/otter/speech-search", async (request, reply) =>
 
 app.post("/cli/github/common", async (request, reply) =>
   handleGithubCliCommon(request, reply)
+);
+
+app.post("/cli/claude-code", async (request, reply) =>
+  handleClaudeCodeTool(request, reply)
 );
 
 try {
@@ -715,6 +722,27 @@ async function handleGithubCliCommon(request, reply) {
   });
 
   return reply.code(result.ok ? 200 : 400).send(result);
+}
+
+async function handleClaudeCodeTool(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await claudeCodeTool({
+    action: body.action,
+    task: body.task || body.command || body.prompt,
+    repoPath:
+      body.repo_path || body.repoPath || body.working_directory || body.workingDirectory,
+    sessionId: body.session_id || body.sessionId,
+    jobId: body.job_id || body.jobId,
+    mode: body.mode,
+    confirmed: body.confirmed,
+    maxSeconds: body.max_seconds || body.maxSeconds,
+  });
+
+  return reply
+    .code(result.ok || result.status === "confirmation_required" ? 200 : 400)
+    .send(result);
 }
 
 function validateToolAuth(request, reply) {

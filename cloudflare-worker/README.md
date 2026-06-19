@@ -65,6 +65,7 @@ npm run worker:deploy
 - `POST /cli/otter/speech-get`
 - `POST /cli/otter/speech-search`
 - `POST /cli/github/common`
+- `POST /cli/claude-code`
 - `POST /agent-command`
 
 ## Caller Allow-List
@@ -141,10 +142,11 @@ The `/cli/*` endpoints are authenticated ElevenLabs webhook tools, but the Worke
 
 Supported bridge-backed tools:
 
-- Himalaya: email envelope list/search, folder count, preview read, confirmed archive, confirmed new draft, and confirmed reply draft.
+- Himalaya: email envelope list/search, all-pages capped listing/count, preview read, confirmed archive, confirmed new draft, and confirmed reply draft.
 - Otter: transcript list, raw JSON fetch, and transcript search.
 - GitHub CLI: common read-only repo, issue, PR, and search commands.
+- Claude Code: auth status, session start, confirmed async task submission, and job status.
 
-The Himalaya write tools require `confirmed=true` and cannot send email.
+The Himalaya write tools and Claude Code task submission require `confirmed=true`. Himalaya cannot send email.
 
-If `CLI_BRIDGE_URL` or `CLI_BRIDGE_TOKEN` is unset, these endpoints return `cli_bridge_not_configured`. See `docs/CLI_BRIDGE_SECURITY.md` before deploying a bridge with real email/Otter/GitHub credentials.
+If `CLI_BRIDGE_URL` or `CLI_BRIDGE_TOKEN` is unset, these endpoints return `cli_bridge_not_configured`. See `docs/CLI_BRIDGE_SECURITY.md` before deploying a bridge with real email/Otter/GitHub/Claude Code credentials.

@@ -5,7 +5,7 @@
   "description": "Claw Phone: a Twilio-to-ElevenLabs voice bridge with a future Claude Code command bridge.",
   "scripts": {
     "start": "node --env-file-if-exists=.env fastify-app/server.mjs",
-    "check": "node --check fastify-app/server.mjs && node --check fastify-app/cli-tools.mjs",
+    "check": "node --check fastify-app/server.mjs && node --check fastify-app/cli-tools.mjs && node --check fastify-app/claude-code-tools.mjs",
     "tunnel": "npx --yes localtunnel --port 8000 --local-host 127.0.0.1",
     "twilio": "twilio",
     "elevenlabs:audio:check": "node --env-file-if-exists=.env scripts/check-elevenlabs-audio-format.mjs",

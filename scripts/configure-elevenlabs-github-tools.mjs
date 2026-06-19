@@ -31,6 +31,7 @@ const configs = [
   otterSpeechGetToolConfig(),
   otterSpeechSearchToolConfig(),
   githubCliCommonToolConfig(),
+  claudeCodeToolConfig(),
 ];
 const obsoleteToolNames = ["himalaya_email_count"];
 
@@ -795,6 +796,79 @@ function githubCliCommonToolConfig() {
   });
 }
 
+function claudeCodeToolConfig() {
+  return webhookTool({
+    name: "claude_code",
+    description:
+      "Explicit escalation tool for Claude Code running on the private EC2 bridge. Use only when Andrew asks to use Claude Code, asks to start/check a Claude Code session, or confirms that a complex code change/test run should be delegated.",
+    url: `${workerBaseUrl}/cli/claude-code`,
+    required: ["action"],
+    responseTimeoutSecs: 20,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      action: stringProperty({
+        description:
+          "Action to run: auth_status checks Claude auth; start_session creates a session id; submit_task starts an async Claude Code job; job_status checks an existing job.",
+        values: ["auth_status", "start_session", "submit_task", "job_status"],
+      }),
+      task: stringProperty({
+        description:
+          "Task for Claude Code. Required for submit_task. Include the exact repository/task Andrew confirmed.",
+      }),
+      repo_path: stringProperty({
+        description:
+          "Optional absolute repository path on the EC2 bridge. Omit for the default Phoneclaw repo.",
+      }),
+      session_id: stringProperty({
+        description:
+          "Optional Claude Code session UUID. Reuse this to continue the same Claude Code conversation.",
+      }),
+      job_id: stringProperty({
+        description: "Claude Code job UUID to check with action=job_status.",
+      }),
+      mode: stringProperty({
+        description:
+          "Use plan for read-only planning. Use run only after Andrew confirms edits/tests should run.",
+        values: ["plan", "run"],
+      }),
+      confirmed: booleanProperty(
+        "Must be true only after Andrew explicitly confirms the exact Claude Code task and repository."
+      ),
+      max_seconds: integerProperty({
+        description:
+          "Maximum job runtime in seconds. Defaults to 600. Use lower values for phone-call experiments.",
+      }),
+    },
+    responseDescription: "Claude Code bridge response.",
+    responseProperties: {
+      ok: booleanProperty("Whether the bridge request succeeded."),
+      status: stringProperty({
+        description:
+          "Status such as ok, session_ready, running, completed, failed, claude_not_authenticated, confirmation_required, or job_not_found.",
+      }),
+      action: stringProperty({ description: "Action performed." }),
+      authenticated: booleanProperty("Whether Claude Code is authenticated on the bridge."),
+      auth_method: stringProperty({ description: "Claude Code auth method when known." }),
+      session_id: stringProperty({ description: "Claude Code session UUID." }),
+      job_id: stringProperty({ description: "Claude Code async job UUID." }),
+      mode: stringProperty({ description: "Claude Code mode: plan or run." }),
+      working_directory: stringProperty({ description: "Repository path used on the bridge." }),
+      created_at: stringProperty({ description: "Job creation timestamp." }),
+      updated_at: stringProperty({ description: "Last job update timestamp." }),
+      exit_code: integerProperty({ description: "Claude Code process exit code." }),
+      signal: stringProperty({ description: "Signal if the process was terminated." }),
+      output_preview: stringProperty({
+        description: "Truncated Claude Code output for voice summarization.",
+      }),
+      error_text: stringProperty({ description: "Claude Code stderr or startup error." }),
+      answer_text: stringProperty({
+        description: "Compact spoken summary. Prefer this for voice responses.",
+      }),
+    },
+  });
+}
+
 function webhookTool({
   name,
   description,
@@ -1070,6 +1144,17 @@ GitHub capability:
 - Use github_issue_update only after Andrew explicitly confirms the exact repo, issue number, and requested change. Set confirmed=true only after that confirmation.
 - The GitHub issue tools can create and update issues only. They cannot merge, approve, push code, or edit files.
 - If a private repo returns 403, 404, or a GitHub validation failure, say the configured token may not have access to that repo, org approval, or Contents read permission.
+
+Claude Code capability:
+- You have a webhook tool named claude_code that can check auth, start a session, submit an async Claude Code job on EC2, and check job status.
+- Do not use Claude Code by default. First solve directly with conversation, web_search, GitHub, email, or Otter tools when that is enough.
+- Use claude_code only when Andrew explicitly asks to use Claude Code, asks to start/check a Claude Code session, or confirms that a complex code change or test run should be delegated to Claude Code.
+- Use action="auth_status" when Andrew asks whether Claude Code is ready.
+- Use action="start_session" when Andrew asks to start a Claude Code session. Remember and reuse the returned session_id.
+- Before action="submit_task", repeat the exact repository/path and task, then ask Andrew to confirm. Set confirmed=true only after that confirmation.
+- Use mode="plan" for read-only planning. Use mode="run" only after Andrew confirms edits/tests should run.
+- Claude Code jobs are asynchronous. After submit_task returns a job_id, tell Andrew the job started and use action="job_status" to check progress. Do not claim the code work is complete until job_status says completed.
+- Do not ask Claude Code to push commits, deploy, rotate secrets, or perform destructive operations unless Andrew explicitly requested that exact action.
 
 CLI capability:
 - You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.

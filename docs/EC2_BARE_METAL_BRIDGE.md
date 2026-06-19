@@ -16,6 +16,7 @@ The EC2 instance runs:
   - `himalaya`
   - `otter`
   - `gh`
+  - `claude`
 
 The Fastify port is not opened to the internet. Cloudflare Tunnel publishes the bridge hostname and forwards traffic to localhost on the VM.
 
@@ -42,6 +43,7 @@ Do not commit any of these:
 - `GH_TOKEN`.
 - Himalaya config.
 - Otter config.
+- Claude Code auth files or Anthropic API keys.
 
 Runtime secrets live on the host:
 
@@ -49,6 +51,8 @@ Runtime secrets live on the host:
 - `/etc/cloudflared/phoneclaw.env`
 - `/home/phoneclaw/.config/himalaya/config.toml`
 - `/home/phoneclaw/.otterai/config.json`
+- `/home/phoneclaw/.claude/` or `ANTHROPIC_API_KEY` in `/etc/phoneclaw/bridge.env`
+- `/var/lib/phoneclaw/claude-jobs/`
 
 ## Services
 
@@ -93,4 +97,25 @@ Validation should cover:
 - Worker proxy call to `/cli/otter/speeches-list`
 - Worker proxy call to `/cli/otter/speech-get`
 - Worker proxy call to `/cli/github/common`
+- Worker proxy call to `/cli/claude-code` with `{"action":"auth_status"}`
 - ElevenLabs WebSocket conversation using `otter_speeches_list` and `himalaya_email_list`
+
+## Claude Code
+
+Install Claude Code on the bridge host and authenticate it as the `phoneclaw` service user:
+
+```bash
+sudo npm install -g @anthropic-ai/claude-code
+sudo -iu phoneclaw claude auth login
+```
+
+Alternatively, store an Anthropic API key in `/etc/phoneclaw/bridge.env`:
+
+```text
+ANTHROPIC_API_KEY=...
+CLAUDE_BIN=claude
+CLAUDE_CODE_JOB_DIR=/var/lib/phoneclaw/claude-jobs
+CLAUDE_CODE_ALLOWED_DIRS=/opt/phoneclaw
+```
+
+The `claude_code` voice tool is intentionally explicit. It can check auth, create a session id, submit a confirmed async job, and poll job status. It should not be used as the default path for ordinary questions.

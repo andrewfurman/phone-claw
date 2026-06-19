@@ -33,7 +33,7 @@ This project intentionally keeps provider configuration explicit because the voi
 | Himalaya CLI | Local email CLI used by the private bridge to access Gmail. | `HIMALAYA_BIN`, `HIMALAYA_ARCHIVE_FOLDER`, and `HIMALAYA_DRAFTS_FOLDER` in bridge env. |
 | Otter.ai | Transcript source for listing, fetching raw transcript JSON, and transcript search. | Authenticated on the bridge host through Otter CLI config; no Otter credentials are committed. |
 | Otter CLI | Local CLI used by the private bridge to access Otter transcripts. | `OTTER_BIN` in bridge env. |
-| Claude Code | Planned future coding-agent bridge target. Current repo includes starter webhook/tool notes, but no long-running Claude Code session is exposed yet. | Future bridge values are represented by `COMMAND_BRIDGE_TOKEN` and optional Claude bridge env placeholders. |
+| Claude Code | Optional explicit escalation target for complex code changes and test runs. The voice agent can start/check sessions and submit async jobs on the EC2 bridge only after confirmation. | `CLAUDE_BIN`, `CLAUDE_CODE_JOB_DIR`, `CLAUDE_CODE_ALLOWED_DIRS`, and either Claude Code login state or `ANTHROPIC_API_KEY` on the private bridge. |
 
 ## Local Development
 
@@ -128,10 +128,13 @@ The ElevenLabs agent also has focused wrappers for local CLIs:
 - `himalaya_email_archive`, `himalaya_draft_create`, and `himalaya_draft_reply`
 - `otter_speeches_list`, `otter_speech_get`, and `otter_speech_search`
 - `github_cli_common`
+- `claude_code`
 
 Email write tools require explicit confirmation. They can archive email and save drafts; they cannot send email.
 
 `himalaya_email_list` is paginated by default and returns compact envelope metadata only: id, subject, sender, recipients, date, flags, and attachment presence. Use `all_pages=true` on the same tool for complete folder lists and total-count questions such as "how many emails are in my inbox?" All-pages mode returns at most 200 envelopes by default and reports `has_more`, `complete`, and `capped` so the agent does not dump an entire mailbox into context.
+
+`claude_code` is intentionally not a default reasoning path. It supports `auth_status`, `start_session`, `submit_task`, and `job_status`; task submission is confirmation-gated and runs asynchronously on the private EC2 bridge.
 
 Cloudflare Workers cannot run those binaries directly. The Worker proxies `/cli/*` requests to a private Fastify bridge configured with `CLI_BRIDGE_URL` and `CLI_BRIDGE_TOKEN`. See `docs/CLI_BRIDGE_SECURITY.md`.
 
