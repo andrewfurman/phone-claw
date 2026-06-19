@@ -7,6 +7,8 @@ const DEFAULT_MAX_RAW_BYTES = 200_000;
 const MAX_RAW_BYTES = 750_000;
 const MAX_LIST_RESULTS = 50;
 const MAX_EMAIL_LIST_PAGES = 200;
+const DEFAULT_EMAIL_LIST_MAX_ITEMS = 200;
+const MAX_EMAIL_LIST_ITEMS = 1_000;
 
 export async function himalayaEmailList({
   query = "",
@@ -16,6 +18,7 @@ export async function himalayaEmailList({
   pageSize = 10,
   allPages = false,
   maxPages = MAX_EMAIL_LIST_PAGES,
+  maxItems = DEFAULT_EMAIL_LIST_MAX_ITEMS,
   maxRawBytes = DEFAULT_MAX_RAW_BYTES,
 } = {}) {
   const normalizedFolder = normalizeString(folder, "INBOX");
@@ -29,6 +32,12 @@ export async function himalayaEmailList({
     shouldFetchAllPages ? MAX_LIST_RESULTS : 10
   );
   const normalizedMaxPages = clampInteger(maxPages, 1, MAX_EMAIL_LIST_PAGES, MAX_EMAIL_LIST_PAGES);
+  const normalizedMaxItems = clampInteger(
+    maxItems,
+    1,
+    MAX_EMAIL_LIST_ITEMS,
+    DEFAULT_EMAIL_LIST_MAX_ITEMS
+  );
 
   if (shouldFetchAllPages) {
     return himalayaEmailListAllPages({
@@ -37,6 +46,7 @@ export async function himalayaEmailList({
       account,
       pageSize: normalizedPageSize,
       maxPages: normalizedMaxPages,
+      maxItems: normalizedMaxItems,
       maxRawBytes,
     });
   }
@@ -66,6 +76,8 @@ export async function himalayaEmailList({
     returned_count: envelopes.length,
     total_count: exact ? envelopes.length : null,
     pages_scanned: 1,
+    max_items: null,
+    has_more: exact ? false : null,
     complete: exact,
     exact,
     capped: false,
@@ -898,6 +910,7 @@ async function himalayaEmailListAllPages({
   account,
   pageSize,
   maxPages,
+  maxItems,
   maxRawBytes,
 }) {
   const items = [];
@@ -920,10 +933,12 @@ async function himalayaEmailListAllPages({
           query,
           items,
           pageSize,
+          maxItems,
           pagesScanned,
           allPages: true,
           complete: true,
           capped: false,
+          hasMore: false,
         });
       }
 
@@ -937,6 +952,8 @@ async function himalayaEmailListAllPages({
         returned_count: items.length,
         total_count: null,
         pages_scanned: pagesScanned,
+        max_items: maxItems,
+        has_more: null,
         complete: false,
         exact: false,
         capped: false,
@@ -949,6 +966,25 @@ async function himalayaEmailListAllPages({
     const pageItems = Array.isArray(result.parsed_json)
       ? result.parsed_json.map(compactEnvelope)
       : [];
+
+    const remaining = maxItems - items.length;
+    if (pageItems.length > remaining) {
+      items.push(...pageItems.slice(0, remaining));
+      pagesScanned = pageNumber;
+      return emailListResponse({
+        folder,
+        query,
+        items,
+        pageSize,
+        maxItems,
+        pagesScanned,
+        allPages: true,
+        complete: false,
+        capped: true,
+        hasMore: true,
+      });
+    }
+
     items.push(...pageItems);
     pagesScanned = pageNumber;
 
@@ -958,10 +994,69 @@ async function himalayaEmailListAllPages({
         query,
         items,
         pageSize,
+        maxItems,
         pagesScanned,
         allPages: true,
         complete: true,
         capped: false,
+        hasMore: false,
+      });
+    }
+
+    if (items.length >= maxItems) {
+      const probe = await runHimalayaEnvelopeListPage({
+        query,
+        folder,
+        account,
+        page: pageNumber + 1,
+        pageSize,
+        maxRawBytes,
+      });
+      pagesScanned = pageNumber + 1;
+
+      if (probe.ok) {
+        const probeItems = Array.isArray(probe.parsed_json) ? probe.parsed_json : [];
+        const hasMore = probeItems.length > 0;
+        return emailListResponse({
+          folder,
+          query,
+          items,
+          pageSize,
+          maxItems,
+          pagesScanned,
+          allPages: true,
+          complete: !hasMore,
+          capped: hasMore,
+          hasMore,
+        });
+      }
+
+      if (isHimalayaPageOutOfBounds(probe)) {
+        return emailListResponse({
+          folder,
+          query,
+          items,
+          pageSize,
+          maxItems,
+          pagesScanned,
+          allPages: true,
+          complete: true,
+          capped: false,
+          hasMore: false,
+        });
+      }
+
+      return emailListResponse({
+        folder,
+        query,
+        items,
+        pageSize,
+        maxItems,
+        pagesScanned,
+        allPages: true,
+        complete: false,
+        capped: true,
+        hasMore: null,
       });
     }
   }
@@ -971,10 +1066,12 @@ async function himalayaEmailListAllPages({
     query,
     items,
     pageSize,
+    maxItems,
     pagesScanned,
     allPages: true,
     complete: false,
     capped: true,
+    hasMore: null,
   });
 }
 
@@ -1014,10 +1111,12 @@ function emailListResponse({
   query,
   items,
   pageSize,
+  maxItems,
   pagesScanned,
   allPages,
   complete,
   capped,
+  hasMore,
 }) {
   return {
     ok: true,
@@ -1031,16 +1130,20 @@ function emailListResponse({
     returned_count: items.length,
     total_count: complete ? items.length : null,
     pages_scanned: pagesScanned,
+    max_items: maxItems,
+    has_more: hasMore,
     complete,
     exact: complete,
     capped,
     items,
     answer_text: formatEmailListAnswer(items, folder, {
       pageSize,
+      maxItems,
       allPages,
       pagesScanned,
       exact: complete,
       capped,
+      hasMore,
     }),
   };
 }
@@ -1053,10 +1156,25 @@ function isHimalayaPageOutOfBounds(result) {
 function formatEmailListAnswer(
   envelopes,
   folder,
-  { page, pageSize, allPages = false, pagesScanned = 1, exact = false, capped = false } = {}
+  {
+    page,
+    pageSize,
+    maxItems,
+    allPages = false,
+    pagesScanned = 1,
+    exact = false,
+    capped = false,
+    hasMore = false,
+  } = {}
 ) {
+  const moreText =
+    hasMore === true
+      ? " There are more matching emails beyond this cap."
+      : hasMore === null
+        ? " There may be more matching emails beyond this cap."
+        : "";
   const qualifier = capped
-    ? ` I stopped after ${pagesScanned} pages of ${pageSize}, so this is not a complete total.`
+    ? ` I stopped after ${pagesScanned} pages and returned at most ${maxItems || envelopes.length} emails.${moreText}`
     : "";
 
   if (envelopes.length === 0) {
@@ -1074,7 +1192,7 @@ function formatEmailListAnswer(
   if (allPages) {
     const totalText = exact
       ? `Himalaya returned all ${envelopes.length} email envelopes from ${folder}.`
-      : `Himalaya returned ${envelopes.length} email envelopes from ${folder}, but this may be partial.`;
+      : `Himalaya returned ${envelopes.length} email envelopes from ${folder}, but this is capped and may be partial.`;
     return [totalText + qualifier, ...lines].filter(Boolean).join("\n");
   }
 

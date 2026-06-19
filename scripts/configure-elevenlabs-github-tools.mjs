@@ -480,6 +480,10 @@ function himalayaEmailListToolConfig() {
         description:
           "Maximum pages to scan when all_pages=true. Use the default unless Andrew asks for an exhaustive large-folder scan.",
       }),
+      max_items: integerProperty({
+        description:
+          "Maximum email envelopes to return when all_pages=true. Defaults to 200 to protect context; raise only when Andrew explicitly asks.",
+      }),
     },
     responseDescription: "Himalaya email envelope list response.",
     responseProperties: {
@@ -495,9 +499,15 @@ function himalayaEmailListToolConfig() {
       pages_scanned: integerProperty({
         description: "Number of Himalaya envelope-list pages scanned.",
       }),
+      max_items: integerProperty({
+        description: "Maximum email envelopes allowed in this response.",
+      }),
+      has_more: booleanProperty(
+        "True when more matching emails exist beyond the returned capped list. Null when unknown."
+      ),
       complete: booleanProperty("Whether the result includes the complete matching list."),
       exact: booleanProperty("Whether total_count is exact."),
-      capped: booleanProperty("Whether all_pages scanning stopped at max_pages."),
+      capped: booleanProperty("Whether all_pages scanning stopped at max_items or max_pages."),
       items: arrayProperty({
         description: "Email envelopes returned by Himalaya.",
         itemDescription: "One email envelope.",
@@ -1051,7 +1061,8 @@ function promptWithGithubFileTools(currentPrompt) {
 
 CLI capability:
 - You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.
-- Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. Only treat total_count as exact when complete or exact is true.
+- Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. This mode returns at most 200 envelopes by default to protect context; if capped or has_more is true, say it is a partial list and suggest narrowing the query.
+- Only treat total_count as exact when complete or exact is true.
 - Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result.
 - Use himalaya_email_archive only after Andrew explicitly confirms the exact envelope id and source folder. Set confirmed=true only after that confirmation.
 - Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.

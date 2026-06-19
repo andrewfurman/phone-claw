@@ -131,7 +131,7 @@ The ElevenLabs agent also has focused wrappers for local CLIs:
 
 Email write tools require explicit confirmation. They can archive email and save drafts; they cannot send email.
 
-`himalaya_email_list` is paginated by default. Use `all_pages=true` on the same tool for complete folder lists and total-count questions such as "how many emails are in my inbox?"
+`himalaya_email_list` is paginated by default and returns compact envelope metadata only: id, subject, sender, recipients, date, flags, and attachment presence. Use `all_pages=true` on the same tool for complete folder lists and total-count questions such as "how many emails are in my inbox?" All-pages mode returns at most 200 envelopes by default and reports `has_more`, `complete`, and `capped` so the agent does not dump an entire mailbox into context.
 
 Cloudflare Workers cannot run those binaries directly. The Worker proxies `/cli/*` requests to a private Fastify bridge configured with `CLI_BRIDGE_URL` and `CLI_BRIDGE_TOKEN`. See `docs/CLI_BRIDGE_SECURITY.md`.
 

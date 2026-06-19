@@ -578,6 +578,7 @@ async function handleHimalayaEmailList(request, reply) {
     pageSize: body.page_size || body.pageSize || body.max_results || body.maxResults,
     allPages: body.all_pages ?? body.allPages,
     maxPages: body.max_pages || body.maxPages,
+    maxItems: body.max_items || body.maxItems,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   });
 

@@ -39,6 +39,10 @@ console.log(
       ok: verification.ok,
       conversation_id: conversation.conversationId,
       expected_total_count: expected.total_count,
+      expected_returned_count: expected.returned_count,
+      expected_complete: expected.complete,
+      expected_capped: expected.capped,
+      expected_has_more: expected.has_more,
       tool_total_count: verification.toolTotalCount,
       user_transcript: conversation.userTranscript,
       agent_response_preview: verification.agentResponse.slice(0, 700),
@@ -263,6 +267,15 @@ function verifyConversation(details, expected) {
       .filter((turn) => turn.role === "agent" && isRealAgentMessage(turn.message))
       .map((turn) => turn.message)
       .at(-1) || "";
+  const workerWasComplete = expected.complete === true || expected.exact === true;
+  const resultCountMatchesWorker = workerWasComplete
+    ? resultValue?.total_count === expected.total_count
+    : resultValue?.returned_count === expected.returned_count &&
+      resultValue?.capped === expected.capped &&
+      resultValue?.has_more === expected.has_more;
+  const resultCompletenessMatchesWorker = workerWasComplete
+    ? resultValue?.complete === true || resultValue?.exact === true
+    : resultValue?.complete === false && resultValue?.capped === expected.capped;
 
   const checks = {
     transcript_available: transcript.length > 0,
@@ -270,8 +283,8 @@ function verifyConversation(details, expected) {
     did_not_use_count_tool: !countToolCall,
     requested_all_pages: requestedAllPages,
     tool_returned_without_error: Boolean(toolResult) && toolResult.is_error === false,
-    tool_count_matches_worker: resultValue?.total_count === expected.total_count,
-    tool_result_was_complete: resultValue?.complete === true || resultValue?.exact === true,
+    tool_count_or_cap_matches_worker: resultCountMatchesWorker,
+    tool_completeness_matches_worker: resultCompletenessMatchesWorker,
     agent_answered_after_tool: agentResponse.length > 0,
   };
 
