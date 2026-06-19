@@ -23,7 +23,6 @@ const configs = [
   githubIssueCreateToolConfig(),
   githubIssueUpdateToolConfig(),
   himalayaEmailListToolConfig(),
-  himalayaEmailCountToolConfig(),
   himalayaEmailReadToolConfig(),
   himalayaEmailArchiveToolConfig(),
   himalayaDraftCreateToolConfig(),
@@ -33,18 +32,26 @@ const configs = [
   otterSpeechSearchToolConfig(),
   githubCliCommonToolConfig(),
 ];
+const obsoleteToolNames = ["himalaya_email_count"];
 
 const tools = [];
 for (const toolConfig of configs) {
   tools.push(await upsertTool(toolConfig));
 }
 
+const obsoleteTools = [];
+for (const name of obsoleteToolNames) {
+  const obsoleteTool = await findToolByName(name);
+  if (obsoleteTool) obsoleteTools.push(obsoleteTool);
+}
+
 const agent = await requestJson(`${apiBase}/v1/convai/agents/${agentId}`);
 const conversationConfig = structuredClone(agent.conversation_config || {});
 const promptConfig = conversationConfig.agent?.prompt || {};
 const currentToolIds = promptConfig.tool_ids || [];
+const obsoleteToolIds = new Set(obsoleteTools.map((tool) => tool.id));
 const toolIds = unique([
-  ...currentToolIds,
+  ...currentToolIds.filter((toolId) => !obsoleteToolIds.has(toolId)),
   ...tools.map((tool) => tool.id),
 ]);
 const nextPrompt = promptWithGithubFileTools(promptConfig.prompt || "");
@@ -64,7 +71,7 @@ const updatedAgent = await requestJson(`${apiBase}/v1/convai/agents/${agentId}`,
   body: JSON.stringify({
     conversation_config: conversationConfig,
     version_description:
-      "Add focused read-only CLI wrapper tools for Himalaya, Otter, and GitHub",
+      "Fold Himalaya complete email listing into himalaya_email_list",
   }),
 });
 
@@ -78,6 +85,10 @@ console.log(
         name: tool.tool_config?.name,
       })),
       attached_tool_ids: toolIds,
+      detached_tool_ids: obsoleteTools.map((tool) => ({
+        id: tool.id,
+        name: tool.tool_config?.name,
+      })),
     },
     null,
     2
@@ -441,7 +452,7 @@ function himalayaEmailListToolConfig() {
   return webhookTool({
     name: "himalaya_email_list",
     description:
-      "Read-only paginated Himalaya CLI email envelope listing and search. Use this to show recent or matching emails before reading a specific message. Do not use this as a total email count.",
+      "Read-only Himalaya CLI email envelope listing and search. Use paginated mode for recent or matching emails; use all_pages=true for complete folder lists or email-count questions.",
     url: `${workerBaseUrl}/cli/himalaya/email-list`,
     required: [],
     responseTimeoutSecs: 30,
@@ -456,23 +467,37 @@ function himalayaEmailListToolConfig() {
         description: "Mailbox folder name. Use INBOX by default.",
       }),
       page_size: integerProperty({
-        description: "Maximum emails to return for this page. Use 5 by default for phone answers.",
+        description:
+          "Maximum emails per page. Use 5 for short paginated phone answers; use 50 with all_pages=true.",
       }),
       page: integerProperty({
         description: "Page number starting at 1. Omit unless Andrew asks for more.",
+      }),
+      all_pages: booleanProperty(
+        "Set true when Andrew asks for all emails in a folder, a complete list, or the total number of emails."
+      ),
+      max_pages: integerProperty({
+        description:
+          "Maximum pages to scan when all_pages=true. Use the default unless Andrew asks for an exhaustive large-folder scan.",
       }),
     },
     responseDescription: "Himalaya email envelope list response.",
     responseProperties: {
       ...cliResponseProperties(),
+      all_pages: booleanProperty("Whether the request scanned pages until completion or cap."),
       page: integerProperty({ description: "Returned page number." }),
       page_size: integerProperty({ description: "Requested page size." }),
-      is_total_count: booleanProperty("Always false; this tool returns one page, not a total count."),
-      possible_total_count: integerProperty({
-        description:
-          "Possible total count only when page 1 returned fewer items than the page size.",
-      }),
       returned_count: integerProperty({ description: "Number of email envelopes returned." }),
+      total_count: integerProperty({
+        description:
+          "Exact total only when complete/exact is true. Null when a paginated or capped response is partial.",
+      }),
+      pages_scanned: integerProperty({
+        description: "Number of Himalaya envelope-list pages scanned.",
+      }),
+      complete: booleanProperty("Whether the result includes the complete matching list."),
+      exact: booleanProperty("Whether total_count is exact."),
+      capped: booleanProperty("Whether all_pages scanning stopped at max_pages."),
       items: arrayProperty({
         description: "Email envelopes returned by Himalaya.",
         itemDescription: "One email envelope.",
@@ -484,51 +509,6 @@ function himalayaEmailListToolConfig() {
           date: stringProperty({ description: "Email date." }),
           has_attachment: booleanProperty("Whether the email has an attachment."),
         },
-      }),
-    },
-  });
-}
-
-function himalayaEmailCountToolConfig() {
-  return webhookTool({
-    name: "himalaya_email_count",
-    description:
-      "Counts email envelopes in a Himalaya mailbox folder by paginating through envelope list results. Use this when Andrew asks how many emails are in a folder.",
-    url: `${workerBaseUrl}/cli/himalaya/email-count`,
-    required: [],
-    responseTimeoutSecs: 45,
-    forcePreToolSpeech: true,
-    toolCallSound: "typing",
-    requestProperties: {
-      query: stringProperty({
-        description:
-          "Optional Himalaya envelope query to count matching messages, for example 'from example.com' or 'subject invoice'.",
-      }),
-      folder: stringProperty({
-        description: "Mailbox folder name. Use INBOX by default.",
-      }),
-      page_size: integerProperty({
-        description: "Counting page size. Use 50 by default.",
-      }),
-      max_pages: integerProperty({
-        description:
-          "Maximum pages to scan before returning a lower-bound count. Use the default unless Andrew asks for an exhaustive count.",
-      }),
-    },
-    responseDescription: "Himalaya email count response.",
-    responseProperties: {
-      ok: booleanProperty("Whether the count succeeded."),
-      status: stringProperty({ description: "Status string." }),
-      command: stringProperty({ description: "CLI command used." }),
-      folder: stringProperty({ description: "Mailbox folder counted." }),
-      query: stringProperty({ description: "Query counted, if any." }),
-      total_count: integerProperty({ description: "Counted emails." }),
-      pages_scanned: integerProperty({ description: "Number of pages scanned." }),
-      page_size: integerProperty({ description: "Page size used for counting." }),
-      exact: booleanProperty("Whether total_count is an exact count."),
-      capped: booleanProperty("Whether counting stopped at max_pages."),
-      answer_text: stringProperty({
-        description: "Compact spoken summary. Prefer this when answering by voice.",
       }),
     },
   });
@@ -1070,9 +1050,9 @@ function promptWithGithubFileTools(currentPrompt) {
 - If a private repo returns 403, 404, or a GitHub validation failure, say the configured token may not have access to that repo, org approval, or Contents read permission.
 
 CLI capability:
-- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_count, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.
-- Use himalaya_email_count when Andrew asks how many emails are in a mailbox folder. Do not answer total-count questions from himalaya_email_list, because that tool returns one page of results.
-- Use himalaya_email_list to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result.
+- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.
+- Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. Only treat total_count as exact when complete or exact is true.
+- Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result.
 - Use himalaya_email_archive only after Andrew explicitly confirms the exact envelope id and source folder. Set confirmed=true only after that confirmation.
 - Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.
 - Use himalaya_draft_reply only after Andrew explicitly confirms the exact envelope id and reply body. It saves a reply draft only; it does not send email.

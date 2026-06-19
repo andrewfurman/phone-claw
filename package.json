@@ -17,6 +17,7 @@
     "elevenlabs:github:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-github-tools.mjs",
     "elevenlabs:github:files:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-github-files.mjs",
     "elevenlabs:github:audio:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-github-audio.mjs",
+    "elevenlabs:email:audio:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-email-audio.mjs",
     "worker:check": "node --check cloudflare-worker/twilio-elevenlabs-worker.mjs",
     "worker:deploy": "wrangler deploy --config wrangler.toml"
   },

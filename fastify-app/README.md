@@ -31,7 +31,6 @@ The local app mirrors the Worker endpoints, including:
 - `POST /github-issues/create`
 - `POST /github-issues/update`
 - `POST /cli/himalaya/email-list`
-- `POST /cli/himalaya/email-count`
 - `POST /cli/himalaya/email-read`
 - `POST /cli/himalaya/email-archive`
 - `POST /cli/himalaya/draft-create`
