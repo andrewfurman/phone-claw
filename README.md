@@ -13,6 +13,28 @@ This is intentionally public-safe. Real API keys, account IDs, phone numbers, we
 - `twilio-setup/` - Twilio number and webhook configuration notes.
 - `.env.example` - local environment template.
 
+## Third-Party Services
+
+This project intentionally keeps provider configuration explicit because the voice agent touches phone calls, email, GitHub, search, and personal transcripts.
+
+| Service | Role in Claw Phone | Config and secrets |
+| --- | --- | --- |
+| Twilio | Owns the phone number, receives inbound calls, sends voice/status webhooks, and bridges phone audio through Media Streams. | Twilio account settings plus Worker secrets such as `TWILIO_WEBHOOK_TOKEN`, `ALLOWED_CALLER_NUMBERS`, and `OUTSIDE_COVERAGE_MESSAGE`. Setup notes live in `twilio-setup/`. |
+| ElevenLabs | Hosts the Conversational AI voice agent, voice settings, LLM settings, and webhook tool definitions. | `ELEVENLABS_AGENT_ID` in Worker config, `ELEVENLABS_API_KEY` as a secret, and sanitized exported config in `elevenlabs-setup/`. |
+| Cloudflare Workers | Public HTTPS layer for Twilio and ElevenLabs webhooks. It validates callers, registers Twilio calls with ElevenLabs, proxies tool calls, and serves diagnostics. | `cloudflare-worker/`, `wrangler.toml` locally, Worker secrets in Cloudflare. |
+| Cloudflare KV | Stores recent Twilio call and Media Stream diagnostic events. | `TWILIO_EVENT_LOGS` binding in Worker config. |
+| Cloudflare Tunnel | Exposes the private CLI bridge to the Worker without opening a raw public port. | Tunnel config and token live outside the public repo. |
+| AWS EC2 | Runs the long-lived private Fastify CLI bridge because Workers cannot spawn local CLI binaries. | EC2 setup is documented in `docs/EC2_BARE_METAL_BRIDGE.md`; AWS credentials and instance secrets stay outside the repo. |
+| GitHub | Stores this public repo and backs agent tools for issue/PR summaries, file reads, and confirmed issue create/update actions. | `GITHUB_READ_TOKEN` and `GITHUB_WRITE_TOKEN` are Worker secrets; the EC2 bridge can also use authenticated `gh` CLI for read-only wrappers. |
+| Tavily | Preferred LLM-oriented web search provider for fast, compact voice answers. | Optional `TAVILY_API_KEY` Worker secret. With `WEB_SEARCH_PROVIDER=auto`, the Worker uses Tavily when the key exists and falls back to DuckDuckGo otherwise. |
+| DuckDuckGo | No-key fallback web search provider. | No secret required. Used only when Tavily is not configured. |
+| ESPN public scoreboard endpoint | Prototype sports enrichment for FIFA World Cup schedule/score queries. | No secret required. Treat as a convenience endpoint, not a committed long-term sports-data contract. |
+| Gmail | Email account accessed through the private CLI bridge for listing, reading previews, archiving, and saving drafts. The agent cannot send email. | Authenticated locally on the bridge host through Himalaya CLI config; no Gmail credentials are committed. |
+| Himalaya CLI | Local email CLI used by the private bridge to access Gmail. | `HIMALAYA_BIN`, `HIMALAYA_ARCHIVE_FOLDER`, and `HIMALAYA_DRAFTS_FOLDER` in bridge env. |
+| Otter.ai | Transcript source for listing, fetching raw transcript JSON, and transcript search. | Authenticated on the bridge host through Otter CLI config; no Otter credentials are committed. |
+| Otter CLI | Local CLI used by the private bridge to access Otter transcripts. | `OTTER_BIN` in bridge env. |
+| Claude Code | Planned future coding-agent bridge target. Current repo includes starter webhook/tool notes, but no long-running Claude Code session is exposed yet. | Future bridge values are represented by `COMMAND_BRIDGE_TOKEN` and optional Claude bridge env placeholders. |
+
 ## Local Development
 
 Install dependencies:
@@ -59,6 +81,7 @@ wrangler secret put TWILIO_WEBHOOK_TOKEN
 wrangler secret put ALLOWED_CALLER_NUMBERS
 wrangler secret put OUTSIDE_COVERAGE_MESSAGE
 wrangler secret put WEB_SEARCH_TOKEN
+wrangler secret put TAVILY_API_KEY
 wrangler secret put CLI_BRIDGE_URL
 wrangler secret put CLI_BRIDGE_TOKEN
 wrangler secret put GITHUB_READ_TOKEN
