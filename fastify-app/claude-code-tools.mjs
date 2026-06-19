@@ -156,10 +156,11 @@ async function claudeAuthStatus() {
   const authenticated =
     parsed?.loggedIn === true ||
     Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_API_KEY);
+  const statusReadable = Boolean(parsed && typeof parsed === "object");
 
   return {
-    ok: result.ok,
-    status: result.ok ? "ok" : "claude_auth_status_failed",
+    ok: statusReadable || result.ok,
+    status: statusReadable || result.ok ? "ok" : "claude_auth_status_failed",
     action: "auth_status",
     authenticated,
     auth_method: parsed?.authMethod || (process.env.ANTHROPIC_API_KEY ? "api_key" : "none"),

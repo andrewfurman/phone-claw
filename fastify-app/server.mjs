@@ -741,8 +741,21 @@ async function handleClaudeCodeTool(request, reply) {
   });
 
   return reply
-    .code(result.ok || result.status === "confirmation_required" ? 200 : 400)
+    .code(isClaudeCodeToolResponse(result) ? 200 : 400)
     .send(result);
+}
+
+function isClaudeCodeToolResponse(result) {
+  return (
+    result.ok ||
+    [
+      "confirmation_required",
+      "claude_not_authenticated",
+      "job_not_found",
+      "session_ready",
+      "working_directory_not_allowed",
+    ].includes(result.status)
+  );
 }
 
 function validateToolAuth(request, reply) {
