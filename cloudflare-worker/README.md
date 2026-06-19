@@ -77,7 +77,7 @@ When an inbound caller is not allow-listed, the Worker returns a short TwiML mes
 
 `POST /web-search` is a basic authenticated webhook tool for ElevenLabs. It returns compact search results plus an `answer_text` field for voice responses.
 
-By default it uses DuckDuckGo public endpoints. To use Tavily, set `WEB_SEARCH_PROVIDER=tavily` or `WEB_SEARCH_PROVIDER=auto`, then store `TAVILY_API_KEY` as a Worker secret. `TAVILY_SEARCH_DEPTH` can be set to `basic`, `fast`, or `advanced`.
+By default it uses Tavily when `TAVILY_API_KEY` is configured and falls back to DuckDuckGo public endpoints when no key is present. Use `WEB_SEARCH_PROVIDER=auto` for this behavior, or `WEB_SEARCH_PROVIDER=tavily` to require Tavily once the secret exists. `TAVILY_SEARCH_DEPTH` can be set to `ultra-fast`, `fast`, `basic`, or `advanced`; `fast` is the default for phone-call latency.
 
 When the query clearly asks for FIFA World Cup soccer schedules or scores, the tool also adds a small structured `sports_events` enrichment from ESPN's public scoreboard endpoint. Treat that as a prototype convenience, not a long-term sports-data contract.
 

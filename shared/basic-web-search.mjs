@@ -137,9 +137,9 @@ async function fetchTavilySearch({
       search_depth:
         tavilySearchDepth ||
         (typeof process === "undefined" ? "" : process.env.TAVILY_SEARCH_DEPTH) ||
-        "basic",
+        "fast",
       max_results: maxResults,
-      include_answer: true,
+      include_answer: "basic",
       include_raw_content: false,
     }),
   });

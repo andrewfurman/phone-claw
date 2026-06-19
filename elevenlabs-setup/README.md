@@ -65,6 +65,8 @@ Before enabling it against a real command bridge:
 
 The agent prompt tells the model to use `web_search` for current events, recent facts, schedules, sports, companies, products, docs, or anything that may have changed. The tool returns structured results and a compact `answer_text` field that the agent should prefer for spoken answers.
 
+For voice calls, keep the default response compact: `max_results=3` and Tavily `TAVILY_SEARCH_DEPTH=fast`.
+
 ## GitHub Summary Tool
 
 `Andrew Assistant Agent` can also use `github_summary`, an authenticated webhook tool that returns read-only summaries of open GitHub issues and pull requests visible to the configured `GITHUB_READ_TOKEN`.

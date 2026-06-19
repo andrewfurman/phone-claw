@@ -430,7 +430,7 @@ async function handleWebSearch(request, env) {
 
   const body = await parseRequestBody(request);
   const query = body.query || body.search_query || body.searchQuery;
-  const maxResults = body.max_results || body.maxResults || 5;
+  const maxResults = body.max_results || body.maxResults || 3;
 
   const result = await basicWebSearch({
     query,

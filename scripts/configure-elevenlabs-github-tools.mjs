@@ -123,7 +123,7 @@ function webSearchToolConfig() {
         description: "Focused web search query. Keep it concise.",
       }),
       max_results: integerProperty({
-        description: "Maximum results to return. Use 5 by default.",
+        description: "Maximum results to return. Use 3 by default for fast voice responses.",
       }),
     },
     responseDescription: "Web search response.",
