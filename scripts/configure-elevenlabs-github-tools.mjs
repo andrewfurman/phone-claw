@@ -1046,7 +1046,19 @@ function objectProperty({ description, properties }) {
 }
 
 function promptWithGithubFileTools(currentPrompt) {
-  const section = `GitHub capability:
+  const section = `Web search capability:
+- You have a webhook tool named web_search.
+- Use web_search when Andrew asks about current events, today, recent facts, schedules, sports, companies, products, documentation, or anything that may have changed.
+- Use concise queries.
+- Set max_results=5 by default. Use fewer only when Andrew explicitly asks for a very quick answer; use up to 8 for deeper comparisons.
+- For sports schedules, include the sport/league/date if known.
+- After using web_search, prefer the tool's answer_text field when it is present.
+- If sports_events are returned, answer directly with the teams, times, statuses, scores, and venues that matter for Andrew's question.
+- If market_data is returned, answer with that structured quote first and use web results only as backup context.
+- If the returned results are incomplete or only show source snippets, say what the sources suggest and mention the uncertainty briefly.
+- Do not say you cannot browse when the web_search tool is available.
+
+GitHub capability:
 - You have webhook tools named github_summary, github_cli_ls, github_cli_cat, github_issue_create, and github_issue_update.
 - Use github_summary when Andrew asks how many open GitHub issues or pull requests he has, what they are about, what needs attention, or asks for quick GitHub triage.
 - Use item_type="issues" for issue questions and item_type="pull_requests" for pull request questions.
@@ -1072,11 +1084,13 @@ CLI capability:
 - Use github_cli_common for common read-only GitHub CLI actions such as repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.
 - These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.
 - Before slow searches or CLI calls, say a brief natural status phrase, then call the tool.`;
+  const webMarker = "\n\nWeb search capability:";
   const readMarker = "\n\nGitHub read capability:";
   const capabilityMarker = "\n\nGitHub capability:";
+  const webIndex = currentPrompt.indexOf(webMarker);
   const readIndex = currentPrompt.indexOf(readMarker);
   const capabilityIndex = currentPrompt.indexOf(capabilityMarker);
-  const index = capabilityIndex >= 0 ? capabilityIndex : readIndex;
+  const index = webIndex >= 0 ? webIndex : capabilityIndex >= 0 ? capabilityIndex : readIndex;
   if (index >= 0) {
     return `${currentPrompt.slice(0, index)}\n\n${section}`;
   }
