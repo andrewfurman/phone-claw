@@ -418,16 +418,49 @@ export async function otterSpeechSearch({
   speechId,
   id,
   query,
+  speaker,
   size = 20,
   maxRawBytes = DEFAULT_MAX_RAW_BYTES,
 } = {}) {
   const otid = normalizeString(speechId || id);
   const normalizedQuery = normalizeString(query);
+  const normalizedSpeaker = normalizeString(speaker);
   if (!otid) {
     return missingField("speech_id", "An Otter speech otid is required.");
   }
-  if (!normalizedQuery) {
-    return missingField("query", "A search query is required.");
+  if (!normalizedQuery && !normalizedSpeaker) {
+    return missingField("query", "A search query or speaker name is required.");
+  }
+
+  if (normalizedSpeaker) {
+    const transcript = await otterSpeechGet({
+      speechId: otid,
+      maxRawBytes: Math.max(maxRawBytes, 500_000),
+    });
+    if (!transcript.ok) return transcript;
+
+    const items = searchOtterTranscriptSegments(transcript.parsed_json, {
+      query: normalizedQuery,
+      speaker: normalizedSpeaker,
+      size,
+    });
+    const raw = truncateUtf8(JSON.stringify({ items }, null, 2), maxRawBytes);
+
+    return {
+      ...transcript,
+      command: "otter speeches search",
+      speech_id: otid,
+      query: normalizedQuery,
+      speaker: normalizedSpeaker,
+      returned_count: items.length,
+      items,
+      raw_json: raw.value,
+      raw_truncated: raw.truncated,
+      answer_text:
+        items.length > 0
+          ? `I found ${items.length} Otter transcript segments matching speaker ${normalizedSpeaker}.`
+          : `I found no Otter transcript segments matching speaker ${normalizedSpeaker}.`,
+    };
   }
 
   const result = await runCli({
@@ -449,6 +482,7 @@ export async function otterSpeechSearch({
     command: "otter speeches search",
     speech_id: otid,
     query: normalizedQuery,
+    speaker: "",
     answer_text: result.ok
       ? "I searched that Otter transcript. Use the raw JSON results to answer."
       : result.answer_text,
@@ -889,6 +923,119 @@ function compactOtterSpeech(speech) {
     owner_name: speech.owner?.name || speech.owner_name || "",
     summary_status: speech.summary_status || speech.speech_outline_status || "",
   };
+}
+
+function searchOtterTranscriptSegments(root, { query, speaker, size }) {
+  const queryNeedle = normalizeSearchText(query);
+  const speakerNeedle = normalizeSearchText(speaker);
+  const limit = clampInteger(size, 1, 100, 20);
+  const segments = collectOtterTranscriptSegments(root);
+  const seen = new Set();
+  const matches = [];
+
+  for (const segment of segments) {
+    const textHaystack = normalizeSearchText(segment.text);
+    const speakerHaystack = normalizeSearchText(segment.speaker);
+    if (queryNeedle && !textHaystack.includes(queryNeedle)) continue;
+    if (speakerNeedle && !speakerHaystack.includes(speakerNeedle)) continue;
+
+    const key = `${segment.speaker}\n${segment.start_time}\n${segment.text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    matches.push(segment);
+    if (matches.length >= limit) break;
+  }
+
+  return matches;
+}
+
+function collectOtterTranscriptSegments(value, path = "", segments = []) {
+  if (!value || typeof value !== "object") return segments;
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      collectOtterTranscriptSegments(item, `${path}/${index}`, segments)
+    );
+    return segments;
+  }
+
+  const text = otterSegmentText(value);
+  if (text) {
+    segments.push({
+      text,
+      speaker: otterSegmentSpeaker(value),
+      start_time: otterTimeText(value.start_time ?? value.startTime ?? value.start ?? value.start_offset),
+      end_time: otterTimeText(value.end_time ?? value.endTime ?? value.end ?? value.end_offset),
+      path,
+    });
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (!child || typeof child !== "object") continue;
+    collectOtterTranscriptSegments(child, `${path}/${key}`, segments);
+  }
+
+  return segments;
+}
+
+function otterTimeText(value) {
+  if (value === undefined || value === null || value === "") return "";
+  return String(value);
+}
+
+function otterSegmentText(value) {
+  const direct =
+    value.text ||
+    value.transcript ||
+    value.transcript_text ||
+    value.display_text ||
+    value.content ||
+    value.sentence;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+
+  if (Array.isArray(value.words)) {
+    const words = value.words
+      .map((word) => (typeof word === "string" ? word : word?.word || word?.text || ""))
+      .filter(Boolean)
+      .join(" ");
+    if (words.trim()) return words.trim();
+  }
+
+  return "";
+}
+
+function otterSegmentSpeaker(value) {
+  const direct =
+    value.speaker_name ||
+    value.speakerName ||
+    value.speaker_label ||
+    value.speakerLabel ||
+    value.user_name ||
+    value.userName ||
+    value.person_name ||
+    value.personName;
+  if (direct) return String(direct);
+
+  if (typeof value.speaker === "string") return value.speaker;
+  if (value.speaker && typeof value.speaker === "object") {
+    return (
+      value.speaker.name ||
+      value.speaker.display_name ||
+      value.speaker.displayName ||
+      value.speaker.label ||
+      value.speaker.id ||
+      ""
+    );
+  }
+
+  return "";
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function summarizeAddressList(value) {

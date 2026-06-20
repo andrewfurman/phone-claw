@@ -36,9 +36,10 @@ export async function basicWebSearch({
       message: error?.message || "Tavily search failed.",
     }));
     if (tavily.ok) {
-      const [sports, marketData] = await Promise.all([
+      const [sports, marketData, marketHistory] = await Promise.all([
         fetchSportsEnrichment(cleanQuery, now, fetchImpl).catch(() => null),
         fetchMarketEnrichment(cleanQuery, now, fetchImpl).catch(() => null),
+        fetchMarketHistoryEnrichment(cleanQuery, now, fetchImpl).catch(() => null),
       ]);
       return {
         ok: true,
@@ -51,17 +52,32 @@ export async function basicWebSearch({
         result_count: tavily.results.length,
         sports_events: sports?.events || [],
         market_data: marketData,
-        answer_text: formatAnswerText(cleanQuery, searchedQuery, tavily.results, sports, marketData),
+        market_history: marketHistory,
+        answer_text: formatAnswerText(
+          cleanQuery,
+          searchedQuery,
+          tavily.results,
+          sports,
+          marketData,
+          marketHistory
+        ),
         results: tavily.results.slice(0, limit),
       };
     }
   }
 
-  const [instantAnswer, htmlResults, sportsEnrichment, marketEnrichment] = await Promise.allSettled([
+  const [
+    instantAnswer,
+    htmlResults,
+    sportsEnrichment,
+    marketEnrichment,
+    marketHistoryEnrichment,
+  ] = await Promise.allSettled([
     fetchDuckDuckGoInstantAnswer(searchedQuery, fetchImpl),
     fetchDuckDuckGoHtmlResults(searchedQuery, limit, fetchImpl),
     fetchSportsEnrichment(cleanQuery, now, fetchImpl),
     fetchMarketEnrichment(cleanQuery, now, fetchImpl),
+    fetchMarketHistoryEnrichment(cleanQuery, now, fetchImpl),
   ]);
 
   const results = [];
@@ -71,6 +87,8 @@ export async function basicWebSearch({
     sportsEnrichment.status === "fulfilled" ? sportsEnrichment.value : null;
   const marketData =
     marketEnrichment.status === "fulfilled" ? marketEnrichment.value : null;
+  const marketHistory =
+    marketHistoryEnrichment.status === "fulfilled" ? marketHistoryEnrichment.value : null;
 
   if (instant?.answer) {
     results.push({
@@ -97,7 +115,15 @@ export async function basicWebSearch({
     result_count: results.length,
     sports_events: sports?.events || [],
     market_data: marketData,
-    answer_text: formatAnswerText(cleanQuery, searchedQuery, results, sports, marketData),
+    market_history: marketHistory,
+    answer_text: formatAnswerText(
+      cleanQuery,
+      searchedQuery,
+      results,
+      sports,
+      marketData,
+      marketHistory
+    ),
     results: results.slice(0, limit),
   };
 }
@@ -273,6 +299,67 @@ async function fetchMarketEnrichment(query, now, fetchImpl) {
   };
 }
 
+async function fetchMarketHistoryEnrichment(query, now, fetchImpl) {
+  if (!isWtiCrudeOilQuery(query) || !isMarketHistoryQuery(query)) return null;
+
+  const range = marketHistoryRange(query);
+  const url = new URL("https://query1.finance.yahoo.com/v8/finance/chart/CL=F");
+  url.searchParams.set("range", range);
+  url.searchParams.set("interval", "1d");
+
+  const response = await fetchImpl(url.toString(), {
+    headers: {
+      accept: "application/json",
+      "user-agent": "phoneclaw/0.1 market-history",
+    },
+  });
+  if (!response.ok) return null;
+
+  const body = await response.json();
+  const result = body.chart?.result?.[0];
+  const quote = result?.indicators?.quote?.[0];
+  const timestamps = result?.timestamp || [];
+  if (!quote || !Array.isArray(timestamps) || timestamps.length === 0) return null;
+
+  const rows = timestamps
+    .map((timestamp, index) => ({
+      date: new Date(timestamp * 1000).toISOString().slice(0, 10),
+      high: numberOrNull(quote.high?.[index]),
+      low: numberOrNull(quote.low?.[index]),
+      close: numberOrNull(quote.close?.[index]),
+    }))
+    .filter((row) => row.high !== null || row.low !== null || row.close !== null);
+  if (rows.length === 0) return null;
+
+  const high = rows
+    .filter((row) => row.high !== null)
+    .reduce((best, row) => (!best || row.high > best.price ? { date: row.date, price: row.high } : best), null);
+  const low = rows
+    .filter((row) => row.low !== null)
+    .reduce((best, row) => (!best || row.low < best.price ? { date: row.date, price: row.low } : best), null);
+  const latest = [...rows].reverse().find((row) => row.close !== null) || rows.at(-1);
+
+  return {
+    provider: "Yahoo Finance public chart API",
+    instrument: "Light Crude Oil Futures",
+    benchmark: "WTI / West Texas Intermediate",
+    symbol: "CL=F",
+    range,
+    interval: "1d",
+    currency: result.meta?.currency || "USD",
+    unit: "barrel",
+    points: rows.length,
+    period_start: rows[0].date,
+    period_end: rows.at(-1).date,
+    highest_price: high,
+    lowest_price: low,
+    latest_close: latest?.close ?? null,
+    latest_close_date: latest?.date || "",
+    url: url.toString(),
+    as_of: now.toISOString(),
+  };
+}
+
 function isFifaWorldCupQuery(query) {
   const value = String(query || "").toLowerCase();
   if (!value.includes("world cup")) return false;
@@ -286,6 +373,19 @@ function isWtiCrudeOilQuery(query) {
   const value = String(query || "").toLowerCase();
   if (/\b(wti|west texas|west texas intermediate|nymex cl|cl1|cl=f)\b/.test(value)) return true;
   return /\b(oil|crude)\b/.test(value) && /\b(price|down|up|market|futures|barrel)\b/.test(value);
+}
+
+function isMarketHistoryQuery(query) {
+  return /\b(history|historical|high|highest|peak|range|low|lowest|last\s+\d+\s+days?|last\s+month|past\s+month|30[- ]day|one[- ]month|month)\b/i.test(
+    String(query || "")
+  );
+}
+
+function marketHistoryRange(query) {
+  const value = String(query || "").toLowerCase();
+  if (/\b(90|ninety|three)\s*(day|days|month|months)\b/.test(value)) return "3mo";
+  if (/\b(60|sixty|two)\s*(day|days|month|months)\b/.test(value)) return "3mo";
+  return "1mo";
 }
 
 function resolveQueryDate(query, now) {
@@ -358,7 +458,14 @@ function formatEasternTime(value) {
   }).format(new Date(value));
 }
 
-function formatAnswerText(originalQuery, searchedQuery, results, sports, marketData) {
+function formatAnswerText(
+  originalQuery,
+  searchedQuery,
+  results,
+  sports,
+  marketData,
+  marketHistory
+) {
   const sections = [];
 
   if (marketData) {
@@ -367,6 +474,26 @@ function formatAnswerText(originalQuery, searchedQuery, results, sports, marketD
         `${marketData.benchmark} price from ${marketData.provider}: $${marketData.price.toFixed(2)} ${marketData.currency} per ${marketData.unit}.`,
         marketData.change_text ? `Recent change: it has ${marketData.change_text}.` : "",
         `Source: ${marketData.url}`,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+  }
+
+  if (marketHistory) {
+    sections.push(
+      [
+        `${marketHistory.benchmark} ${marketHistory.range} history from ${marketHistory.provider}:`,
+        marketHistory.highest_price
+          ? `High: $${marketHistory.highest_price.price.toFixed(2)} ${marketHistory.currency} on ${marketHistory.highest_price.date}.`
+          : "",
+        marketHistory.lowest_price
+          ? `Low: $${marketHistory.lowest_price.price.toFixed(2)} ${marketHistory.currency} on ${marketHistory.lowest_price.date}.`
+          : "",
+        marketHistory.latest_close !== null
+          ? `Latest daily close: $${marketHistory.latest_close.toFixed(2)} ${marketHistory.currency} on ${marketHistory.latest_close_date}.`
+          : "",
+        `Source: ${marketHistory.url}`,
       ]
         .filter(Boolean)
         .join("\n")
@@ -531,6 +658,11 @@ function decodeHtml(value) {
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
+}
+
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function clampInteger(value, min, max) {

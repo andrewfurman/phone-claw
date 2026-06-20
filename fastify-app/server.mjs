@@ -4,6 +4,14 @@ import formbody from "@fastify/formbody";
 import twilio from "twilio";
 import { claudeCodeTool } from "./claude-code-tools.mjs";
 import {
+  archiveElevenLabsConversation,
+  archiveLatestElevenLabsConversations,
+  conversationHistoryConfigured,
+  conversationHistoryGet,
+  conversationHistorySearch,
+  conversationRecentContext,
+} from "./conversation-history.mjs";
+import {
   githubCliCommon,
   himalayaDraftCreate,
   himalayaDraftReply,
@@ -84,6 +92,10 @@ app.get("/", async () => ({
     otter_speech_search: "POST /cli/otter/speech-search",
     github_cli_common: "POST /cli/github/common",
     claude_code: "POST /cli/claude-code",
+    conversation_history_search: "POST /conversation-history/search",
+    conversation_history_get: "POST /conversation-history/get",
+    conversation_history_recent_context: "POST /conversation-history/recent-context",
+    conversation_history_archive: "POST /conversation-history/archive-elevenlabs",
     future_claude_tool: "POST /agent-command",
     health: "GET /health",
   },
@@ -98,6 +110,7 @@ app.get("/health", async () => ({
   github_read_configured: Boolean(githubReadToken),
   github_write_configured: Boolean(githubWriteToken),
   claude_code_bridge_configured: true,
+  conversation_history_configured: conversationHistoryConfigured(),
   expected_elevenlabs_audio_format: ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
   allowed_caller_numbers_configured:
     parseAllowedCallerNumbers(process.env.ALLOWED_CALLER_NUMBERS).length > 0,
@@ -183,6 +196,22 @@ app.post("/cli/github/common", async (request, reply) =>
 
 app.post("/cli/claude-code", async (request, reply) =>
   handleClaudeCodeTool(request, reply)
+);
+
+app.post("/conversation-history/search", async (request, reply) =>
+  handleConversationHistorySearch(request, reply)
+);
+
+app.post("/conversation-history/get", async (request, reply) =>
+  handleConversationHistoryGet(request, reply)
+);
+
+app.post("/conversation-history/recent-context", async (request, reply) =>
+  handleConversationRecentContext(request, reply)
+);
+
+app.post("/conversation-history/archive-elevenlabs", async (request, reply) =>
+  handleConversationArchiveElevenLabs(request, reply)
 );
 
 try {
@@ -450,7 +479,7 @@ async function handleWebSearch(request, reply) {
 
   const body = request.body || {};
   const query = body.query || body.search_query || body.searchQuery;
-  const maxResults = body.max_results || body.maxResults || 3;
+  const maxResults = body.max_results || body.maxResults || 5;
 
   const result = await basicWebSearch({
     query,
@@ -459,7 +488,7 @@ async function handleWebSearch(request, reply) {
     tavilyApiKey: process.env.TAVILY_API_KEY,
     tavilySearchDepth: process.env.TAVILY_SEARCH_DEPTH,
   });
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 async function handleGithubSummary(request, reply) {
@@ -589,7 +618,7 @@ async function handleHimalayaEmailList(request, reply) {
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   });
 
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 async function handleHimalayaEmailRead(request, reply) {
@@ -605,7 +634,7 @@ async function handleHimalayaEmailRead(request, reply) {
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   });
 
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 async function handleHimalayaEmailArchive(request, reply) {
@@ -678,7 +707,7 @@ async function handleOtterSpeechesList(request, reply) {
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   });
 
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 async function handleOtterSpeechGet(request, reply) {
@@ -690,7 +719,7 @@ async function handleOtterSpeechGet(request, reply) {
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   });
 
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 async function handleOtterSpeechSearch(request, reply) {
@@ -700,11 +729,12 @@ async function handleOtterSpeechSearch(request, reply) {
   const result = await otterSpeechSearch({
     speechId: body.speech_id || body.speechId || body.otid || body.id,
     query: body.query || body.search_query || body.searchQuery,
+    speaker: body.speaker || body.speaker_name || body.speakerName,
     size: body.size || body.max_results || body.maxResults,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   });
 
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 async function handleGithubCliCommon(request, reply) {
@@ -721,7 +751,7 @@ async function handleGithubCliCommon(request, reply) {
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   });
 
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 async function handleClaudeCodeTool(request, reply) {
@@ -745,6 +775,57 @@ async function handleClaudeCodeTool(request, reply) {
     .send(result);
 }
 
+async function handleConversationHistorySearch(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await conversationHistorySearch({
+    query: body.query || body.search_query || body.searchQuery,
+    startDate: body.start_date || body.startDate,
+    endDate: body.end_date || body.endDate,
+    limit: body.limit || body.max_results || body.maxResults,
+  });
+
+  return reply.code(toolResultStatusCode(result)).send(result);
+}
+
+async function handleConversationHistoryGet(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await conversationHistoryGet({
+    conversationId: body.conversation_id || body.conversationId || body.id,
+  });
+
+  return reply.code(result.ok ? 200 : 400).send(result);
+}
+
+async function handleConversationRecentContext(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await conversationRecentContext({
+    limit: body.limit || body.max_results || body.maxResults,
+  });
+
+  return reply.code(result.ok ? 200 : 400).send(result);
+}
+
+async function handleConversationArchiveElevenLabs(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = body.latest || body.latest_conversations || body.latestConversations
+    ? await archiveLatestElevenLabsConversations({
+        limit: body.limit || body.max_results || body.maxResults,
+      })
+    : await archiveElevenLabsConversation({
+        conversationId: body.conversation_id || body.conversationId || body.id,
+      });
+
+  return reply.code(result.ok ? 200 : 400).send(result);
+}
+
 function isClaudeCodeToolResponse(result) {
   return (
     result.ok ||
@@ -756,6 +837,21 @@ function isClaudeCodeToolResponse(result) {
       "working_directory_not_allowed",
     ].includes(result.status)
   );
+}
+
+function toolResultStatusCode(result) {
+  if (result.ok) return 200;
+  if (
+    [
+      "confirmation_required",
+      "conversation_history_not_configured",
+      "cli_bridge_not_configured",
+      "tool_auth_not_configured",
+    ].includes(result.status)
+  ) {
+    return 200;
+  }
+  return 400;
 }
 
 function validateToolAuth(request, reply) {

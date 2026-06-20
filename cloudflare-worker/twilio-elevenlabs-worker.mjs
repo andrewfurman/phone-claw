@@ -81,6 +81,10 @@ export default {
           otter_speech_search: "POST /cli/otter/speech-search",
           github_cli_common: "POST /cli/github/common",
           claude_code: "POST /cli/claude-code",
+          conversation_history_search: "POST /conversation-history/search",
+          conversation_history_get: "POST /conversation-history/get",
+          conversation_history_recent_context: "POST /conversation-history/recent-context",
+          conversation_history_archive: "POST /conversation-history/archive-elevenlabs",
           future_claude_tool: "POST /agent-command",
           health: "GET /health",
         },
@@ -163,6 +167,10 @@ export default {
         "/cli/otter/speech-search",
         "/cli/github/common",
         "/cli/claude-code",
+        "/conversation-history/search",
+        "/conversation-history/get",
+        "/conversation-history/recent-context",
+        "/conversation-history/archive-elevenlabs",
       ].includes(url.pathname)
     ) {
       return handleCliBridgeProxy(request, env, url.pathname);
@@ -218,12 +226,14 @@ async function handleTwilioCall(request, env, direction) {
       })
     );
 
+    const recentConversationContext = await loadRecentConversationContext(env);
     const twiml = await registerElevenLabsTwilioCall(env, {
       direction,
       fromNumber,
       toNumber,
       callSid: body.CallSid,
       streamStatusCallbackUrl: twilioCallbackUrl(request, env, "/twilio/stream-status"),
+      recentConversationContext,
     });
 
     return xml(twiml);
@@ -235,7 +245,7 @@ async function handleTwilioCall(request, env, direction) {
 
 async function registerElevenLabsTwilioCall(
   env,
-  { direction, fromNumber, toNumber, callSid, streamStatusCallbackUrl }
+  { direction, fromNumber, toNumber, callSid, streamStatusCallbackUrl, recentConversationContext }
 ) {
   const apiBase = env.ELEVENLABS_API_BASE || "https://api.elevenlabs.io";
   const response = await fetch(`${apiBase}/v1/convai/twilio/register-call`, {
@@ -253,12 +263,13 @@ async function registerElevenLabsTwilioCall(
         dynamic_variables: {
           caller_number: fromNumber,
           twilio_number: toNumber,
-          twilio_call_sid: callSid || "",
-          telephony_audio_format:
-            env.ELEVENLABS_TELEPHONY_AUDIO_FORMAT || ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
+            twilio_call_sid: callSid || "",
+            telephony_audio_format:
+              env.ELEVENLABS_TELEPHONY_AUDIO_FORMAT || ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
+            recent_conversation_context: recentConversationContext || "",
+          },
         },
-      },
-    }),
+      }),
   });
 
   const contentType = response.headers.get("content-type") || "";
@@ -432,7 +443,7 @@ async function handleWebSearch(request, env) {
 
   const body = await parseRequestBody(request);
   const query = body.query || body.search_query || body.searchQuery;
-  const maxResults = body.max_results || body.maxResults || 3;
+  const maxResults = body.max_results || body.maxResults || 5;
 
   const result = await basicWebSearch({
     query,
@@ -592,6 +603,38 @@ async function handleCliBridgeProxy(request, env, pathname) {
     status: upstreamResponse.status,
     headers: JSON_HEADERS,
   });
+}
+
+async function loadRecentConversationContext(env) {
+  if (!env.CLI_BRIDGE_URL || !env.CLI_BRIDGE_TOKEN) return "";
+
+  try {
+    const baseUrl = env.CLI_BRIDGE_URL.endsWith("/")
+      ? env.CLI_BRIDGE_URL
+      : `${env.CLI_BRIDGE_URL}/`;
+    const upstreamUrl = new URL("conversation-history/recent-context", baseUrl);
+    const response = await fetchWithTimeout(upstreamUrl.toString(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${env.CLI_BRIDGE_TOKEN}`,
+      },
+      body: JSON.stringify({ limit: 10 }),
+    }, 1_500);
+    if (!response.ok) return "";
+
+    const body = await response.json().catch(() => ({}));
+    return body.ok && body.context_text ? String(body.context_text).slice(0, 6_000) : "";
+  } catch {
+    return "";
+  }
+}
+
+function fetchWithTimeout(url, options, timeoutMs) {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("request_timeout")), timeoutMs)
+  );
+  return Promise.race([fetch(url, options), timeout]);
 }
 
 function validateToolAuth(request, env) {

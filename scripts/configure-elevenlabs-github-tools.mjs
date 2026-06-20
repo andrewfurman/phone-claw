@@ -31,6 +31,8 @@ const configs = [
   otterSpeechGetToolConfig(),
   otterSpeechSearchToolConfig(),
   githubCliCommonToolConfig(),
+  conversationHistorySearchToolConfig(),
+  conversationHistoryGetToolConfig(),
   claudeCodeToolConfig(),
 ];
 const obsoleteToolNames = ["himalaya_email_count"];
@@ -72,7 +74,7 @@ const updatedAgent = await requestJson(`${apiBase}/v1/convai/agents/${agentId}`,
   body: JSON.stringify({
     conversation_config: conversationConfig,
     version_description:
-      "Fold Himalaya complete email listing into himalaya_email_list",
+      "Add conversation memory tools, Otter speaker search, WTI history, and Claude Code bypass mode",
   }),
 });
 
@@ -160,6 +162,41 @@ function webSearchToolConfig() {
           change_text: stringProperty({ description: "Source-provided recent change text." }),
           url: stringProperty({ description: "Source URL." }),
           as_of: stringProperty({ description: "Timestamp when the quote was fetched." }),
+        },
+      }),
+      market_history: objectProperty({
+        description:
+          "Structured recent market history when available, especially for WTI crude high/low/range questions.",
+        properties: {
+          provider: stringProperty({ description: "Market history source." }),
+          instrument: stringProperty({ description: "Instrument name." }),
+          benchmark: stringProperty({ description: "Benchmark name." }),
+          symbol: stringProperty({ description: "Market symbol." }),
+          range: stringProperty({ description: "History range, for example 1mo." }),
+          interval: stringProperty({ description: "History interval." }),
+          currency: stringProperty({ description: "Quote currency." }),
+          unit: stringProperty({ description: "Quote unit." }),
+          points: integerProperty({ description: "Number of daily points parsed." }),
+          period_start: stringProperty({ description: "First date in the returned history." }),
+          period_end: stringProperty({ description: "Last date in the returned history." }),
+          highest_price: objectProperty({
+            description: "Highest daily high in the returned history.",
+            properties: {
+              date: stringProperty({ description: "High date." }),
+              price: numberProperty({ description: "High price." }),
+            },
+          }),
+          lowest_price: objectProperty({
+            description: "Lowest daily low in the returned history.",
+            properties: {
+              date: stringProperty({ description: "Low date." }),
+              price: numberProperty({ description: "Low price." }),
+            },
+          }),
+          latest_close: numberProperty({ description: "Latest daily close." }),
+          latest_close_date: stringProperty({ description: "Latest daily close date." }),
+          url: stringProperty({ description: "Source URL." }),
+          as_of: stringProperty({ description: "Timestamp when the history was fetched." }),
         },
       }),
       results: arrayProperty({
@@ -723,9 +760,9 @@ function otterSpeechSearchToolConfig() {
   return webhookTool({
     name: "otter_speech_search",
     description:
-      "Read-only Otter AI CLI transcript search. Use it to search within one Otter transcript after otter_speeches_list identifies the otid.",
+      "Read-only Otter AI CLI transcript search. Use it to search within one Otter transcript by text query, speaker name, or both after otter_speeches_list identifies the otid.",
     url: `${workerBaseUrl}/cli/otter/speech-search`,
-    required: ["speech_id", "query"],
+    required: ["speech_id"],
     responseTimeoutSecs: 30,
     forcePreToolSpeech: true,
     toolCallSound: "typing",
@@ -734,14 +771,36 @@ function otterSpeechSearchToolConfig() {
         description: "Otter otid returned by otter_speeches_list.",
       }),
       query: stringProperty({
-        description: "Search terms to find within the Otter transcript.",
+        description:
+          "Optional search terms to find within the Otter transcript. Provide query, speaker, or both.",
+      }),
+      speaker: stringProperty({
+        description:
+          "Optional speaker name filter. Use when Andrew asks what a specific person said or asks to search by speaker.",
       }),
       size: integerProperty({
         description: "Maximum search hits. Use 20 by default.",
       }),
     },
     responseDescription: "Otter transcript search response.",
-    responseProperties: cliResponseProperties(),
+    responseProperties: {
+      ...cliResponseProperties(),
+      speech_id: stringProperty({ description: "Requested Otter otid." }),
+      query: stringProperty({ description: "Search query used, if any." }),
+      speaker: stringProperty({ description: "Speaker filter used, if any." }),
+      returned_count: integerProperty({ description: "Number of matching transcript segments." }),
+      items: arrayProperty({
+        description: "Speaker-aware transcript segment matches when speaker filtering is used.",
+        itemDescription: "One matching Otter transcript segment.",
+        properties: {
+          speaker: stringProperty({ description: "Speaker label or name when available." }),
+          text: stringProperty({ description: "Transcript segment text." }),
+          start_time: stringProperty({ description: "Segment start time when available." }),
+          end_time: stringProperty({ description: "Segment end time when available." }),
+          path: stringProperty({ description: "JSON path for debugging." }),
+        },
+      }),
+    },
   });
 }
 
@@ -792,6 +851,108 @@ function githubCliCommonToolConfig() {
       ...cliResponseProperties(),
       action: stringProperty({ description: "Action performed." }),
       gh_equivalent: stringProperty({ description: "Closest shell command equivalent." }),
+    },
+  });
+}
+
+function conversationHistorySearchToolConfig() {
+  return webhookTool({
+    name: "conversation_history_search",
+    description:
+      "Search archived Phoneclaw phone conversations by keyword and optional date range. Returns compact hundred-word summaries and keywords, not full transcripts.",
+    url: `${workerBaseUrl}/conversation-history/search`,
+    required: [],
+    responseTimeoutSecs: 20,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      query: stringProperty({
+        description:
+          "Optional keyword or phrase to search across summaries, keywords, and transcripts.",
+      }),
+      start_date: stringProperty({
+        description: "Optional inclusive start date or timestamp.",
+      }),
+      end_date: stringProperty({
+        description: "Optional inclusive end date or timestamp.",
+      }),
+      limit: integerProperty({
+        description: "Maximum archived conversations to return. Use 5 by default.",
+      }),
+    },
+    responseDescription: "Archived conversation search response.",
+    responseProperties: {
+      ok: booleanProperty("Whether the search succeeded."),
+      status: stringProperty({ description: "Status code." }),
+      query: stringProperty({ description: "Search query used." }),
+      start_date: stringProperty({ description: "Start date used." }),
+      end_date: stringProperty({ description: "End date used." }),
+      returned_count: integerProperty({ description: "Number of conversations returned." }),
+      answer_text: stringProperty({
+        description: "Compact spoken summary. Prefer this before reading raw fields.",
+      }),
+      items: arrayProperty({
+        description: "Archived conversation matches.",
+        itemDescription: "One archived conversation summary.",
+        properties: conversationSummaryProperties(),
+      }),
+    },
+  });
+}
+
+function conversationHistoryGetToolConfig() {
+  return webhookTool({
+    name: "conversation_history_get",
+    description:
+      "Fetch the full archived transcript, tool calls, and tool results for a specific Phoneclaw conversation_id returned by conversation_history_search.",
+    url: `${workerBaseUrl}/conversation-history/get`,
+    required: ["conversation_id"],
+    responseTimeoutSecs: 20,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      conversation_id: stringProperty({
+        description: "Conversation id returned by conversation_history_search.",
+      }),
+    },
+    responseDescription: "Archived conversation full retrieval response.",
+    responseProperties: {
+      ok: booleanProperty("Whether the retrieval succeeded."),
+      status: stringProperty({ description: "Status code." }),
+      answer_text: stringProperty({
+        description: "Compact spoken summary. Prefer this before using the full transcript.",
+      }),
+      conversation: objectProperty({
+        description: "Full archived conversation record.",
+        properties: {
+          ...conversationSummaryProperties(),
+          transcript: arrayProperty({
+            description: "Raw ElevenLabs transcript turns.",
+            itemDescription: "One transcript turn.",
+            properties: {
+              role: stringProperty({ description: "Turn role." }),
+              message: stringProperty({ description: "Turn message." }),
+            },
+          }),
+          tool_calls: arrayProperty({
+            description: "Tool calls executed during the conversation.",
+            itemDescription: "One tool call.",
+            properties: {
+              tool_name: stringProperty({ description: "Tool name." }),
+              params: objectProperty({ description: "Tool parameters.", properties: {} }),
+            },
+          }),
+          tool_results: arrayProperty({
+            description: "Tool results returned during the conversation.",
+            itemDescription: "One tool result.",
+            properties: {
+              tool_name: stringProperty({ description: "Tool name." }),
+              is_error: booleanProperty("Whether the tool errored."),
+              result: objectProperty({ description: "Tool result JSON.", properties: {} }),
+            },
+          }),
+        },
+      }),
     },
   });
 }
@@ -1017,6 +1178,21 @@ function otterSpeechProperties() {
   };
 }
 
+function conversationSummaryProperties() {
+  return {
+    conversation_id: stringProperty({ description: "Archived conversation id." }),
+    twilio_call_sid: stringProperty({ description: "Twilio Call SID when available." }),
+    caller_number: stringProperty({ description: "Caller phone number when available." }),
+    started_at: stringProperty({ description: "Conversation start timestamp." }),
+    ended_at: stringProperty({ description: "Conversation end timestamp." }),
+    duration_seconds: integerProperty({ description: "Conversation duration in seconds." }),
+    status: stringProperty({ description: "Conversation status." }),
+    summary: stringProperty({ description: "Hundred-word conversation summary." }),
+    keywords: stringArrayProperty("Up to fifty extracted keywords."),
+    tool_call_count: integerProperty({ description: "Number of tool calls in the conversation." }),
+  };
+}
+
 function stringProperty({ description, values = null }) {
   return {
     type: "string",
@@ -1129,8 +1305,16 @@ function promptWithGithubFileTools(currentPrompt) {
 - After using web_search, prefer the tool's answer_text field when it is present.
 - If sports_events are returned, answer directly with the teams, times, statuses, scores, and venues that matter for Andrew's question.
 - If market_data is returned, answer with that structured quote first and use web results only as backup context.
+- If market_history is returned, answer high/low/range questions from that structured history first and include the dates for the high and low.
 - If the returned results are incomplete or only show source snippets, say what the sources suggest and mention the uncertainty briefly.
 - Do not say you cannot browse when the web_search tool is available.
+
+Conversation memory:
+- At the start of a call, the dynamic variable recent_conversation_context may contain compact summaries of recent archived Phoneclaw conversations. Use it quietly as background context; do not read it aloud unless Andrew asks what context you have.
+- You have webhook tools named conversation_history_search and conversation_history_get.
+- Use conversation_history_search when Andrew asks about prior phone calls, previous conversations, things discussed earlier, or wants to find a past call by keyword/date.
+- conversation_history_search returns compact summaries and keywords only. Use conversation_history_get only when Andrew asks for the full transcript, tool calls, or exact details from a specific archived conversation_id.
+- If conversation history returns conversation_history_not_configured, say the memory tools are coded but the Neon/Postgres database URL still needs to be configured on the bridge.
 
 GitHub capability:
 - You have webhook tools named github_summary, github_cli_ls, github_cli_cat, github_issue_create, and github_issue_update.
@@ -1142,6 +1326,7 @@ GitHub capability:
 - Use github_cli_cat only when you know the exact file path. If the repo, path, or branch/ref is unclear, ask a short clarifying question.
 - Use github_issue_create only after Andrew explicitly confirms the exact repo, title, and body. Set confirmed=true only after that confirmation.
 - Use github_issue_update only after Andrew explicitly confirms the exact repo, issue number, and requested change. Set confirmed=true only after that confirmation.
+- After creating or updating a GitHub issue, give a brief fifteen-second summary. Do not read the full title and body unless Andrew explicitly asks for the full details.
 - The GitHub issue tools can create and update issues only. They cannot merge, approve, push code, or edit files.
 - If a private repo returns 403, 404, or a GitHub validation failure, say the configured token may not have access to that repo, org approval, or Contents read permission.
 
@@ -1165,7 +1350,7 @@ CLI capability:
 - Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.
 - Use himalaya_draft_reply only after Andrew explicitly confirms the exact envelope id and reply body. It saves a reply draft only; it does not send email.
 - Do not claim you sent email. The email write tools can archive and save drafts only.
-- Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON.
+- Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.
 - Use github_cli_common for common read-only GitHub CLI actions such as repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.
 - These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.
 - Before slow searches or CLI calls, say a brief natural status phrase, then call the tool.`;

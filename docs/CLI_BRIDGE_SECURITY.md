@@ -51,6 +51,9 @@ GH_BIN=gh
 CLAUDE_BIN=claude
 CLAUDE_CODE_JOB_DIR=/var/lib/phoneclaw/claude-jobs
 CLAUDE_CODE_ALLOWED_DIRS=/opt/phoneclaw
+CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true
+AWS_PROFILE=phoneclaw-personal
+CONVERSATION_DATABASE_URL=postgres://...
 ```
 
 For local development only, the bridge can fall back to `WEB_SEARCH_TOKEN` if `CLI_BRIDGE_TOKEN` is unset. Production should set `CLI_BRIDGE_TOKEN`.
@@ -63,6 +66,19 @@ For local development only, the bridge can fall back to `WEB_SEARCH_TOKEN` if `C
 - Keep CLI tools read-only by default. Any write tool must be narrowly scoped and confirmation-gated. Current email writes can archive messages and save drafts only; they cannot send email. Claude Code task submission is also confirmation-gated and runs asynchronously.
 - Cap command output and timeouts. The current bridge uses fixed commands, `execFile`, no shell interpolation, timeouts, and raw output truncation.
 - Rotate Otter, email, GitHub, and bridge tokens if they are ever pasted into chat, logs, or a public issue.
+
+## Current EC2 Hardening
+
+The live bridge host is configured so the Fastify service listens on `127.0.0.1:8000`, not a public interface. Cloudflare Tunnel is the public ingress path for bridge traffic, and the bridge still requires `CLI_BRIDGE_TOKEN` on every CLI/Claude/conversation-history request.
+
+Inbound network access is restricted at two layers:
+
+- AWS security group: SSH only from Andrew's current public IP.
+- UFW on the instance: default deny incoming, allow outgoing, SSH only from Andrew's current public IP.
+
+There are no public inbound HTTP or HTTPS ports for the Fastify bridge.
+
+Claude Code run jobs are intentionally configured with `CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true` on this host so confirmed jobs do not hang on permission prompts. That setting is acceptable only because tool access is behind the Worker, Cloudflare Tunnel, bearer-token bridge auth, an allow-listed working directory, and explicit voice confirmation before task submission.
 
 ## Why Not Put CLI Credentials Into A Worker?
 

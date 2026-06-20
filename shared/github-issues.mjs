@@ -52,7 +52,7 @@ export async function githubIssueCreate({
     action: "created",
     repo: normalizedRepo,
     issue,
-    answer_text: `Created issue #${issue.number} in ${normalizedRepo}: ${issue.title}.`,
+    answer_text: `Created issue #${issue.number} in ${normalizedRepo}. Brief summary: ${voiceIssueSummary(issue)}.`,
   };
 }
 
@@ -142,7 +142,7 @@ export async function githubIssueUpdate({
     action: "updated",
     repo: normalizedRepo,
     issue,
-    answer_text: `Updated issue #${issue.number} in ${normalizedRepo}: ${issue.title}.`,
+    answer_text: `Updated issue #${issue.number} in ${normalizedRepo}. Brief summary: ${voiceIssueSummary(issue)}.`,
   };
 }
 
@@ -194,6 +194,13 @@ function summarizeIssue(issue) {
     closed_at: issue.closed_at || "",
     excerpt: excerpt(issue.body || ""),
   };
+}
+
+function voiceIssueSummary(issue) {
+  const title = String(issue.title || "").trim();
+  const body = String(issue.excerpt || "").trim();
+  const text = [title, body].filter(Boolean).join(". ");
+  return text ? `${text.slice(0, 220)}${text.length > 220 ? "..." : ""}` : "No details provided.";
 }
 
 function githubHeaders(githubToken) {

@@ -103,6 +103,8 @@ export async function claudeCodeTool({
     job_id: normalizedJobId,
     session_id: normalizedSessionId,
     mode: normalizedMode,
+    permission_mode: claudePermissionMode(normalizedMode),
+    dangerously_skip_permissions: shouldDangerouslySkipPermissions(normalizedMode),
     working_directory: cwdResult.cwd,
     created_at: now,
     updated_at: now,
@@ -139,6 +141,8 @@ export async function claudeCodeTool({
     job_id: normalizedJobId,
     session_id: normalizedSessionId,
     mode: normalizedMode,
+    permission_mode: job.permission_mode,
+    dangerously_skip_permissions: job.dangerously_skip_permissions,
     working_directory: cwdResult.cwd,
     answer_text:
       `Started Claude Code ${normalizedMode} job ${normalizedJobId}. ` +
@@ -199,7 +203,7 @@ async function claudeJobStatus(jobId) {
 
   return {
     ...job,
-    output_preview: truncateUtf8(job.output_text || "", MAX_ANSWER_BYTES).value,
+    output_preview: claudeOutputPreview(job),
     answer_text:
       job.status === "completed"
         ? `Claude Code job ${jobId} completed.`
@@ -207,8 +211,16 @@ async function claudeJobStatus(jobId) {
   };
 }
 
+function claudeOutputPreview(job) {
+  const result = job.parsed_json?.result;
+  const text = typeof result === "string" && result.trim() ? result : job.output_text || "";
+  return truncateUtf8(text, MAX_ANSWER_BYTES).value;
+}
+
 function startClaudeJob({ job, task, cwd, sessionId, mode, timeoutMs }) {
   const command = process.env.CLAUDE_BIN || "claude";
+  const permissionMode = claudePermissionMode(mode);
+  const skipPermissions = shouldDangerouslySkipPermissions(mode);
   const args = [
     "-p",
     task,
@@ -217,11 +229,15 @@ function startClaudeJob({ job, task, cwd, sessionId, mode, timeoutMs }) {
     "--session-id",
     sessionId,
     "--permission-mode",
-    mode === "plan" ? "plan" : process.env.CLAUDE_CODE_PERMISSION_MODE || "acceptEdits",
+    permissionMode,
   ];
 
-  const allowedTools = claudeAllowedTools(mode);
-  if (allowedTools.length > 0) {
+  if (skipPermissions) {
+    args.push("--dangerously-skip-permissions");
+  }
+
+  const allowedTools = skipPermissions ? [] : claudeAllowedTools(mode);
+  if (!skipPermissions && allowedTools.length > 0) {
     args.push("--allowedTools", ...allowedTools);
   }
 
@@ -300,6 +316,17 @@ function buildClaudeTaskPrompt(task, mode) {
   }
 
   return `${guardrails.join("\n")}\n\nTask from Andrew via voice agent:\n${task}`;
+}
+
+function claudePermissionMode(mode) {
+  if (mode === "plan") return "plan";
+  if (shouldDangerouslySkipPermissions(mode)) return "bypassPermissions";
+  return process.env.CLAUDE_CODE_PERMISSION_MODE || "acceptEdits";
+}
+
+function shouldDangerouslySkipPermissions(mode) {
+  if (mode === "plan") return false;
+  return toBoolean(process.env.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS, false);
 }
 
 function claudeAllowedTools(mode) {

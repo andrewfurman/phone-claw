@@ -16,6 +16,10 @@ The EC2 instance runs:
   - `himalaya`
   - `otter`
   - `gh`
+  - `aws`
+  - `railway`
+  - `vercel`
+  - `wrangler`
   - `claude`
 
 The Fastify port is not opened to the internet. Cloudflare Tunnel publishes the bridge hostname and forwards traffic to localhost on the VM.
@@ -31,6 +35,7 @@ Recommended baseline:
 - 20 GB encrypted gp3 root volume.
 - Security group with SSH restricted to Andrew's current IP only.
 - No inbound HTTP/HTTPS ports.
+- UFW enabled with default deny incoming, allow outgoing, and SSH restricted to Andrew's current IP only.
 
 ## Secrets
 
@@ -52,6 +57,7 @@ Runtime secrets live on the host:
 - `/home/phoneclaw/.config/himalaya/config.toml`
 - `/home/phoneclaw/.otterai/config.json`
 - `/home/phoneclaw/.claude/` or `ANTHROPIC_API_KEY` in `/etc/phoneclaw/bridge.env`
+- `/home/phoneclaw/.aws/`
 - `/var/lib/phoneclaw/claude-jobs/`
 
 ## Services
@@ -116,6 +122,22 @@ ANTHROPIC_API_KEY=...
 CLAUDE_BIN=claude
 CLAUDE_CODE_JOB_DIR=/var/lib/phoneclaw/claude-jobs
 CLAUDE_CODE_ALLOWED_DIRS=/opt/phoneclaw
+CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true
+CLAUDE_CODE_PERMISSION_MODE=bypassPermissions
+AWS_PROFILE=phoneclaw-personal
 ```
 
 The `claude_code` voice tool is intentionally explicit. It can check auth, create a session id, submit a confirmed async job, and poll job status. It should not be used as the default path for ordinary questions.
+
+Run-mode jobs use Claude Code `bypassPermissions` plus `--dangerously-skip-permissions` when `CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true`, so they do not stall on permission prompts.
+
+## Conversation Memory
+
+The bridge has config-gated Postgres support for archived phone conversations. Set `CONVERSATION_DATABASE_URL` in `/etc/phoneclaw/bridge.env`, restart `phoneclaw-bridge`, then backfill recent calls:
+
+```bash
+cd /opt/phoneclaw
+npm run conversations:archive
+```
+
+If the database URL is missing, conversation-history endpoints return `conversation_history_not_configured` with HTTP 200 so the voice agent can explain the missing setup without treating it as a transport failure.

@@ -28,12 +28,16 @@ This project intentionally keeps provider configuration explicit because the voi
 | GitHub | Stores this public repo and backs agent tools for issue/PR summaries, file reads, and confirmed issue create/update actions. | `GITHUB_READ_TOKEN` and `GITHUB_WRITE_TOKEN` are Worker secrets; the EC2 bridge can also use authenticated `gh` CLI for read-only wrappers. |
 | Tavily | Preferred LLM-oriented web search provider for fast, compact voice answers. | Optional `TAVILY_API_KEY` Worker secret. With `WEB_SEARCH_PROVIDER=auto`, the Worker uses Tavily when the key exists and falls back to DuckDuckGo otherwise. |
 | DuckDuckGo | No-key fallback web search provider. | No secret required. Used only when Tavily is not configured. |
+| Yahoo Finance public chart API | Market-history enrichment for WTI crude high/low/range questions. | No secret required. Used as a compact fallback to avoid relying only on generic search snippets. |
 | ESPN public scoreboard endpoint | Prototype sports enrichment for FIFA World Cup schedule/score queries. | No secret required. Treat as a convenience endpoint, not a committed long-term sports-data contract. |
+| Neon | Optional Postgres archive for Phoneclaw conversation memory. Stores transcript JSON, summaries, keywords, and tool-call logs. | `CONVERSATION_DATABASE_URL` on the bridge. `NEON_API_KEY` is used only by the setup script and should not be committed. |
 | Gmail | Email account accessed through the private CLI bridge for listing, reading previews, archiving, and saving drafts. The agent cannot send email. | Authenticated locally on the bridge host through Himalaya CLI config; no Gmail credentials are committed. |
 | Himalaya CLI | Local email CLI used by the private bridge to access Gmail. | `HIMALAYA_BIN`, `HIMALAYA_ARCHIVE_FOLDER`, and `HIMALAYA_DRAFTS_FOLDER` in bridge env. |
 | Otter.ai | Transcript source for listing, fetching raw transcript JSON, and transcript search. | Authenticated on the bridge host through Otter CLI config; no Otter credentials are committed. |
 | Otter CLI | Local CLI used by the private bridge to access Otter transcripts. | `OTTER_BIN` in bridge env. |
 | Claude Code | Optional explicit escalation target for complex code changes and test runs. The voice agent can start/check sessions and submit async jobs on the EC2 bridge only after confirmation. | `CLAUDE_BIN`, `CLAUDE_CODE_JOB_DIR`, `CLAUDE_CODE_ALLOWED_DIRS`, and either Claude Code login state or `ANTHROPIC_API_KEY` on the private bridge. |
+| AWS CLI | Available to Claude Code on the EC2 bridge for AWS account operations when explicitly requested. | `AWS_PROFILE=phoneclaw-personal` on the bridge. Credentials stay in the service user's AWS config, not the repo. |
+| Railway CLI, Vercel CLI, Wrangler | Installed on the EC2 bridge for future deployment workflows. | These CLIs still require token/login configuration before use. |
 
 ## Local Development
 
@@ -128,6 +132,7 @@ The ElevenLabs agent also has focused wrappers for local CLIs:
 - `himalaya_email_archive`, `himalaya_draft_create`, and `himalaya_draft_reply`
 - `otter_speeches_list`, `otter_speech_get`, and `otter_speech_search`
 - `github_cli_common`
+- `conversation_history_search` and `conversation_history_get`
 - `claude_code`
 
 Email write tools require explicit confirmation. They can archive email and save drafts; they cannot send email.
@@ -135,6 +140,18 @@ Email write tools require explicit confirmation. They can archive email and save
 `himalaya_email_list` is paginated by default and returns compact envelope metadata only: id, subject, sender, recipients, date, flags, and attachment presence. Use `all_pages=true` on the same tool for complete folder lists and total-count questions such as "how many emails are in my inbox?" All-pages mode returns at most 200 envelopes by default and reports `has_more`, `complete`, and `capped` so the agent does not dump an entire mailbox into context.
 
 `claude_code` is intentionally not a default reasoning path. It supports `auth_status`, `start_session`, `submit_task`, and `job_status`; task submission is confirmation-gated and runs asynchronously on the private EC2 bridge.
+
+On the EC2 bridge, run-mode Claude Code jobs may be configured with `CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true`. That starts confirmed run jobs with Claude Code `bypassPermissions` plus `--dangerously-skip-permissions`, so jobs do not hang on permission prompts. This setting should be paired with a locked-down bridge: localhost-only Fastify, Cloudflare Tunnel, bearer-token tool auth, restricted SSH, and no public bridge port.
+
+## Conversation Memory
+
+Conversation memory is optional and activates when the bridge has `CONVERSATION_DATABASE_URL` set.
+
+- `npm run neon:setup` creates or reuses a Neon project when `NEON_API_KEY` is present in the shell.
+- `npm run conversations:archive` backfills recent ElevenLabs conversations into Postgres.
+- The Worker asks the bridge for recent conversation summaries at the start of each call and passes them to ElevenLabs as `recent_conversation_context`.
+- `conversation_history_search` returns compact summaries and keywords.
+- `conversation_history_get` retrieves the full archived transcript, tool calls, and tool results for a specific conversation id.
 
 Cloudflare Workers cannot run those binaries directly. The Worker proxies `/cli/*` requests to a private Fastify bridge configured with `CLI_BRIDGE_URL` and `CLI_BRIDGE_TOKEN`. See `docs/CLI_BRIDGE_SECURITY.md`.
 
