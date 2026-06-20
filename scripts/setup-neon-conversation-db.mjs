@@ -1,8 +1,13 @@
+import { writeFile } from "node:fs/promises";
+
 const apiBase = process.env.NEON_API_BASE || "https://console.neon.tech/api/v2";
 const apiKey = process.env.NEON_API_KEY;
 const projectName = process.env.NEON_PROJECT_NAME || "phoneclaw-conversations";
 const regionId = process.env.NEON_REGION_ID || "aws-us-east-1";
 const pgVersion = Number(process.env.NEON_PG_VERSION || 17);
+const databaseName = process.env.NEON_DATABASE_NAME || "phoneclaw";
+const roleName = process.env.NEON_ROLE_NAME || "phoneclaw_owner";
+const uriOutputPath = process.env.NEON_CONNECTION_URI_OUTPUT || "";
 
 if (!apiKey) {
   console.error("Missing NEON_API_KEY. Export it in the shell before running this script.");
@@ -11,7 +16,10 @@ if (!apiKey) {
 
 const existing = await findProjectByName(projectName);
 const project = existing || (await createProject());
-const connectionUri = await getConnectionUri(project);
+const connectionUri = normalizeConnectionUri(await getConnectionUri(project));
+if (uriOutputPath) {
+  await writeFile(uriOutputPath, `${connectionUri}\n`, { mode: 0o600 });
+}
 
 console.log(
   JSON.stringify(
@@ -21,6 +29,8 @@ console.log(
       project_name: project.name,
       region_id: project.region_id,
       default_branch_id: project.default_branch_id || project.branch?.id || "",
+      database_name: databaseName,
+      role_name: roleName,
       database_url_config_name: "CONVERSATION_DATABASE_URL",
       connection_uri_redacted: redactConnectionUri(connectionUri),
       next_step:
@@ -44,6 +54,10 @@ async function createProject() {
         name: projectName,
         region_id: regionId,
         pg_version: pgVersion,
+        branch: {
+          database_name: databaseName,
+          role_name: roleName,
+        },
       },
     }),
   });
@@ -53,10 +67,34 @@ async function createProject() {
 }
 
 async function getConnectionUri(project) {
+  const candidates = [
+    { databaseName, roleName },
+    { databaseName: "neondb", roleName: "neondb_owner" },
+  ];
+
+  for (const candidate of candidates) {
+    const uri = await tryGetConnectionUri(project, candidate);
+    if (uri) return uri;
+  }
+
+  throw new Error(
+    `Could not retrieve a Neon connection URI for ${project.id}. Check database and role names.`
+  );
+}
+
+async function tryGetConnectionUri(project, { databaseName: dbName, roleName: role }) {
   const url = new URL(`${apiBase}/projects/${encodeURIComponent(project.id)}/connection_uri`);
   url.searchParams.set("pooled", "true");
-  const body = await neonJson(url);
-  return body.uri || body.connection_uri || body.connectionUri || "";
+  url.searchParams.set("database_name", dbName);
+  url.searchParams.set("role_name", role);
+
+  try {
+    const body = await neonJson(url);
+    return body.uri || body.connection_uri || body.connectionUri || "";
+  } catch (error) {
+    if (/Neon API failed \\((400|404)\\)/.test(error.message)) return "";
+    throw error;
+  }
 }
 
 async function waitForOperations(projectId, operations) {
@@ -107,6 +145,10 @@ function parseMaybeJson(text) {
 
 function redactConnectionUri(value) {
   return String(value || "").replace(/:\/\/([^:@/]+):([^@/]+)@/, "://$1:[redacted]@");
+}
+
+function normalizeConnectionUri(value) {
+  return String(value || "").replace(/([?&]sslmode=)require\b/, "$1verify-full");
 }
 
 function wait(ms) {

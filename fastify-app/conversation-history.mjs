@@ -44,15 +44,6 @@ export async function ensureConversationHistorySchema() {
     CREATE INDEX IF NOT EXISTS phoneclaw_conversations_keywords_idx
       ON phoneclaw_conversations USING GIN (keywords);
 
-    CREATE INDEX IF NOT EXISTS phoneclaw_conversations_text_idx
-      ON phoneclaw_conversations USING GIN (
-        to_tsvector(
-          'english',
-          COALESCE(summary, '') || ' ' ||
-          COALESCE(array_to_string(keywords, ' '), '') || ' ' ||
-          COALESCE(transcript::text, '')
-        )
-      );
   `);
 
   schemaReady = true;
