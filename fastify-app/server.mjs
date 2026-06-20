@@ -18,6 +18,7 @@ import {
   himalayaEmailArchive,
   himalayaEmailList,
   himalayaEmailRead,
+  himalayaEmailSend,
   otterSpeechGet,
   otterSpeechSearch,
   otterSpeechesList,
@@ -87,6 +88,7 @@ app.get("/", async () => ({
     himalaya_email_archive: "POST /cli/himalaya/email-archive",
     himalaya_draft_create: "POST /cli/himalaya/draft-create",
     himalaya_draft_reply: "POST /cli/himalaya/draft-reply",
+    himalaya_email_send: "POST /cli/himalaya/email-send",
     otter_speeches_list: "POST /cli/otter/speeches-list",
     otter_speech_get: "POST /cli/otter/speech-get",
     otter_speech_search: "POST /cli/otter/speech-search",
@@ -176,6 +178,10 @@ app.post("/cli/himalaya/draft-create", async (request, reply) =>
 
 app.post("/cli/himalaya/draft-reply", async (request, reply) =>
   handleHimalayaDraftReply(request, reply)
+);
+
+app.post("/cli/himalaya/email-send", async (request, reply) =>
+  handleHimalayaEmailSend(request, reply)
 );
 
 app.post("/cli/otter/speeches-list", async (request, reply) =>
@@ -687,6 +693,28 @@ async function handleHimalayaDraftReply(request, reply) {
     replyAll: body.reply_all ?? body.replyAll,
     draftFolder: body.draft_folder || body.draftFolder,
     account: body.account,
+    confirmed: body.confirmed,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  });
+
+  return reply
+    .code(result.ok || result.status === "confirmation_required" ? 200 : 400)
+    .send(result);
+}
+
+async function handleHimalayaEmailSend(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await himalayaEmailSend({
+    to: body.to,
+    cc: body.cc,
+    bcc: body.bcc,
+    subject: body.subject,
+    body: body.body || body.message,
+    account: body.account,
+    emergency: body.emergency,
+    previewed: body.previewed,
     confirmed: body.confirmed,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   });

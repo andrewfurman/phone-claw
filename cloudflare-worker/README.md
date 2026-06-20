@@ -61,11 +61,16 @@ npm run worker:deploy
 - `POST /cli/himalaya/email-archive`
 - `POST /cli/himalaya/draft-create`
 - `POST /cli/himalaya/draft-reply`
+- `POST /cli/himalaya/email-send`
 - `POST /cli/otter/speeches-list`
 - `POST /cli/otter/speech-get`
 - `POST /cli/otter/speech-search`
 - `POST /cli/github/common`
 - `POST /cli/claude-code`
+- `POST /conversation-history/search`
+- `POST /conversation-history/get`
+- `POST /conversation-history/recent-context`
+- `POST /conversation-history/archive-elevenlabs`
 - `POST /agent-command`
 
 ## Caller Allow-List
@@ -107,6 +112,8 @@ The Twilio phone number can also send broader call lifecycle callbacks to `POST 
 
 When `TWILIO_EVENT_LOGS` is bound, recent events are stored in KV and can be read from `GET /twilio/events` with either the Twilio webhook token query parameter or the tool bearer token. Use `call_sid` to filter a specific call.
 
+When `AUTO_ARCHIVE_CONVERSATIONS_ON_CALL_END` is unset or true, terminal Twilio call status callbacks best-effort trigger the bridge's conversation archive endpoint. Keep the EC2 systemd timer enabled as the retry backstop for ElevenLabs transcript finalization lag.
+
 ## GitHub CLI-Style Read Tools
 
 `POST /github-cli/ls` and `POST /github-cli/cat` are authenticated ElevenLabs webhook tools for read-only repository inspection.
@@ -142,11 +149,11 @@ The `/cli/*` endpoints are authenticated ElevenLabs webhook tools, but the Worke
 
 Supported bridge-backed tools:
 
-- Himalaya: email envelope list/search, all-pages capped listing/count, preview read, confirmed archive, confirmed new draft, and confirmed reply draft.
+- Himalaya: email envelope list/search, all-pages capped listing/count, preview read, confirmed archive, confirmed new draft, confirmed reply draft, and emergency-only confirmed send.
 - Otter: transcript list, raw JSON fetch, and transcript search.
 - GitHub CLI: common read-only repo, issue, PR, and search commands.
 - Claude Code: auth status, session start, confirmed async task submission, and job status.
 
-The Himalaya write tools and Claude Code task submission require `confirmed=true`. Himalaya cannot send email.
+The Himalaya write tools and Claude Code task submission require `confirmed=true`. Ordinary email composition should use draft tools. The send path is isolated in `himalaya_email_send` and additionally requires `emergency=true`, `previewed=true`, and `confirmed=true`.
 
 If `CLI_BRIDGE_URL` or `CLI_BRIDGE_TOKEN` is unset, these endpoints return `cli_bridge_not_configured`. See `docs/CLI_BRIDGE_SECURITY.md` before deploying a bridge with real email/Otter/GitHub/Claude Code credentials.

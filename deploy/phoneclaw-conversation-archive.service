@@ -1,0 +1,12 @@
+[Unit]
+Description=Archive recent Phoneclaw ElevenLabs conversations into Postgres
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=phoneclaw
+Group=phoneclaw
+WorkingDirectory=/opt/phoneclaw
+EnvironmentFile=/etc/phoneclaw/bridge.env
+ExecStart=/usr/bin/node scripts/archive-elevenlabs-conversations.mjs --latest=10

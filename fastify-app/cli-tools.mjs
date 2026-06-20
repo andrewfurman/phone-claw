@@ -339,6 +339,112 @@ export async function himalayaDraftReply({
   };
 }
 
+export async function himalayaEmailSend({
+  to,
+  cc,
+  bcc,
+  subject,
+  body,
+  account,
+  emergency = false,
+  previewed = false,
+  confirmed = false,
+  maxRawBytes = DEFAULT_MAX_RAW_BYTES,
+} = {}) {
+  const normalizedTo = normalizeHeaderValue(to);
+  const normalizedCc = normalizeHeaderValue(cc);
+  const normalizedBcc = normalizeHeaderValue(bcc);
+  const normalizedSubject = normalizeHeaderValue(subject);
+  const normalizedBody = normalizeString(body);
+  const preview = {
+    to: normalizedTo,
+    cc: normalizedCc,
+    bcc: normalizedBcc,
+    subject: normalizedSubject,
+    body: normalizedBody,
+  };
+
+  if (!normalizedTo) {
+    return missingField("to", "At least one recipient is required before sending email.");
+  }
+  if (!hasEmailAddress(normalizedTo)) {
+    return missingField(
+      "to",
+      "The recipient must include at least one explicit email address before sending."
+    );
+  }
+  if (!normalizedSubject) {
+    return missingField("subject", "A subject is required before sending email.");
+  }
+  if (!normalizedBody) {
+    return missingField("body", "A non-empty email body is required before sending email.");
+  }
+
+  if (!toBoolean(emergency)) {
+    return {
+      ...confirmationRequired(
+        "This send tool is emergency-only. Use the draft tools by default unless Andrew explicitly says this is an emergency send."
+      ),
+      action: "email_send_blocked_not_emergency",
+      requires_emergency: true,
+      preview,
+    };
+  }
+
+  if (!toBoolean(previewed)) {
+    return {
+      ...confirmationRequired(
+        `Before sending, read Andrew the exact email preview: To ${normalizedTo}; Subject "${normalizedSubject}"; Body "${normalizedBody}". Then ask, "Is this an emergency email, and do you want me to send it now?"`
+      ),
+      action: "email_send_preview_required",
+      requires_preview: true,
+      requires_confirmation: true,
+      preview,
+    };
+  }
+
+  if (!toBoolean(confirmed)) {
+    return {
+      ...confirmationRequired(
+        `Confirm one more time that Andrew wants to send this emergency email now to ${normalizedTo} with subject "${normalizedSubject}".`
+      ),
+      action: "email_send_confirmation_required",
+      requires_confirmation: true,
+      preview,
+    };
+  }
+
+  const fromAddress = await getHimalayaFromAddress({ account, maxRawBytes });
+  if (!fromAddress.ok) return fromAddress;
+
+  const sent = await sendRawHimalayaMessage({
+    rawMessage: buildRawEmailMessage({
+      from: fromAddress.from,
+      to: normalizedTo,
+      cc: normalizedCc,
+      bcc: normalizedBcc,
+      subject: normalizedSubject,
+      body: normalizedBody,
+    }),
+    account,
+    maxRawBytes,
+  });
+
+  return {
+    ...sent,
+    command: "himalaya message send",
+    action: "email_sent",
+    emergency: true,
+    to: normalizedTo,
+    cc: normalizedCc,
+    bcc: normalizedBcc,
+    subject: normalizedSubject,
+    answer_text: sent.ok
+      ? `Sent the emergency email to ${normalizedTo} with subject "${normalizedSubject}".`
+      : sent.answer_text,
+  };
+}
+
 export async function otterSpeechesList({
   source = "owned",
   days,
@@ -832,6 +938,32 @@ async function saveRawHimalayaMessage({
     command: process.env.HIMALAYA_BIN || "himalaya",
     args,
     timeoutMs: 20_000,
+    maxRawBytes,
+  });
+}
+
+async function sendRawHimalayaMessage({
+  rawMessage,
+  account,
+  maxRawBytes,
+}) {
+  if (!rawMessage) {
+    return {
+      ok: false,
+      status: "empty_message",
+      message: "No raw email message was generated to send.",
+      answer_text: "No email content was generated to send.",
+    };
+  }
+
+  const args = ["-o", "json", "message", "send"];
+  if (account) args.push("--account", normalizeString(account));
+  args.push(rawMessage);
+
+  return runCli({
+    command: process.env.HIMALAYA_BIN || "himalaya",
+    args,
+    timeoutMs: 45_000,
     maxRawBytes,
   });
 }
@@ -1438,6 +1570,10 @@ function normalizeString(value, fallback = "") {
 
 function normalizeHeaderValue(value) {
   return normalizeString(value).replace(/[\r\n]+/g, " ").trim();
+}
+
+function hasEmailAddress(value) {
+  return /[^\s@<>,"']+@[^\s@<>,"']+\.[^\s@<>,"']+/.test(String(value || ""));
 }
 
 function normalizeEnum(value, allowed, fallback) {

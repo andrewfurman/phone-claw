@@ -140,4 +140,15 @@ cd /opt/phoneclaw
 npm run conversations:archive
 ```
 
+For automatic post-call logging, install the timer units from the repo:
+
+```bash
+sudo cp deploy/phoneclaw-conversation-archive.service /etc/systemd/system/
+sudo cp deploy/phoneclaw-conversation-archive.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now phoneclaw-conversation-archive.timer
+```
+
+The Worker also best-effort triggers `conversation-history/archive-elevenlabs` when Twilio reports a terminal call status. The timer is the retry backstop so late ElevenLabs transcripts are still archived.
+
 If the database URL is missing, conversation-history endpoints return `conversation_history_not_configured` with HTTP 200 so the voice agent can explain the missing setup without treating it as a transport failure.

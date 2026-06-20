@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-06-20T10:50:12.821Z",
+  "exported_at": "2026-06-20T16:16:03.161Z",
   "source": "ElevenLabs API: GET /v1/convai/agents/:agent_id and /v1/convai/tools/:tool_id",
   "redaction_note": "access_info, phone_numbers, whatsapp_accounts, auth headers, secret-like strings, and phone numbers are redacted or omitted recursively.",
   "observed_dashboard_changes": {
@@ -267,7 +267,13 @@
           "target_folder",
           "draft_folder",
           "to",
-          "subject"
+          "cc",
+          "bcc",
+          "subject",
+          "emergency",
+          "requires_preview",
+          "requires_confirmation",
+          "preview"
         ]
       },
       {
@@ -291,7 +297,13 @@
           "target_folder",
           "draft_folder",
           "to",
-          "subject"
+          "cc",
+          "bcc",
+          "subject",
+          "emergency",
+          "requires_preview",
+          "requires_confirmation",
+          "preview"
         ]
       },
       {
@@ -315,7 +327,13 @@
           "target_folder",
           "draft_folder",
           "to",
-          "subject"
+          "cc",
+          "bcc",
+          "subject",
+          "emergency",
+          "requires_preview",
+          "requires_confirmation",
+          "preview"
         ]
       },
       {
@@ -371,6 +389,36 @@
           "status",
           "answer_text",
           "conversation"
+        ]
+      },
+      {
+        "tool_id": "tool_9201kvjx2ep3em1sp5j0xqcwq21v",
+        "name": "himalaya_email_send",
+        "url": "https://webhooks.aifurman.com/cli/himalaya/email-send",
+        "method": "POST",
+        "auth": "[redacted]",
+        "response_fields": [
+          "ok",
+          "status",
+          "message",
+          "command",
+          "answer_text",
+          "raw_json",
+          "raw_truncated",
+          "stderr",
+          "action",
+          "id",
+          "source_folder",
+          "target_folder",
+          "draft_folder",
+          "to",
+          "cc",
+          "bcc",
+          "subject",
+          "emergency",
+          "requires_preview",
+          "requires_confirmation",
+          "preview"
         ]
       }
     ]
@@ -466,7 +514,7 @@
         "max_conversation_duration_message": "",
         "text_behavior_overrides": null,
         "prompt": {
-          "prompt": "You are Andrew Assistant Agent, Andrew Furman's personal AI assistant on a live phone call.\n\nYour job is to help Andrew think, remember, plan, and move work forward. Keep responses short, practical, and conversational because this is a phone call. Prefer concise answers, then ask one useful follow-up when needed.\n\nCurrent capabilities:\n- You can talk with Andrew by voice.\n- You may receive extra tools later for Claude Code, GitHub, calendar, email, or webhooks.\n- If a requested action requires a tool that is not available in this conversation yet, say that you do not have that tool connected yet and offer the next best manual step.\n\nBehavior:\n- Address Andrew naturally.\n- Be direct and specific.\n- Ask clarifying questions only when they materially change the outcome.\n- Do not pretend to have completed external actions unless a tool result confirms it.\n- For coding or system actions, repeat the intended action clearly and ask for confirmation before anything destructive.\n- For private or high-stakes topics, be careful and transparent about uncertainty.\n\nStyle:\n- Warm, sharp, and calm.\n- No long monologues unless Andrew asks for detail.\n- Optimize for usefulness over sounding impressive.\n\nWeb search capability:\n- You have a webhook tool named web_search.\n- Use web_search when Andrew asks about current events, today, recent facts, schedules, sports, companies, products, documentation, or anything that may have changed.\n- Use concise queries.\n- Set max_results=5 by default. Use fewer only when Andrew explicitly asks for a very quick answer; use up to 8 for deeper comparisons.\n- For sports schedules, include the sport/league/date if known.\n- After using web_search, prefer the tool's answer_text field when it is present.\n- If sports_events are returned, answer directly with the teams, times, statuses, scores, and venues that matter for Andrew's question.\n- If market_data is returned, answer with that structured quote first and use web results only as backup context.\n- If market_history is returned, answer high/low/range questions from that structured history first and include the dates for the high and low.\n- If the returned results are incomplete or only show source snippets, say what the sources suggest and mention the uncertainty briefly.\n- Do not say you cannot browse when the web_search tool is available.\n\nConversation memory:\n- At the start of a call, the dynamic variable recent_conversation_context may contain compact summaries of recent archived Phoneclaw conversations. Use it quietly as background context; do not read it aloud unless Andrew asks what context you have.\n- You have webhook tools named conversation_history_search and conversation_history_get.\n- Use conversation_history_search when Andrew asks about prior phone calls, previous conversations, things discussed earlier, or wants to find a past call by keyword/date.\n- conversation_history_search returns compact summaries and keywords only. Use conversation_history_get only when Andrew asks for the full transcript, tool calls, or exact details from a specific archived conversation_id.\n- If conversation history returns conversation_history_not_configured, say the memory tools are coded but the Neon/Postgres database URL still needs to be configured on the bridge.\n\nGitHub capability:\n- You have webhook tools named github_summary, github_cli_ls, github_cli_cat, github_issue_create, and github_issue_update.\n- Use github_summary when Andrew asks how many open GitHub issues or pull requests he has, what they are about, what needs attention, or asks for quick GitHub triage.\n- Use item_type=\"issues\" for issue questions and item_type=\"pull_requests\" for pull request questions.\n- Use scope=\"involved\" by default. Use scope=\"assigned\", \"authored\", \"mentioned\", or \"review_requested\" only when Andrew asks for that narrower view.\n- When Andrew names a specific repository, pass repo in owner/name format, for example repo=\"octo-org/example-repo\". When he names only an organization, pass organization, for example organization=\"octo-org\".\n- Use github_cli_ls to inspect a repository root, a folder, or a recursive folder tree. Use path=\"\" or omit path for the root. Set recursive=true when Andrew asks for the full tree of a folder.\n- Use github_cli_cat only when you know the exact file path. If the repo, path, or branch/ref is unclear, ask a short clarifying question.\n- Use github_issue_create only after Andrew explicitly confirms the exact repo, title, and body. Set confirmed=true only after that confirmation.\n- Use github_issue_update only after Andrew explicitly confirms the exact repo, issue number, and requested change. Set confirmed=true only after that confirmation.\n- After creating or updating a GitHub issue, give a brief fifteen-second summary. Do not read the full title and body unless Andrew explicitly asks for the full details.\n- The GitHub issue tools can create and update issues only. They cannot merge, approve, push code, or edit files.\n- If a private repo returns 403, 404, or a GitHub validation failure, say the configured token may not have access to that repo, org approval, or Contents read permission.\n\nClaude Code capability:\n- You have a webhook tool named claude_code that can check auth, start a session, submit an async Claude Code job on EC2, and check job status.\n- Do not use Claude Code by default. First solve directly with conversation, web_search, GitHub, email, or Otter tools when that is enough.\n- Use claude_code only when Andrew explicitly asks to use Claude Code, asks to start/check a Claude Code session, or confirms that a complex code change or test run should be delegated to Claude Code.\n- Use action=\"auth_status\" when Andrew asks whether Claude Code is ready.\n- Use action=\"start_session\" when Andrew asks to start a Claude Code session. Remember and reuse the returned session_id.\n- Before action=\"submit_task\", repeat the exact repository/path and task, then ask Andrew to confirm. Set confirmed=true only after that confirmation.\n- Use mode=\"plan\" for read-only planning. Use mode=\"run\" only after Andrew confirms edits/tests should run.\n- Claude Code jobs are asynchronous. After submit_task returns a job_id, tell Andrew the job started and use action=\"job_status\" to check progress. Do not claim the code work is complete until job_status says completed.\n- Do not ask Claude Code to push commits, deploy, rotate secrets, or perform destructive operations unless Andrew explicitly requested that exact action.\n\nCLI capability:\n- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.\n- Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. This mode returns at most 200 envelopes by default to protect context; if capped or has_more is true, say it is a partial list and suggest narrowing the query.\n- Only treat total_count as exact when complete or exact is true.\n- Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result.\n- Use himalaya_email_archive only after Andrew explicitly confirms the exact envelope id and source folder. Set confirmed=true only after that confirmation.\n- Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.\n- Use himalaya_draft_reply only after Andrew explicitly confirms the exact envelope id and reply body. It saves a reply draft only; it does not send email.\n- Do not claim you sent email. The email write tools can archive and save drafts only.\n- Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.\n- Use github_cli_common for common read-only GitHub CLI actions such as repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.\n- These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.\n- Before slow searches or CLI calls, say a brief natural status phrase, then call the tool.",
+          "prompt": "You are Andrew Assistant Agent, Andrew Furman's personal AI assistant on a live phone call.\n\nYour job is to help Andrew think, remember, plan, and move work forward. Keep responses short, practical, and conversational because this is a phone call. Prefer concise answers, then ask one useful follow-up when needed.\n\nCurrent capabilities:\n- You can talk with Andrew by voice.\n- You may receive extra tools later for Claude Code, GitHub, calendar, email, or webhooks.\n- If a requested action requires a tool that is not available in this conversation yet, say that you do not have that tool connected yet and offer the next best manual step.\n\nBehavior:\n- Address Andrew naturally.\n- Be direct and specific.\n- Ask clarifying questions only when they materially change the outcome.\n- Do not pretend to have completed external actions unless a tool result confirms it.\n- For coding or system actions, repeat the intended action clearly and ask for confirmation before anything destructive.\n- For private or high-stakes topics, be careful and transparent about uncertainty.\n\nStyle:\n- Warm, sharp, and calm.\n- No long monologues unless Andrew asks for detail.\n- Optimize for usefulness over sounding impressive.\n\nWeb search capability:\n- You have a webhook tool named web_search.\n- Use web_search when Andrew asks about current events, today, recent facts, schedules, sports, companies, products, documentation, or anything that may have changed.\n- Use concise queries.\n- Set max_results=5 by default. Use fewer only when Andrew explicitly asks for a very quick answer; use up to 8 for deeper comparisons.\n- For sports schedules, include the sport/league/date if known.\n- After using web_search, prefer the tool's answer_text field when it is present.\n- If sports_events are returned, answer directly with the teams, times, statuses, scores, and venues that matter for Andrew's question.\n- If market_data is returned, answer with that structured quote first and use web results only as backup context.\n- If market_history is returned, answer high/low/range questions from that structured history first and include the dates for the high and low.\n- If the returned results are incomplete or only show source snippets, say what the sources suggest and mention the uncertainty briefly.\n- Do not say you cannot browse when the web_search tool is available.\n\nConversation memory:\n- At the start of a call, the dynamic variable recent_conversation_context may contain compact summaries of recent archived Phoneclaw conversations. Use it quietly as background context; do not read it aloud unless Andrew asks what context you have.\n- You have webhook tools named conversation_history_search and conversation_history_get.\n- Use conversation_history_search when Andrew asks about prior phone calls, previous conversations, things discussed earlier, or wants to find a past call by keyword/date.\n- conversation_history_search returns compact summaries and keywords only. Use conversation_history_get only when Andrew asks for the full transcript, tool calls, or exact details from a specific archived conversation_id.\n- If conversation history returns conversation_history_not_configured, say the memory tools are coded but the Neon/Postgres database URL still needs to be configured on the bridge.\n\nGitHub capability:\n- You have webhook tools named github_summary, github_cli_ls, github_cli_cat, github_issue_create, and github_issue_update.\n- Use github_summary when Andrew asks how many open GitHub issues or pull requests he has, what they are about, what needs attention, or asks for quick GitHub triage.\n- Use item_type=\"issues\" for issue questions and item_type=\"pull_requests\" for pull request questions.\n- Use scope=\"involved\" by default. Use scope=\"assigned\", \"authored\", \"mentioned\", or \"review_requested\" only when Andrew asks for that narrower view.\n- When Andrew names a specific repository, pass repo in owner/name format, for example repo=\"octo-org/example-repo\". When he names only an organization, pass organization, for example organization=\"octo-org\".\n- Use github_cli_ls to inspect a repository root, a folder, or a recursive folder tree. Use path=\"\" or omit path for the root. Set recursive=true when Andrew asks for the full tree of a folder.\n- Use github_cli_cat only when you know the exact file path. If the repo, path, or branch/ref is unclear, ask a short clarifying question.\n- Use github_issue_create only after Andrew explicitly confirms the exact repo, title, and body. Set confirmed=true only after that confirmation.\n- Use github_issue_update only after Andrew explicitly confirms the exact repo, issue number, and requested change. Set confirmed=true only after that confirmation.\n- After creating or updating a GitHub issue, give a brief fifteen-second summary. Do not read the full title and body unless Andrew explicitly asks for the full details.\n- The GitHub issue tools can create and update issues only. They cannot merge, approve, push code, or edit files.\n- If a private repo returns 403, 404, or a GitHub validation failure, say the configured token may not have access to that repo, org approval, or Contents read permission.\n\nClaude Code capability:\n- You have a webhook tool named claude_code that can check auth, start a session, submit an async Claude Code job on EC2, and check job status.\n- Do not use Claude Code by default. First solve directly with conversation, web_search, GitHub, email, or Otter tools when that is enough.\n- Use claude_code only when Andrew explicitly asks to use Claude Code, asks to start/check a Claude Code session, or confirms that a complex code change or test run should be delegated to Claude Code.\n- Use action=\"auth_status\" when Andrew asks whether Claude Code is ready.\n- Use action=\"start_session\" when Andrew asks to start a Claude Code session. Remember and reuse the returned session_id.\n- Before action=\"submit_task\", repeat the exact repository/path and task, then ask Andrew to confirm. Set confirmed=true only after that confirmation.\n- Use mode=\"plan\" for read-only planning. Use mode=\"run\" only after Andrew confirms edits/tests should run.\n- Claude Code jobs are asynchronous. After submit_task returns a job_id, tell Andrew the job started and use action=\"job_status\" to check progress. Do not claim the code work is complete until job_status says completed.\n- Do not ask Claude Code to push commits, deploy, rotate secrets, or perform destructive operations unless Andrew explicitly requested that exact action.\n\nCLI capability:\n- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_send, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.\n- Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. This mode returns at most 200 envelopes by default to protect context; if capped or has_more is true, say it is a partial list and suggest narrowing the query.\n- Only treat total_count as exact when complete or exact is true.\n- Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result.\n- Use himalaya_email_archive only after Andrew explicitly confirms the exact envelope id and source folder. Set confirmed=true only after that confirmation.\n- Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.\n- Use himalaya_draft_reply only after Andrew explicitly confirms the exact envelope id and reply body. It saves a reply draft only; it does not send email.\n- Use drafts by default for email composition. Do not send email unless Andrew explicitly asks to send an emergency email.\n- For himalaya_email_send, first read the exact recipients, subject, and body aloud and ask, \"Is this an emergency email, and do you want me to send it now?\" Call the tool with previewed=true and confirmed=true only after Andrew says yes after that preview.\n- If Andrew asks to send ordinary non-emergency email, save a draft instead and say sending is restricted to emergency sends.\n- Only claim you sent email when himalaya_email_send returns ok=true and action=\"email_sent\".\n- Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.\n- Use github_cli_common for common read-only GitHub CLI actions such as repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.\n- These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.\n- Before slow searches or CLI calls, say a brief natural status phrase, then call the tool.",
           "llm": "gemini-3.5-flash",
           "reasoning_effort": "medium",
           "thinking_budget": null,
@@ -490,7 +538,8 @@
             "tool_2901kvfzj7z4fyntag8kx0p4tpjx",
             "tool_6601kvgky8n0e5s80t7cetgzfv40",
             "tool_1001kvjadvhfenpsgavqbevp6a02",
-            "tool_7301kvjadvp7e8jr280x9c3hwc95"
+            "tool_7301kvjadvp7e8jr280x9c3hwc95",
+            "tool_9201kvjx2ep3em1sp5j0xqcwq21v"
           ],
           "built_in_tools": {
             "end_call": null,
@@ -4281,7 +4330,7 @@
                     },
                     "action": {
                       "type": "string",
-                      "description": "Action performed, such as archived, draft_created, or reply_draft_created.",
+                      "description": "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
@@ -4331,7 +4380,27 @@
                     },
                     "to": {
                       "type": "string",
-                      "description": "Draft recipient when applicable.",
+                      "description": "Email recipient when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "cc": {
+                      "type": "string",
+                      "description": "Email CC recipients when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "bcc": {
+                      "type": "string",
+                      "description": "Email BCC recipients when applicable.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
@@ -4341,13 +4410,100 @@
                     },
                     "subject": {
                       "type": "string",
-                      "description": "Draft subject when applicable.",
+                      "description": "Email subject when applicable.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
                       "constant_value": "",
                       "is_omitted": false
+                    },
+                    "emergency": {
+                      "type": "boolean",
+                      "description": "Whether the write was requested as an emergency send.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "requires_preview": {
+                      "type": "boolean",
+                      "description": "Whether the tool requires a verbal preview first.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "requires_confirmation": {
+                      "type": "boolean",
+                      "description": "Whether the tool requires another confirmation.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "preview": {
+                      "type": "object",
+                      "required": [],
+                      "description": "Exact email preview that must be read before sending.",
+                      "properties": {
+                        "to": {
+                          "type": "string",
+                          "description": "Preview recipient.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "cc": {
+                          "type": "string",
+                          "description": "Preview CC recipients.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "bcc": {
+                          "type": "string",
+                          "description": "Preview BCC recipients.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "subject": {
+                          "type": "string",
+                          "description": "Preview subject.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "body": {
+                          "type": "string",
+                          "description": "Preview body.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        }
+                      }
                     }
                   }
                 },
@@ -4548,7 +4704,7 @@
                     },
                     "action": {
                       "type": "string",
-                      "description": "Action performed, such as archived, draft_created, or reply_draft_created.",
+                      "description": "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
@@ -4598,7 +4754,27 @@
                     },
                     "to": {
                       "type": "string",
-                      "description": "Draft recipient when applicable.",
+                      "description": "Email recipient when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "cc": {
+                      "type": "string",
+                      "description": "Email CC recipients when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "bcc": {
+                      "type": "string",
+                      "description": "Email BCC recipients when applicable.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
@@ -4608,13 +4784,100 @@
                     },
                     "subject": {
                       "type": "string",
-                      "description": "Draft subject when applicable.",
+                      "description": "Email subject when applicable.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
                       "constant_value": "",
                       "is_omitted": false
+                    },
+                    "emergency": {
+                      "type": "boolean",
+                      "description": "Whether the write was requested as an emergency send.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "requires_preview": {
+                      "type": "boolean",
+                      "description": "Whether the tool requires a verbal preview first.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "requires_confirmation": {
+                      "type": "boolean",
+                      "description": "Whether the tool requires another confirmation.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "preview": {
+                      "type": "object",
+                      "required": [],
+                      "description": "Exact email preview that must be read before sending.",
+                      "properties": {
+                        "to": {
+                          "type": "string",
+                          "description": "Preview recipient.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "cc": {
+                          "type": "string",
+                          "description": "Preview CC recipients.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "bcc": {
+                          "type": "string",
+                          "description": "Preview BCC recipients.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "subject": {
+                          "type": "string",
+                          "description": "Preview subject.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "body": {
+                          "type": "string",
+                          "description": "Preview body.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        }
+                      }
                     }
                   }
                 },
@@ -4804,7 +5067,7 @@
                     },
                     "action": {
                       "type": "string",
-                      "description": "Action performed, such as archived, draft_created, or reply_draft_created.",
+                      "description": "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
@@ -4854,7 +5117,27 @@
                     },
                     "to": {
                       "type": "string",
-                      "description": "Draft recipient when applicable.",
+                      "description": "Email recipient when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "cc": {
+                      "type": "string",
+                      "description": "Email CC recipients when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "bcc": {
+                      "type": "string",
+                      "description": "Email BCC recipients when applicable.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
@@ -4864,13 +5147,100 @@
                     },
                     "subject": {
                       "type": "string",
-                      "description": "Draft subject when applicable.",
+                      "description": "Email subject when applicable.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
                       "allowed_values_dynamic_variable": "",
                       "constant_value": "",
                       "is_omitted": false
+                    },
+                    "emergency": {
+                      "type": "boolean",
+                      "description": "Whether the write was requested as an emergency send.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "requires_preview": {
+                      "type": "boolean",
+                      "description": "Whether the tool requires a verbal preview first.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "requires_confirmation": {
+                      "type": "boolean",
+                      "description": "Whether the tool requires another confirmation.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "preview": {
+                      "type": "object",
+                      "required": [],
+                      "description": "Exact email preview that must be read before sending.",
+                      "properties": {
+                        "to": {
+                          "type": "string",
+                          "description": "Preview recipient.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "cc": {
+                          "type": "string",
+                          "description": "Preview CC recipients.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "bcc": {
+                          "type": "string",
+                          "description": "Preview BCC recipients.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "subject": {
+                          "type": "string",
+                          "description": "Preview subject.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "body": {
+                          "type": "string",
+                          "description": "Preview body.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        }
+                      }
                     }
                   }
                 },
@@ -5748,6 +6118,393 @@
                 "auth_resolved_params": [],
                 "auth_connection": null
               }
+            },
+            {
+              "type": "webhook",
+              "name": "himalaya_email_send",
+              "description": "Emergency-only Gmail/Himalaya email sender. Use only when Andrew explicitly asks to send an emergency email. Before this tool can send, the exact recipients, subject, and body must be previewed verbally, and Andrew must give an extra explicit confirmation.",
+              "response_timeout_secs": 45,
+              "disable_interruptions": false,
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": "typing",
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "dynamic_variables": {
+                "dynamic_variable_placeholders": {}
+              },
+              "execution_mode": "immediate",
+              "api_schema": {
+                "request_headers": {
+                  "Authorization": "[redacted]"
+                },
+                "url": "https://webhooks.aifurman.com/cli/himalaya/email-send",
+                "method": "POST",
+                "path_params_schema": {},
+                "query_params_schema": null,
+                "request_body_schema": {
+                  "type": "object",
+                  "required": [
+                    "to",
+                    "subject",
+                    "body",
+                    "emergency",
+                    "previewed",
+                    "confirmed"
+                  ],
+                  "description": "",
+                  "properties": {
+                    "to": {
+                      "type": "string",
+                      "description": "Recipient email address or comma-separated recipients. Must include explicit email addresses.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "cc": {
+                      "type": "string",
+                      "description": "Optional CC recipients.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "bcc": {
+                      "type": "string",
+                      "description": "Optional BCC recipients.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "subject": {
+                      "type": "string",
+                      "description": "Email subject. Must be previewed exactly before sending.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "body": {
+                      "type": "string",
+                      "description": "Email body. Must be previewed exactly before sending.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "emergency": {
+                      "type": "boolean",
+                      "description": "Must be true only when Andrew explicitly says this is an emergency send. Otherwise use draft tools.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "previewed": {
+                      "type": "boolean",
+                      "description": "Must be true only after the agent has verbally previewed the exact recipients, subject, and body to Andrew.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "confirmed": {
+                      "type": "boolean",
+                      "description": "Must be true only after Andrew gives a second explicit confirmation to send now after hearing the preview.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    }
+                  }
+                },
+                "response_body_schema": {
+                  "type": "object",
+                  "required": [],
+                  "description": "Himalaya emergency email send response.",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "description": "Whether the CLI command succeeded.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "Status code such as ok, cli_failed, cli_timeout, or cli_bridge_not_configured.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Error or status message.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "command": {
+                      "type": "string",
+                      "description": "CLI command family that ran.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "answer_text": {
+                      "type": "string",
+                      "description": "Compact spoken summary. Prefer this before using raw JSON.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "raw_json": {
+                      "type": "string",
+                      "description": "Raw CLI stdout, usually JSON. This may be truncated according to max_raw_bytes.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "raw_truncated": {
+                      "type": "boolean",
+                      "description": "Whether raw_json was truncated.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "stderr": {
+                      "type": "string",
+                      "description": "CLI stderr, if any.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "action": {
+                      "type": "string",
+                      "description": "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Himalaya envelope id when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "source_folder": {
+                      "type": "string",
+                      "description": "Source folder when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "target_folder": {
+                      "type": "string",
+                      "description": "Target folder when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "draft_folder": {
+                      "type": "string",
+                      "description": "Draft folder when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "to": {
+                      "type": "string",
+                      "description": "Email recipient when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "cc": {
+                      "type": "string",
+                      "description": "Email CC recipients when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "bcc": {
+                      "type": "string",
+                      "description": "Email BCC recipients when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "subject": {
+                      "type": "string",
+                      "description": "Email subject when applicable.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "emergency": {
+                      "type": "boolean",
+                      "description": "Whether the write was requested as an emergency send.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "requires_preview": {
+                      "type": "boolean",
+                      "description": "Whether the tool requires a verbal preview first.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "requires_confirmation": {
+                      "type": "boolean",
+                      "description": "Whether the tool requires another confirmation.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "preview": {
+                      "type": "object",
+                      "required": [],
+                      "description": "Exact email preview that must be read before sending.",
+                      "properties": {
+                        "to": {
+                          "type": "string",
+                          "description": "Preview recipient.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "cc": {
+                          "type": "string",
+                          "description": "Preview CC recipients.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "bcc": {
+                          "type": "string",
+                          "description": "Preview BCC recipients.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "subject": {
+                          "type": "string",
+                          "description": "Preview subject.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "body": {
+                          "type": "string",
+                          "description": "Preview body.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "content_type": "application/json",
+                "auth_resolved_params": [],
+                "auth_connection": null
+              }
             }
           ]
         }
@@ -5755,7 +6512,7 @@
     },
     "metadata": {
       "created_at_unix_secs": 1781809543,
-      "updated_at_unix_secs": 1781952607
+      "updated_at_unix_secs": 1781972157
     },
     "platform_settings": {
       "evaluation": {
@@ -6092,7 +6849,7 @@
       "phoneclaw",
       "personal-assistant"
     ],
-    "version_id": "agtvrsn_6301kvjadxrnesathxx63ba9y4yb",
+    "version_id": "agtvrsn_9301kvjx2hkefv5bbdqbrnjvqdzt",
     "branch_id": "agtbrch_2901kve1zy2de42vw26fw72reaac",
     "main_branch_id": "agtbrch_2901kve1zy2de42vw26fw72reaac",
     "procedures": {},
@@ -6579,8 +7336,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 122,
-        "avg_latency_secs": 0.53
+        "total_calls": 124,
+        "avg_latency_secs": 0.55
       },
       "response_mocks": null
     },
@@ -6925,7 +7682,7 @@
         }
       },
       "usage_stats": {
-        "total_calls": 34,
+        "total_calls": 35,
         "avg_latency_secs": 0.79
       },
       "response_mocks": null
@@ -7792,8 +8549,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 11,
-        "avg_latency_secs": 0.47
+        "total_calls": 12,
+        "avg_latency_secs": 0.46
       },
       "response_mocks": null
     },
@@ -8174,7 +8931,7 @@
         }
       },
       "usage_stats": {
-        "total_calls": 1,
+        "total_calls": 2,
         "avg_latency_secs": 0.6
       },
       "response_mocks": null
@@ -8559,8 +9316,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 25,
-        "avg_latency_secs": 1.37
+        "total_calls": 26,
+        "avg_latency_secs": 1.35
       },
       "response_mocks": null
     },
@@ -8732,8 +9489,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 8,
-        "avg_latency_secs": 1.08
+        "total_calls": 9,
+        "avg_latency_secs": 1.33
       },
       "response_mocks": null
     },
@@ -9773,8 +10530,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 8,
-        "avg_latency_secs": 0.59
+        "total_calls": 9,
+        "avg_latency_secs": 0.58
       },
       "response_mocks": null
     },
@@ -9941,7 +10698,7 @@
               },
               "action": {
                 "type": "string",
-                "description": "Action performed, such as archived, draft_created, or reply_draft_created.",
+                "description": "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
@@ -9991,7 +10748,27 @@
               },
               "to": {
                 "type": "string",
-                "description": "Draft recipient when applicable.",
+                "description": "Email recipient when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "cc": {
+                "type": "string",
+                "description": "Email CC recipients when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "bcc": {
+                "type": "string",
+                "description": "Email BCC recipients when applicable.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
@@ -10001,13 +10778,100 @@
               },
               "subject": {
                 "type": "string",
-                "description": "Draft subject when applicable.",
+                "description": "Email subject when applicable.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
                 "constant_value": "",
                 "is_omitted": false
+              },
+              "emergency": {
+                "type": "boolean",
+                "description": "Whether the write was requested as an emergency send.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "requires_preview": {
+                "type": "boolean",
+                "description": "Whether the tool requires a verbal preview first.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "requires_confirmation": {
+                "type": "boolean",
+                "description": "Whether the tool requires another confirmation.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "preview": {
+                "type": "object",
+                "required": [],
+                "description": "Exact email preview that must be read before sending.",
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "description": "Preview recipient.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "cc": {
+                    "type": "string",
+                    "description": "Preview CC recipients.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "bcc": {
+                    "type": "string",
+                    "description": "Preview BCC recipients.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "subject": {
+                    "type": "string",
+                    "description": "Preview subject.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Preview body.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  }
+                }
               }
             }
           },
@@ -10216,7 +11080,7 @@
               },
               "action": {
                 "type": "string",
-                "description": "Action performed, such as archived, draft_created, or reply_draft_created.",
+                "description": "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
@@ -10266,7 +11130,27 @@
               },
               "to": {
                 "type": "string",
-                "description": "Draft recipient when applicable.",
+                "description": "Email recipient when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "cc": {
+                "type": "string",
+                "description": "Email CC recipients when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "bcc": {
+                "type": "string",
+                "description": "Email BCC recipients when applicable.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
@@ -10276,13 +11160,100 @@
               },
               "subject": {
                 "type": "string",
-                "description": "Draft subject when applicable.",
+                "description": "Email subject when applicable.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
                 "constant_value": "",
                 "is_omitted": false
+              },
+              "emergency": {
+                "type": "boolean",
+                "description": "Whether the write was requested as an emergency send.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "requires_preview": {
+                "type": "boolean",
+                "description": "Whether the tool requires a verbal preview first.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "requires_confirmation": {
+                "type": "boolean",
+                "description": "Whether the tool requires another confirmation.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "preview": {
+                "type": "object",
+                "required": [],
+                "description": "Exact email preview that must be read before sending.",
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "description": "Preview recipient.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "cc": {
+                    "type": "string",
+                    "description": "Preview CC recipients.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "bcc": {
+                    "type": "string",
+                    "description": "Preview BCC recipients.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "subject": {
+                    "type": "string",
+                    "description": "Preview subject.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Preview body.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  }
+                }
               }
             }
           },
@@ -10480,7 +11451,7 @@
               },
               "action": {
                 "type": "string",
-                "description": "Action performed, such as archived, draft_created, or reply_draft_created.",
+                "description": "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
@@ -10530,7 +11501,27 @@
               },
               "to": {
                 "type": "string",
-                "description": "Draft recipient when applicable.",
+                "description": "Email recipient when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "cc": {
+                "type": "string",
+                "description": "Email CC recipients when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "bcc": {
+                "type": "string",
+                "description": "Email BCC recipients when applicable.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
@@ -10540,13 +11531,100 @@
               },
               "subject": {
                 "type": "string",
-                "description": "Draft subject when applicable.",
+                "description": "Email subject when applicable.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
                 "allowed_values_dynamic_variable": "",
                 "constant_value": "",
                 "is_omitted": false
+              },
+              "emergency": {
+                "type": "boolean",
+                "description": "Whether the write was requested as an emergency send.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "requires_preview": {
+                "type": "boolean",
+                "description": "Whether the tool requires a verbal preview first.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "requires_confirmation": {
+                "type": "boolean",
+                "description": "Whether the tool requires another confirmation.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "preview": {
+                "type": "object",
+                "required": [],
+                "description": "Exact email preview that must be read before sending.",
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "description": "Preview recipient.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "cc": {
+                    "type": "string",
+                    "description": "Preview CC recipients.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "bcc": {
+                    "type": "string",
+                    "description": "Preview BCC recipients.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "subject": {
+                    "type": "string",
+                    "description": "Preview subject.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Preview body.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  }
+                }
               }
             }
           },
@@ -11438,6 +12516,401 @@
                     },
                     "dynamic_variable": "",
                     "constant_value": null,
+                    "is_omitted": false
+                  }
+                }
+              }
+            }
+          },
+          "content_type": "application/json",
+          "auth_resolved_params": [],
+          "auth_connection": null
+        }
+      },
+      "usage_stats": {
+        "total_calls": 0,
+        "avg_latency_secs": 0
+      },
+      "response_mocks": null
+    },
+    {
+      "id": "tool_9201kvjx2ep3em1sp5j0xqcwq21v",
+      "tool_config": {
+        "type": "webhook",
+        "name": "himalaya_email_send",
+        "description": "Emergency-only Gmail/Himalaya email sender. Use only when Andrew explicitly asks to send an emergency email. Before this tool can send, the exact recipients, subject, and body must be previewed verbally, and Andrew must give an extra explicit confirmation.",
+        "response_timeout_secs": 45,
+        "disable_interruptions": false,
+        "force_pre_tool_speech": false,
+        "pre_tool_speech": "auto",
+        "assignments": [],
+        "tool_call_sound": "typing",
+        "tool_call_sound_behavior": "auto",
+        "tool_error_handling_mode": "auto",
+        "dynamic_variables": {
+          "dynamic_variable_placeholders": {}
+        },
+        "execution_mode": "immediate",
+        "api_schema": {
+          "request_headers": {
+            "Authorization": "[redacted]"
+          },
+          "url": "https://webhooks.aifurman.com/cli/himalaya/email-send",
+          "method": "POST",
+          "path_params_schema": {},
+          "query_params_schema": null,
+          "request_body_schema": {
+            "type": "object",
+            "required": [
+              "to",
+              "subject",
+              "body",
+              "emergency",
+              "previewed",
+              "confirmed"
+            ],
+            "description": "",
+            "properties": {
+              "to": {
+                "type": "string",
+                "description": "Recipient email address or comma-separated recipients. Must include explicit email addresses.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "cc": {
+                "type": "string",
+                "description": "Optional CC recipients.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "bcc": {
+                "type": "string",
+                "description": "Optional BCC recipients.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "subject": {
+                "type": "string",
+                "description": "Email subject. Must be previewed exactly before sending.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "body": {
+                "type": "string",
+                "description": "Email body. Must be previewed exactly before sending.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "emergency": {
+                "type": "boolean",
+                "description": "Must be true only when Andrew explicitly says this is an emergency send. Otherwise use draft tools.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "previewed": {
+                "type": "boolean",
+                "description": "Must be true only after the agent has verbally previewed the exact recipients, subject, and body to Andrew.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "confirmed": {
+                "type": "boolean",
+                "description": "Must be true only after Andrew gives a second explicit confirmation to send now after hearing the preview.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              }
+            }
+          },
+          "response_body_schema": {
+            "type": "object",
+            "required": [],
+            "description": "Himalaya emergency email send response.",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "description": "Whether the CLI command succeeded.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "status": {
+                "type": "string",
+                "description": "Status code such as ok, cli_failed, cli_timeout, or cli_bridge_not_configured.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "message": {
+                "type": "string",
+                "description": "Error or status message.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "command": {
+                "type": "string",
+                "description": "CLI command family that ran.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "answer_text": {
+                "type": "string",
+                "description": "Compact spoken summary. Prefer this before using raw JSON.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "raw_json": {
+                "type": "string",
+                "description": "Raw CLI stdout, usually JSON. This may be truncated according to max_raw_bytes.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "raw_truncated": {
+                "type": "boolean",
+                "description": "Whether raw_json was truncated.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "stderr": {
+                "type": "string",
+                "description": "CLI stderr, if any.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "action": {
+                "type": "string",
+                "description": "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "id": {
+                "type": "string",
+                "description": "Himalaya envelope id when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "source_folder": {
+                "type": "string",
+                "description": "Source folder when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "target_folder": {
+                "type": "string",
+                "description": "Target folder when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "draft_folder": {
+                "type": "string",
+                "description": "Draft folder when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "to": {
+                "type": "string",
+                "description": "Email recipient when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "cc": {
+                "type": "string",
+                "description": "Email CC recipients when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "bcc": {
+                "type": "string",
+                "description": "Email BCC recipients when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "subject": {
+                "type": "string",
+                "description": "Email subject when applicable.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "emergency": {
+                "type": "boolean",
+                "description": "Whether the write was requested as an emergency send.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "requires_preview": {
+                "type": "boolean",
+                "description": "Whether the tool requires a verbal preview first.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "requires_confirmation": {
+                "type": "boolean",
+                "description": "Whether the tool requires another confirmation.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "preview": {
+                "type": "object",
+                "required": [],
+                "description": "Exact email preview that must be read before sending.",
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "description": "Preview recipient.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "cc": {
+                    "type": "string",
+                    "description": "Preview CC recipients.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "bcc": {
+                    "type": "string",
+                    "description": "Preview BCC recipients.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "subject": {
+                    "type": "string",
+                    "description": "Preview subject.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "body": {
+                    "type": "string",
+                    "description": "Preview body.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
                     "is_omitted": false
                   }
                 }

@@ -31,7 +31,7 @@ This project intentionally keeps provider configuration explicit because the voi
 | Yahoo Finance public chart API | Market-history enrichment for WTI crude high/low/range questions. | No secret required. Used as a compact fallback to avoid relying only on generic search snippets. |
 | ESPN public scoreboard endpoint | Prototype sports enrichment for FIFA World Cup schedule/score queries. | No secret required. Treat as a convenience endpoint, not a committed long-term sports-data contract. |
 | Neon | Optional Postgres archive for Phoneclaw conversation memory. Stores transcript JSON, summaries, keywords, and tool-call logs. | `CONVERSATION_DATABASE_URL` on the bridge. `NEON_API_KEY` is used only by the setup script and should not be committed. |
-| Gmail | Email account accessed through the private CLI bridge for listing, reading previews, archiving, and saving drafts. The agent cannot send email. | Authenticated locally on the bridge host through Himalaya CLI config; no Gmail credentials are committed. |
+| Gmail | Email account accessed through the private CLI bridge for listing, reading previews, archiving, saving drafts, and emergency-only confirmed sends. | Authenticated locally on the bridge host through Himalaya CLI config; no Gmail credentials are committed. |
 | Himalaya CLI | Local email CLI used by the private bridge to access Gmail. | `HIMALAYA_BIN`, `HIMALAYA_ARCHIVE_FOLDER`, and `HIMALAYA_DRAFTS_FOLDER` in bridge env. |
 | Otter.ai | Transcript source for listing, fetching raw transcript JSON, and transcript search. | Authenticated on the bridge host through Otter CLI config; no Otter credentials are committed. |
 | Otter CLI | Local CLI used by the private bridge to access Otter transcripts. | `OTTER_BIN` in bridge env. |
@@ -129,13 +129,13 @@ The hosted Worker uses `GITHUB_READ_TOKEN` for reads and `GITHUB_WRITE_TOKEN` fo
 The ElevenLabs agent also has focused wrappers for local CLIs:
 
 - `himalaya_email_list` and `himalaya_email_read`
-- `himalaya_email_archive`, `himalaya_draft_create`, and `himalaya_draft_reply`
+- `himalaya_email_archive`, `himalaya_draft_create`, `himalaya_draft_reply`, and `himalaya_email_send`
 - `otter_speeches_list`, `otter_speech_get`, and `otter_speech_search`
 - `github_cli_common`
 - `conversation_history_search` and `conversation_history_get`
 - `claude_code`
 
-Email write tools require explicit confirmation. They can archive email and save drafts; they cannot send email.
+Email write tools require explicit confirmation. They can archive email and save drafts by default. `himalaya_email_send` is a separate emergency-only send tool that requires an exact verbal preview and a second explicit confirmation before sending.
 
 `himalaya_email_list` is paginated by default and returns compact envelope metadata only: id, subject, sender, recipients, date, flags, and attachment presence. Use `all_pages=true` on the same tool for complete folder lists and total-count questions such as "how many emails are in my inbox?" All-pages mode returns at most 200 envelopes by default and reports `has_more`, `complete`, and `capped` so the agent does not dump an entire mailbox into context.
 
@@ -150,6 +150,7 @@ Conversation memory is optional and activates when the bridge has `CONVERSATION_
 - `npm run neon:setup` creates or reuses a Neon project when `NEON_API_KEY` is present in the shell.
 - `npm run conversations:archive` backfills recent ElevenLabs conversations into Postgres.
 - The Worker asks the bridge for recent conversation summaries at the start of each call and passes them to ElevenLabs as `recent_conversation_context`.
+- The Worker best-effort triggers an archive job when Twilio reports a terminal call status, and the EC2 bridge can run `deploy/phoneclaw-conversation-archive.timer` as a five-minute retry backstop.
 - `conversation_history_search` returns compact summaries and keywords.
 - `conversation_history_get` retrieves the full archived transcript, tool calls, and tool results for a specific conversation id.
 

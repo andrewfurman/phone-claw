@@ -76,6 +76,7 @@ export default {
           himalaya_email_archive: "POST /cli/himalaya/email-archive",
           himalaya_draft_create: "POST /cli/himalaya/draft-create",
           himalaya_draft_reply: "POST /cli/himalaya/draft-reply",
+          himalaya_email_send: "POST /cli/himalaya/email-send",
           otter_speeches_list: "POST /cli/otter/speeches-list",
           otter_speech_get: "POST /cli/otter/speech-get",
           otter_speech_search: "POST /cli/otter/speech-search",
@@ -162,6 +163,7 @@ export default {
         "/cli/himalaya/email-archive",
         "/cli/himalaya/draft-create",
         "/cli/himalaya/draft-reply",
+        "/cli/himalaya/email-send",
         "/cli/otter/speeches-list",
         "/cli/otter/speech-get",
         "/cli/otter/speech-search",
@@ -297,10 +299,15 @@ async function handleTwilioStatusCallback(request, env, ctx, source) {
 
   console.log(JSON.stringify({ event: "twilio_status_callback", ...summarizeTwilioEvent(event) }));
 
+  const backgroundTasks = [recordTwilioEvent(env, event)];
+  if (shouldArchiveAfterTwilioEvent(env, event)) {
+    backgroundTasks.push(triggerConversationArchive(env, event));
+  }
+
   if (ctx?.waitUntil) {
-    ctx.waitUntil(recordTwilioEvent(env, event));
+    ctx.waitUntil(Promise.allSettled(backgroundTasks));
   } else {
-    await recordTwilioEvent(env, event);
+    await Promise.allSettled(backgroundTasks);
   }
 
   return json({ ok: true });
@@ -627,6 +634,58 @@ async function loadRecentConversationContext(env) {
     return body.ok && body.context_text ? String(body.context_text).slice(0, 6_000) : "";
   } catch {
     return "";
+  }
+}
+
+function shouldArchiveAfterTwilioEvent(env, event) {
+  if (String(env.AUTO_ARCHIVE_CONVERSATIONS_ON_CALL_END || "true").toLowerCase() === "false") {
+    return false;
+  }
+  if (!env.CLI_BRIDGE_URL || !env.CLI_BRIDGE_TOKEN) return false;
+  if (event.source !== "twilio_call_status") return false;
+
+  const status = String(event.call_status || event.event_type || "").toLowerCase();
+  return ["completed", "canceled", "busy", "failed", "no-answer"].includes(status);
+}
+
+async function triggerConversationArchive(env, event) {
+  try {
+    const baseUrl = env.CLI_BRIDGE_URL.endsWith("/")
+      ? env.CLI_BRIDGE_URL
+      : `${env.CLI_BRIDGE_URL}/`;
+    const upstreamUrl = new URL("conversation-history/archive-elevenlabs", baseUrl);
+    const limit = clampInteger(env.AUTO_ARCHIVE_CONVERSATION_LIMIT, 1, 20, 5);
+    const response = await fetchWithTimeout(upstreamUrl.toString(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${env.CLI_BRIDGE_TOKEN}`,
+      },
+      body: JSON.stringify({
+        latest: true,
+        limit,
+        source: "twilio_call_status",
+        twilio_call_sid: event.call_sid || "",
+      }),
+    }, 9_000);
+    const body = await response.json().catch(() => ({}));
+    console.log(
+      JSON.stringify({
+        event: "conversation_archive_triggered",
+        ok: response.ok && body.ok !== false,
+        status: body.status || response.status,
+        call_sid: event.call_sid || "",
+        archived_count: body.archived_count ?? null,
+      })
+    );
+  } catch (error) {
+    console.log(
+      JSON.stringify({
+        event: "conversation_archive_failed",
+        call_sid: event.call_sid || "",
+        message: error?.message || String(error),
+      })
+    );
   }
 }
 

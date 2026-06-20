@@ -42,7 +42,7 @@ The local app mirrors the Worker endpoints, including:
 - `POST /cli/claude-code`
 - `POST /agent-command`
 
-The `/cli/*` endpoints execute focused local CLI wrappers and should run on a private bridge host in production. Email write endpoints and Claude Code task submission are confirmation-gated. Email tools cannot send email. See `docs/CLI_BRIDGE_SECURITY.md`.
+The `/cli/*` endpoints execute focused local CLI wrappers and should run on a private bridge host in production. Email write endpoints and Claude Code task submission are confirmation-gated. Email sends are isolated in the emergency-only `himalaya_email_send` tool, which requires preview plus second confirmation. See `docs/CLI_BRIDGE_SECURITY.md`.
 
 ## Expose Locally
 

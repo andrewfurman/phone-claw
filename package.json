@@ -18,6 +18,7 @@
     "elevenlabs:github:files:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-github-files.mjs",
     "elevenlabs:github:audio:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-github-audio.mjs",
     "elevenlabs:email:audio:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-email-audio.mjs",
+    "elevenlabs:logging:audio:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-logging-audio.mjs",
     "neon:setup": "node --env-file-if-exists=.env scripts/setup-neon-conversation-db.mjs",
     "conversations:archive": "node --env-file-if-exists=.env scripts/archive-elevenlabs-conversations.mjs",
     "worker:check": "node --check cloudflare-worker/twilio-elevenlabs-worker.mjs",

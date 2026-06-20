@@ -27,6 +27,7 @@ const configs = [
   himalayaEmailArchiveToolConfig(),
   himalayaDraftCreateToolConfig(),
   himalayaDraftReplyToolConfig(),
+  himalayaEmailSendToolConfig(),
   otterSpeechesListToolConfig(),
   otterSpeechGetToolConfig(),
   otterSpeechSearchToolConfig(),
@@ -74,7 +75,7 @@ const updatedAgent = await requestJson(`${apiBase}/v1/convai/agents/${agentId}`,
   body: JSON.stringify({
     conversation_config: conversationConfig,
     version_description:
-      "Add conversation memory tools, Otter speaker search, WTI history, and Claude Code bypass mode",
+      "Add automatic conversation logging guidance and emergency-only email sending",
   }),
 });
 
@@ -689,6 +690,44 @@ function himalayaDraftReplyToolConfig() {
   });
 }
 
+function himalayaEmailSendToolConfig() {
+  return webhookTool({
+    name: "himalaya_email_send",
+    description:
+      "Emergency-only Gmail/Himalaya email sender. Use only when Andrew explicitly asks to send an emergency email. Before this tool can send, the exact recipients, subject, and body must be previewed verbally, and Andrew must give an extra explicit confirmation.",
+    url: `${workerBaseUrl}/cli/himalaya/email-send`,
+    required: ["to", "subject", "body", "emergency", "previewed", "confirmed"],
+    responseTimeoutSecs: 45,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      to: stringProperty({
+        description:
+          "Recipient email address or comma-separated recipients. Must include explicit email addresses.",
+      }),
+      cc: stringProperty({ description: "Optional CC recipients." }),
+      bcc: stringProperty({ description: "Optional BCC recipients." }),
+      subject: stringProperty({
+        description: "Email subject. Must be previewed exactly before sending.",
+      }),
+      body: stringProperty({
+        description: "Email body. Must be previewed exactly before sending.",
+      }),
+      emergency: booleanProperty(
+        "Must be true only when Andrew explicitly says this is an emergency send. Otherwise use draft tools."
+      ),
+      previewed: booleanProperty(
+        "Must be true only after the agent has verbally previewed the exact recipients, subject, and body to Andrew."
+      ),
+      confirmed: booleanProperty(
+        "Must be true only after Andrew gives a second explicit confirmation to send now after hearing the preview."
+      ),
+    },
+    responseDescription: "Himalaya emergency email send response.",
+    responseProperties: emailWriteResponseProperties(),
+  });
+}
+
 function otterSpeechesListToolConfig() {
   return webhookTool({
     name: "otter_speeches_list",
@@ -1133,14 +1172,30 @@ function emailWriteResponseProperties() {
   return {
     ...cliResponseProperties(),
     action: stringProperty({
-      description: "Action performed, such as archived, draft_created, or reply_draft_created.",
+      description:
+        "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
     }),
     id: stringProperty({ description: "Himalaya envelope id when applicable." }),
     source_folder: stringProperty({ description: "Source folder when applicable." }),
     target_folder: stringProperty({ description: "Target folder when applicable." }),
     draft_folder: stringProperty({ description: "Draft folder when applicable." }),
-    to: stringProperty({ description: "Draft recipient when applicable." }),
-    subject: stringProperty({ description: "Draft subject when applicable." }),
+    to: stringProperty({ description: "Email recipient when applicable." }),
+    cc: stringProperty({ description: "Email CC recipients when applicable." }),
+    bcc: stringProperty({ description: "Email BCC recipients when applicable." }),
+    subject: stringProperty({ description: "Email subject when applicable." }),
+    emergency: booleanProperty("Whether the write was requested as an emergency send."),
+    requires_preview: booleanProperty("Whether the tool requires a verbal preview first."),
+    requires_confirmation: booleanProperty("Whether the tool requires another confirmation."),
+    preview: objectProperty({
+      description: "Exact email preview that must be read before sending.",
+      properties: {
+        to: stringProperty({ description: "Preview recipient." }),
+        cc: stringProperty({ description: "Preview CC recipients." }),
+        bcc: stringProperty({ description: "Preview BCC recipients." }),
+        subject: stringProperty({ description: "Preview subject." }),
+        body: stringProperty({ description: "Preview body." }),
+      },
+    }),
   };
 }
 
@@ -1342,14 +1397,17 @@ Claude Code capability:
 - Do not ask Claude Code to push commits, deploy, rotate secrets, or perform destructive operations unless Andrew explicitly requested that exact action.
 
 CLI capability:
-- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.
+- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_send, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.
 - Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. This mode returns at most 200 envelopes by default to protect context; if capped or has_more is true, say it is a partial list and suggest narrowing the query.
 - Only treat total_count as exact when complete or exact is true.
 - Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result.
 - Use himalaya_email_archive only after Andrew explicitly confirms the exact envelope id and source folder. Set confirmed=true only after that confirmation.
 - Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.
 - Use himalaya_draft_reply only after Andrew explicitly confirms the exact envelope id and reply body. It saves a reply draft only; it does not send email.
-- Do not claim you sent email. The email write tools can archive and save drafts only.
+- Use drafts by default for email composition. Do not send email unless Andrew explicitly asks to send an emergency email.
+- For himalaya_email_send, first read the exact recipients, subject, and body aloud and ask, "Is this an emergency email, and do you want me to send it now?" Call the tool with previewed=true and confirmed=true only after Andrew says yes after that preview.
+- If Andrew asks to send ordinary non-emergency email, save a draft instead and say sending is restricted to emergency sends.
+- Only claim you sent email when himalaya_email_send returns ok=true and action="email_sent".
 - Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.
 - Use github_cli_common for common read-only GitHub CLI actions such as repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.
 - These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.
