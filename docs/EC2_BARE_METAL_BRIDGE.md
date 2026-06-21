@@ -48,6 +48,7 @@ Do not commit any of these:
 - `GH_TOKEN`.
 - Himalaya config.
 - Otter config.
+- Miniflux API token for private RSS/article access.
 - Claude Code auth files or Anthropic API keys.
 
 Runtime secrets live on the host:
@@ -130,6 +131,28 @@ AWS_PROFILE=phoneclaw-personal
 The `claude_code` voice tool is intentionally explicit. It can check auth, create a session id, submit a confirmed async job, and poll job status. It should not be used as the default path for ordinary questions.
 
 Run-mode jobs use Claude Code `bypassPermissions` plus `--dangerously-skip-permissions` when `CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true`, so they do not stall on permission prompts.
+
+## Miniflux RSS
+
+The live bridge can run Miniflux privately on `127.0.0.1:8080` with PostgreSQL. Store the API token in `/etc/phoneclaw/bridge.env`:
+
+```bash
+MINIFLUX_BASE_URL=http://127.0.0.1:8080
+MINIFLUX_API_TOKEN=<miniflux-api-token>
+MINIFLUX_ECONOMIST_CATEGORY_TITLE=Economist
+```
+
+After Miniflux is running, bootstrap Economist feeds:
+
+```bash
+cd /opt/phoneclaw
+npm run miniflux:economist:setup
+sudo systemctl restart phoneclaw-bridge
+```
+
+Do not store publisher account passwords in the repo or bridge env. If a publisher requires login for full text, prefer Miniflux feed cookies or a separate locked-down browser-cookie fetcher over raw account credentials.
+
+For The Economist specifically, list/search works from section RSS feeds, but Miniflux original-content fetches can be rejected by the site's Cloudflare challenge. Treat `access_note` on `rss_get_economist_article_text` as authoritative: when it says the returned text is only an excerpt, the bridge needs a separate authenticated fetch path before it can provide subscriber full text.
 
 ## Conversation Memory
 

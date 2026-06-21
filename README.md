@@ -31,6 +31,7 @@ This project intentionally keeps provider configuration explicit because the voi
 | Yahoo Finance public chart API | Market-history enrichment for WTI crude high/low/range questions. | No secret required. Used as a compact fallback to avoid relying only on generic search snippets. |
 | ESPN public scoreboard endpoint | Prototype sports enrichment for FIFA World Cup schedule/score queries. | No secret required. Treat as a convenience endpoint, not a committed long-term sports-data contract. |
 | Neon | Optional Postgres archive for Phoneclaw conversation memory. Stores transcript JSON, summaries, keywords, and tool-call logs. | `CONVERSATION_DATABASE_URL` on the bridge. `NEON_API_KEY` is used only by the setup script and should not be committed. |
+| Miniflux | Private RSS/article backend for Economist feed listings, keyword/date search, and original-content fetch attempts. | Runs on EC2 bound to localhost. Phoneclaw uses `MINIFLUX_BASE_URL` and `MINIFLUX_API_TOKEN` in bridge env. |
 | Gmail | Email account accessed through the private CLI bridge for listing, reading previews, archiving, saving drafts, and emergency-only confirmed sends. | Authenticated locally on the bridge host through Himalaya CLI config; no Gmail credentials are committed. |
 | Himalaya CLI | Local email CLI used by the private bridge to access Gmail. | `HIMALAYA_BIN`, `HIMALAYA_ARCHIVE_FOLDER`, and `HIMALAYA_DRAFTS_FOLDER` in bridge env. |
 | Otter.ai | Transcript source for listing, fetching raw transcript JSON, and transcript search. | Authenticated on the bridge host through Otter CLI config; no Otter credentials are committed. |
@@ -132,6 +133,7 @@ The ElevenLabs agent also has focused wrappers for local CLIs:
 - `himalaya_email_archive`, `himalaya_draft_create`, `himalaya_draft_reply`, and `himalaya_email_send`
 - `otter_speeches_list`, `otter_speech_get`, and `otter_speech_search`
 - `github_cli_common`
+- `rss_recent_economist_entries`, `rss_search_economist_entries`, and `rss_get_economist_article_text`
 - `conversation_history_search` and `conversation_history_get`
 - `claude_code`
 
@@ -140,6 +142,10 @@ Email write tools require explicit confirmation. They can archive email and save
 `himalaya_email_list` is paginated by default and returns compact envelope metadata only: id, subject, sender, recipients, date, flags, and attachment presence. Use `all_pages=true` on the same tool for complete folder lists and total-count questions such as "how many emails are in my inbox?" All-pages mode returns at most 200 envelopes by default and reports `has_more`, `complete`, and `capped` so the agent does not dump an entire mailbox into context.
 
 `claude_code` is intentionally not a default reasoning path. It supports `auth_status`, `start_session`, `submit_task`, and `job_status`; task submission is confirmation-gated and runs asynchronously on the private EC2 bridge.
+
+`rss_*` tools are backed by Miniflux on the private EC2 bridge. `scripts/setup-miniflux-economist-feeds.mjs` creates an `Economist` category, subscribes to common Economist section feeds, enables Miniflux original-content fetching for those feeds, and triggers a refresh. The article text tool returns cleaned text from Miniflux and includes an `access_note` when the result appears to be only an excerpt or needs authenticated Economist access. Use `npm run elevenlabs:rss:conversation:test` to run an automated ElevenLabs smoke test for recent-list, keyword/date search, and article-text tool calls.
+
+The Economist's public RSS feeds generally provide headlines and excerpts. Current original-article fetches may be blocked by the publisher's Cloudflare challenge, so true subscriber full text needs a separate authenticated path, such as a locked-down browser-cookie fetcher or an approved private feed/cookie setup.
 
 On the EC2 bridge, run-mode Claude Code jobs may be configured with `CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true`. That starts confirmed run jobs with Claude Code `bypassPermissions` plus `--dangerously-skip-permissions`, so jobs do not hang on permission prompts. This setting should be paired with a locked-down bridge: localhost-only Fastify, Cloudflare Tunnel, bearer-token tool auth, restricted SSH, and no public bridge port.
 

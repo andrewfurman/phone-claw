@@ -32,6 +32,10 @@ const configs = [
   otterSpeechGetToolConfig(),
   otterSpeechSearchToolConfig(),
   githubCliCommonToolConfig(),
+  rssRecentEconomistEntriesToolConfig(),
+  rssSearchEconomistEntriesToolConfig(),
+  rssGetEconomistArticleTextToolConfig(),
+  rssRefreshEconomistFeedsToolConfig(),
   conversationHistorySearchToolConfig(),
   conversationHistoryGetToolConfig(),
   claudeCodeToolConfig(),
@@ -75,7 +79,7 @@ const updatedAgent = await requestJson(`${apiBase}/v1/convai/agents/${agentId}`,
   body: JSON.stringify({
     conversation_config: conversationConfig,
     version_description:
-      "Add automatic conversation logging guidance and emergency-only email sending",
+      "Add Economist RSS tools backed by Miniflux",
   }),
 });
 
@@ -894,6 +898,150 @@ function githubCliCommonToolConfig() {
   });
 }
 
+function rssRecentEconomistEntriesToolConfig() {
+  return webhookTool({
+    name: "rss_recent_economist_entries",
+    description:
+      "List recent Economist articles from the Miniflux RSS backend. Use when Andrew asks for recent Economist articles, latest Economist news, or updated Economist stories.",
+    url: `${workerBaseUrl}/cli/rss/economist/recent`,
+    required: [],
+    responseTimeoutSecs: 20,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      limit: integerProperty({
+        description: "Maximum articles to return. Use 5 by default for phone answers.",
+      }),
+      status: stringProperty({
+        description:
+          "Read status filter. Use all by default unless Andrew specifically asks for unread or read.",
+        values: ["all", "unread", "read"],
+      }),
+    },
+    responseDescription: "Recent Economist RSS entries.",
+    responseProperties: rssEntriesResponseProperties(),
+  });
+}
+
+function rssSearchEconomistEntriesToolConfig() {
+  return webhookTool({
+    name: "rss_search_economist_entries",
+    description:
+      "Search Economist articles from the Miniflux RSS backend by keyword and optional published date range.",
+    url: `${workerBaseUrl}/cli/rss/economist/search`,
+    required: ["query"],
+    responseTimeoutSecs: 20,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      query: stringProperty({
+        description: "Search query or keywords, for example AI, oil, China, tariffs.",
+      }),
+      start_date: stringProperty({
+        description: "Optional inclusive published-after date or timestamp.",
+      }),
+      end_date: stringProperty({
+        description: "Optional inclusive published-before date or timestamp.",
+      }),
+      limit: integerProperty({
+        description: "Maximum articles to return. Use 5 by default for phone answers.",
+      }),
+      status: stringProperty({
+        description:
+          "Read status filter. Use all by default unless Andrew specifically asks for unread or read.",
+        values: ["all", "unread", "read"],
+      }),
+    },
+    responseDescription: "Economist RSS search results.",
+    responseProperties: rssEntriesResponseProperties(),
+  });
+}
+
+function rssGetEconomistArticleTextToolConfig() {
+  return webhookTool({
+    name: "rss_get_economist_article_text",
+    description:
+      "Fetch readable full text for a specific Economist article entry id returned by rss_recent_economist_entries or rss_search_economist_entries. Uses Miniflux's original-content fetcher when requested.",
+    url: `${workerBaseUrl}/cli/rss/economist/article-text`,
+    required: ["entry_id"],
+    responseTimeoutSecs: 45,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      entry_id: integerProperty({
+        description: "Miniflux entry id from a recent/search result.",
+      }),
+      fetch_original: booleanProperty(
+        "Set true by default to ask Miniflux to fetch the original article content."
+      ),
+      update_content: booleanProperty(
+        "Set true by default so Miniflux caches the fetched original content."
+      ),
+      max_text_chars: integerProperty({
+        description:
+          "Maximum article text characters to return. Use 30000 by default; lower for short phone summaries.",
+      }),
+    },
+    responseDescription: "Economist article text.",
+    responseProperties: {
+      ok: booleanProperty("Whether article text retrieval succeeded."),
+      status: stringProperty({ description: "Status code." }),
+      provider: stringProperty({ description: "RSS backend provider." }),
+      source: stringProperty({ description: "Article source." }),
+      entry_id: integerProperty({ description: "Miniflux entry id." }),
+      content_source: stringProperty({ description: "stored_entry_content or original_article_fetch." }),
+      original_fetch_status: stringProperty({ description: "Status of original-content fetch." }),
+      original_fetch_message: stringProperty({
+        description: "Error message when original-content fetch failed.",
+      }),
+      full_text_chars: integerProperty({ description: "Full extracted text length." }),
+      returned_text_chars: integerProperty({ description: "Returned text length." }),
+      full_text_truncated: booleanProperty("Whether full_text was truncated."),
+      full_text: stringProperty({
+        description:
+          "Readable article text. Summarize by voice; do not read the entire article unless Andrew asks.",
+      }),
+      access_note: stringProperty({
+        description:
+          "Note when the returned text appears to be an excerpt or needs authenticated access.",
+      }),
+      answer_text: stringProperty({
+        description: "Compact spoken summary. Prefer this before using full_text.",
+      }),
+      entry: objectProperty({
+        description: "Article metadata.",
+        properties: rssEntryProperties(),
+      }),
+    },
+  });
+}
+
+function rssRefreshEconomistFeedsToolConfig() {
+  return webhookTool({
+    name: "rss_refresh_economist_feeds",
+    description:
+      "Refresh the Economist feed category in Miniflux. Use before listing recent articles when Andrew asks for the latest possible results.",
+    url: `${workerBaseUrl}/cli/rss/economist/refresh`,
+    required: [],
+    responseTimeoutSecs: 20,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {},
+    responseDescription: "Economist RSS refresh response.",
+    responseProperties: {
+      ok: booleanProperty("Whether refresh was started."),
+      status: stringProperty({ description: "Status code." }),
+      provider: stringProperty({ description: "RSS backend provider." }),
+      source: stringProperty({ description: "Feed source." }),
+      category_id: integerProperty({ description: "Miniflux category id." }),
+      category_title: stringProperty({ description: "Miniflux category title." }),
+      answer_text: stringProperty({
+        description: "Compact spoken summary. Prefer this for voice responses.",
+      }),
+    },
+  });
+}
+
 function conversationHistorySearchToolConfig() {
   return webhookTool({
     name: "conversation_history_search",
@@ -1168,6 +1316,50 @@ function githubIssueWriteResponseProperties() {
   };
 }
 
+function rssEntriesResponseProperties() {
+  return {
+    ok: booleanProperty("Whether the RSS request succeeded."),
+    status: stringProperty({ description: "Status code." }),
+    provider: stringProperty({ description: "RSS backend provider." }),
+    source: stringProperty({ description: "Feed source." }),
+    query: stringProperty({ description: "Search query when applicable." }),
+    start_date: stringProperty({ description: "Start date when applicable." }),
+    end_date: stringProperty({ description: "End date when applicable." }),
+    returned_count: integerProperty({ description: "Number of entries returned." }),
+    total_count: integerProperty({ description: "Total matching entries if reported by Miniflux." }),
+    category_id: integerProperty({ description: "Miniflux category id." }),
+    category_title: stringProperty({ description: "Miniflux category title." }),
+    answer_text: stringProperty({
+      description: "Compact spoken summary. Prefer this before reading item details.",
+    }),
+    items: arrayProperty({
+      description: "Economist article entries.",
+      itemDescription: "One Economist article entry.",
+      properties: rssEntryProperties(),
+    }),
+  };
+}
+
+function rssEntryProperties() {
+  return {
+    id: integerProperty({ description: "Miniflux entry id." }),
+    title: stringProperty({ description: "Article title." }),
+    url: stringProperty({ description: "Article URL." }),
+    author: stringProperty({ description: "Article author." }),
+    published_at: stringProperty({ description: "Published timestamp." }),
+    created_at: stringProperty({ description: "Miniflux created timestamp." }),
+    changed_at: stringProperty({ description: "Miniflux changed timestamp." }),
+    status: stringProperty({ description: "Read status." }),
+    starred: booleanProperty("Whether the article is starred."),
+    reading_time: integerProperty({ description: "Estimated reading time." }),
+    feed_id: integerProperty({ description: "Miniflux feed id." }),
+    feed_title: stringProperty({ description: "Feed title." }),
+    feed_url: stringProperty({ description: "Feed URL." }),
+    category_title: stringProperty({ description: "Category title." }),
+    excerpt: stringProperty({ description: "Short readable excerpt." }),
+  };
+}
+
 function emailWriteResponseProperties() {
   return {
     ...cliResponseProperties(),
@@ -1410,6 +1602,12 @@ CLI capability:
 - Only claim you sent email when himalaya_email_send returns ok=true and action="email_sent".
 - Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.
 - Use github_cli_common for common read-only GitHub CLI actions such as repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.
+- You also have RSS tools backed by Miniflux: rss_recent_economist_entries, rss_search_economist_entries, rss_get_economist_article_text, and rss_refresh_economist_feeds.
+- Use rss_recent_economist_entries when Andrew asks for recent or latest Economist articles.
+- Use rss_search_economist_entries when Andrew asks to search Economist articles by date, topic, keyword, or section.
+- Use rss_get_economist_article_text only after you have an exact entry_id from recent/search results. Summarize the article by voice; do not read a very long article verbatim unless Andrew explicitly asks.
+- If rss_get_economist_article_text returns an access_note saying the text may be an excerpt or needs authenticated access, say that plainly and offer to use an authenticated Economist cookie/private feed later.
+- Use rss_refresh_economist_feeds before listing when Andrew asks for the latest possible Economist results.
 - These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.
 - Before slow searches or CLI calls, say a brief natural status phrase, then call the tool.`;
   const webMarker = "\n\nWeb search capability:";

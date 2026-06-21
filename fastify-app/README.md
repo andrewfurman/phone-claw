@@ -39,6 +39,10 @@ The local app mirrors the Worker endpoints, including:
 - `POST /cli/otter/speech-get`
 - `POST /cli/otter/speech-search`
 - `POST /cli/github/common`
+- `POST /cli/rss/economist/recent`
+- `POST /cli/rss/economist/search`
+- `POST /cli/rss/economist/article-text`
+- `POST /cli/rss/economist/refresh`
 - `POST /cli/claude-code`
 - `POST /agent-command`
 

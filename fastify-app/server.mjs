@@ -23,6 +23,13 @@ import {
   otterSpeechSearch,
   otterSpeechesList,
 } from "./cli-tools.mjs";
+import {
+  minifluxConfigured,
+  rssEntryFullText,
+  rssRecentEntries,
+  rssRefreshFeeds,
+  rssSearchEntries,
+} from "./miniflux-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
 import { githubCliCat, githubCliLs } from "../shared/github-cli-tools.mjs";
 import { githubIssueCreate, githubIssueUpdate } from "../shared/github-issues.mjs";
@@ -93,6 +100,10 @@ app.get("/", async () => ({
     otter_speech_get: "POST /cli/otter/speech-get",
     otter_speech_search: "POST /cli/otter/speech-search",
     github_cli_common: "POST /cli/github/common",
+    rss_recent_economist_entries: "POST /cli/rss/economist/recent",
+    rss_search_economist_entries: "POST /cli/rss/economist/search",
+    rss_get_economist_article_text: "POST /cli/rss/economist/article-text",
+    rss_refresh_economist_feeds: "POST /cli/rss/economist/refresh",
     claude_code: "POST /cli/claude-code",
     conversation_history_search: "POST /conversation-history/search",
     conversation_history_get: "POST /conversation-history/get",
@@ -112,6 +123,7 @@ app.get("/health", async () => ({
   github_read_configured: Boolean(githubReadToken),
   github_write_configured: Boolean(githubWriteToken),
   claude_code_bridge_configured: true,
+  miniflux_configured: minifluxConfigured(),
   conversation_history_configured: conversationHistoryConfigured(),
   expected_elevenlabs_audio_format: ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
   allowed_caller_numbers_configured:
@@ -198,6 +210,22 @@ app.post("/cli/otter/speech-search", async (request, reply) =>
 
 app.post("/cli/github/common", async (request, reply) =>
   handleGithubCliCommon(request, reply)
+);
+
+app.post("/cli/rss/economist/recent", async (request, reply) =>
+  handleRssRecentEconomistEntries(request, reply)
+);
+
+app.post("/cli/rss/economist/search", async (request, reply) =>
+  handleRssSearchEconomistEntries(request, reply)
+);
+
+app.post("/cli/rss/economist/article-text", async (request, reply) =>
+  handleRssGetEconomistArticleText(request, reply)
+);
+
+app.post("/cli/rss/economist/refresh", async (request, reply) =>
+  handleRssRefreshEconomistFeeds(request, reply)
 );
 
 app.post("/cli/claude-code", async (request, reply) =>
@@ -782,6 +810,57 @@ async function handleGithubCliCommon(request, reply) {
   return reply.code(toolResultStatusCode(result)).send(result);
 }
 
+async function handleRssRecentEconomistEntries(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await rssRecentEntries({
+    limit: body.limit || body.max_results || body.maxResults,
+    status: body.status,
+    maxExcerptChars: body.max_excerpt_chars || body.maxExcerptChars,
+  });
+
+  return reply.code(toolResultStatusCode(result)).send(result);
+}
+
+async function handleRssSearchEconomistEntries(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await rssSearchEntries({
+    query: body.query || body.search_query || body.searchQuery,
+    startDate: body.start_date || body.startDate,
+    endDate: body.end_date || body.endDate,
+    limit: body.limit || body.max_results || body.maxResults,
+    status: body.status,
+    maxExcerptChars: body.max_excerpt_chars || body.maxExcerptChars,
+  });
+
+  return reply.code(toolResultStatusCode(result)).send(result);
+}
+
+async function handleRssGetEconomistArticleText(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await rssEntryFullText({
+    entryId: body.entry_id || body.entryId || body.id,
+    fetchOriginal: body.fetch_original ?? body.fetchOriginal,
+    updateContent: body.update_content ?? body.updateContent,
+    maxTextChars: body.max_text_chars || body.maxTextChars,
+  });
+
+  return reply.code(toolResultStatusCode(result)).send(result);
+}
+
+async function handleRssRefreshEconomistFeeds(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const result = await rssRefreshFeeds();
+
+  return reply.code(toolResultStatusCode(result)).send(result);
+}
+
 async function handleClaudeCodeTool(request, reply) {
   if (!validateCliToolAuth(request, reply)) return;
 
@@ -874,6 +953,7 @@ function toolResultStatusCode(result) {
       "confirmation_required",
       "conversation_history_not_configured",
       "cli_bridge_not_configured",
+      "miniflux_not_configured",
       "tool_auth_not_configured",
     ].includes(result.status)
   ) {

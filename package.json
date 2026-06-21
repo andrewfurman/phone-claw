@@ -5,7 +5,7 @@
   "description": "Claw Phone: a Twilio-to-ElevenLabs voice bridge with a future Claude Code command bridge.",
   "scripts": {
     "start": "node --env-file-if-exists=.env fastify-app/server.mjs",
-    "check": "node --check fastify-app/server.mjs && node --check fastify-app/cli-tools.mjs && node --check fastify-app/claude-code-tools.mjs && node --check fastify-app/conversation-history.mjs",
+    "check": "node --check fastify-app/server.mjs && node --check fastify-app/cli-tools.mjs && node --check fastify-app/claude-code-tools.mjs && node --check fastify-app/conversation-history.mjs && node --check fastify-app/miniflux-tools.mjs && node --check scripts/test-elevenlabs-rss-conversation.mjs",
     "tunnel": "npx --yes localtunnel --port 8000 --local-host 127.0.0.1",
     "twilio": "twilio",
     "elevenlabs:audio:check": "node --env-file-if-exists=.env scripts/check-elevenlabs-audio-format.mjs",
@@ -19,6 +19,8 @@
     "elevenlabs:github:audio:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-github-audio.mjs",
     "elevenlabs:email:audio:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-email-audio.mjs",
     "elevenlabs:logging:audio:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-logging-audio.mjs",
+    "elevenlabs:rss:conversation:test": "node --env-file-if-exists=.env scripts/test-elevenlabs-rss-conversation.mjs",
+    "miniflux:economist:setup": "node --env-file-if-exists=.env scripts/setup-miniflux-economist-feeds.mjs",
     "neon:setup": "node --env-file-if-exists=.env scripts/setup-neon-conversation-db.mjs",
     "conversations:archive": "node --env-file-if-exists=.env scripts/archive-elevenlabs-conversations.mjs",
     "worker:check": "node --check cloudflare-worker/twilio-elevenlabs-worker.mjs",
@@ -30,6 +32,7 @@
   "dependencies": {
     "@fastify/formbody": "^8.0.2",
     "fastify": "^5.8.5",
+    "html-to-text": "^10.0.0",
     "pg": "^8.22.0",
     "twilio": "^6.0.2"
   },
