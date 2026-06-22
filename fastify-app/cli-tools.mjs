@@ -665,10 +665,14 @@ function githubArgsFor({ action, repo, number, state, query, limit }) {
   const normalizedState = normalizeEnum(state, ["open", "closed", "all"], "open");
   const issueFields =
     "number,title,state,author,labels,assignees,comments,createdAt,updatedAt,url";
+  const issueSearchFields =
+    "number,title,state,author,labels,assignees,commentsCount,createdAt,updatedAt,url,repository";
   const issueViewFields = `${issueFields},body`;
   const prFields =
     "number,title,state,author,labels,assignees,createdAt,updatedAt,url,reviewDecision,isDraft";
   const prViewFields = `${prFields},body,mergeStateStatus,headRefName,baseRefName,files,comments,reviews`;
+  const prSearchFields =
+    "number,title,state,author,labels,assignees,commentsCount,createdAt,updatedAt,url,repository";
 
   if (["repo_view", "issue_list", "issue_view", "pr_list", "pr_view"].includes(action)) {
     if (!repo) return { error: missingField("repo", "A GitHub repo in owner/name format is required.") };
@@ -738,15 +742,16 @@ function githubArgsFor({ action, repo, number, state, query, limit }) {
 
   if (action === "search_issues" || action === "search_prs") {
     if (!query) return { error: missingField("query", "A GitHub search query is required.") };
+    const queryArgs = splitSearchQuery(query);
     return {
       value: [
         "search",
         action === "search_prs" ? "prs" : "issues",
-        query,
+        ...queryArgs,
         "--limit",
         boundedLimit,
         "--json",
-        issueFields,
+        action === "search_prs" ? prSearchFields : issueSearchFields,
       ],
     };
   }
@@ -1551,6 +1556,13 @@ function formatGithubCliAnswer(action, parsed) {
   }
 
   return `GitHub CLI completed ${action}.`;
+}
+
+function splitSearchQuery(query) {
+  return normalizeString(query)
+    .match(/"[^"]+"|'[^']+'|\S+/g)
+    ?.map((part) => part.replace(/^["']|["']$/g, ""))
+    .filter(Boolean) || [];
 }
 
 function missingField(field, message) {
