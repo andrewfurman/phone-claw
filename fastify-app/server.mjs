@@ -32,10 +32,14 @@ import {
   rssRefreshFeeds,
   rssSearchEntries,
 } from "./miniflux-tools.mjs";
+import {
+  githubCliCatGh,
+  githubCliLsGh,
+  githubIssueCreateGh,
+  githubIssueUpdateGh,
+  githubSummaryGh,
+} from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
-import { githubCliCat, githubCliLs } from "../shared/github-cli-tools.mjs";
-import { githubIssueCreate, githubIssueUpdate } from "../shared/github-issues.mjs";
-import { githubSummary } from "../shared/github-summary.mjs";
 import {
   isAllowedCaller,
   lastFourDigits,
@@ -58,8 +62,6 @@ const elevenLabsAgentId = process.env.ELEVENLABS_AGENT_ID;
 const commandBridgeToken = process.env.COMMAND_BRIDGE_TOKEN;
 const webSearchToken = process.env.WEB_SEARCH_TOKEN || commandBridgeToken;
 const cliBridgeToken = process.env.CLI_BRIDGE_TOKEN;
-const githubReadToken = process.env.GITHUB_READ_TOKEN;
-const githubWriteToken = process.env.GITHUB_WRITE_TOKEN;
 const claudeBridgeUrl = process.env.CLAUDE_BRIDGE_URL;
 const claudeBridgeToken = process.env.CLAUDE_BRIDGE_TOKEN;
 const economistPublicRssToken = process.env.ECONOMIST_PUBLIC_RSS_TOKEN;
@@ -137,8 +139,7 @@ app.get("/health", async () => ({
   command_bridge_configured: Boolean(claudeBridgeUrl),
   web_search_configured: Boolean(webSearchToken),
   cli_bridge_token_configured: Boolean(cliBridgeToken),
-  github_read_configured: Boolean(githubReadToken),
-  github_write_configured: Boolean(githubWriteToken),
+  github_cli_bridge_configured: Boolean(cliBridgeToken || webSearchToken),
   claude_code_bridge_configured: true,
   miniflux_configured: minifluxConfigured(),
   economist_rss_bridge_configured: economistRssBridgeConfigured(),
@@ -599,12 +600,11 @@ async function handleWebSearch(request, reply) {
 }
 
 async function handleGithubSummary(request, reply) {
-  if (!validateToolAuth(request, reply)) return;
+  if (!validateCliToolAuth(request, reply)) return;
 
   try {
     const body = request.body || {};
-    const result = await githubSummary({
-      githubToken: githubReadToken,
+    const result = await githubSummaryGh({
       username: process.env.GITHUB_USERNAME,
       itemType: body.item_type || body.itemType || body.type || body.kind,
       scope: body.scope,
@@ -612,83 +612,81 @@ async function handleGithubSummary(request, reply) {
       repo: body.repo || body.repository,
       owner: body.owner,
       organization: body.organization || body.org,
+      maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
     });
 
-    return reply.code(result.ok ? 200 : 400).send(result);
+    return reply.code(toolResultStatusCode(result)).send(result);
   } catch (error) {
     return reply.code(400).send(githubToolError(error));
   }
 }
 
 async function handleGithubCliLs(request, reply) {
-  if (!validateToolAuth(request, reply)) return;
+  if (!validateCliToolAuth(request, reply)) return;
 
   try {
     const body = request.body || {};
-    const result = await githubCliLs({
-      githubToken: githubReadToken,
+    const result = await githubCliLsGh({
       repo: body.repo || body.repository,
       path: body.path || "",
       ref: body.ref || body.branch || body.sha,
       recursive: body.recursive,
       maxEntries: body.max_entries || body.maxEntries,
+      maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
     });
 
-    return reply.code(result.ok ? 200 : 400).send(result);
+    return reply.code(toolResultStatusCode(result)).send(result);
   } catch (error) {
     return reply.code(400).send(githubToolError(error));
   }
 }
 
 async function handleGithubCliCat(request, reply) {
-  if (!validateToolAuth(request, reply)) return;
+  if (!validateCliToolAuth(request, reply)) return;
 
   try {
     const body = request.body || {};
-    const result = await githubCliCat({
-      githubToken: githubReadToken,
+    const result = await githubCliCatGh({
       repo: body.repo || body.repository,
       path: body.path,
       ref: body.ref || body.branch || body.sha,
       maxBytes: body.max_bytes || body.maxBytes,
+      maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
     });
 
-    return reply.code(result.ok ? 200 : 400).send(result);
+    return reply.code(toolResultStatusCode(result)).send(result);
   } catch (error) {
     return reply.code(400).send(githubToolError(error));
   }
 }
 
 async function handleGithubIssueCreate(request, reply) {
-  if (!validateToolAuth(request, reply)) return;
+  if (!validateCliToolAuth(request, reply)) return;
 
   try {
     const body = request.body || {};
-    const result = await githubIssueCreate({
-      githubToken: githubWriteToken,
+    const result = await githubIssueCreateGh({
       repo: body.repo || body.repository,
       title: body.title,
       body: body.body,
       labels: body.labels,
       assignees: body.assignees,
       confirmed: body.confirmed,
+      maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
     });
 
-    return reply
-      .code(result.ok || result.status === "confirmation_required" ? 200 : 400)
-      .send(result);
+    return reply.code(toolResultStatusCode(result)).send(result);
   } catch (error) {
     return reply.code(400).send(githubToolError(error));
   }
 }
 
 async function handleGithubIssueUpdate(request, reply) {
-  if (!validateToolAuth(request, reply)) return;
+  if (!validateCliToolAuth(request, reply)) return;
 
   try {
     const body = request.body || {};
-    const result = await githubIssueUpdate({
-      githubToken: githubWriteToken,
+    const result = await githubIssueUpdateGh({
       repo: body.repo || body.repository,
       number: body.number,
       issueNumber: body.issue_number || body.issueNumber,
@@ -699,11 +697,10 @@ async function handleGithubIssueUpdate(request, reply) {
       labels: body.labels,
       assignees: body.assignees,
       confirmed: body.confirmed,
+      maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
     });
 
-    return reply
-      .code(result.ok || result.status === "confirmation_required" ? 200 : 400)
-      .send(result);
+    return reply.code(toolResultStatusCode(result)).send(result);
   } catch (error) {
     return reply.code(400).send(githubToolError(error));
   }

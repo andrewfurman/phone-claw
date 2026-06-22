@@ -69,7 +69,7 @@ For voice calls, keep the default response compact: `max_results=3` and Tavily `
 
 ## GitHub Summary Tool
 
-`Andrew Assistant Agent` can also use `github_summary`, an authenticated webhook tool that returns read-only summaries of open GitHub issues and pull requests visible to the configured `GITHUB_READ_TOKEN`.
+`Andrew Assistant Agent` can also use `github_summary`, an authenticated webhook tool that returns read-only summaries of open GitHub issues and pull requests visible to the GitHub CLI account authenticated on the private EC2 bridge.
 
 `github_summary` supports optional `repo`, `organization`, and `owner` filters. Use `repo` in `owner/name` format when Andrew asks about a specific repository.
 
@@ -80,9 +80,7 @@ For voice calls, keep the default response compact: `max_results=3` and Tavily `
 - `github_cli_ls` lists a repository root, a folder, or a recursive tree.
 - `github_cli_cat` reads the full contents of a specific file path, subject to the tool's `max_bytes` cap.
 
-These tools return a `gh_equivalent` field such as `gh api repos/OWNER/REPO/contents/PATH`. They do not execute shell commands and they cannot write to GitHub.
-
-Use a fine-grained read-only GitHub token where possible. The token should live only in local `.env` or Cloudflare Worker secrets and should not be committed.
+These tools return a `gh_equivalent` field such as `gh api repos/OWNER/REPO/contents/PATH`. The public Worker does not execute shell commands; it proxies to the private bridge, which executes fixed `gh` commands with the bridge service user's authenticated GitHub CLI session.
 
 ## GitHub Issue Write Tools
 
@@ -93,7 +91,7 @@ Use a fine-grained read-only GitHub token where possible. The token should live 
 
 Both tools require `confirmed=true`. The agent prompt instructs the model to use that only after Andrew explicitly confirms the exact repository and issue change by voice.
 
-Use a separate `GITHUB_WRITE_TOKEN` with the narrowest possible repository and issue permissions.
+Issue writes use the same bridge-side `gh` session, so private and organization access depends on that account's repository access, SSO authorization, and org policy.
 
 Attach or refresh the live ElevenLabs tool definitions with:
 

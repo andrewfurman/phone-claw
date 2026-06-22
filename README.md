@@ -25,7 +25,7 @@ This project intentionally keeps provider configuration explicit because the voi
 | Cloudflare KV | Stores recent Twilio call and Media Stream diagnostic events. | `TWILIO_EVENT_LOGS` binding in Worker config. |
 | Cloudflare Tunnel | Exposes the private CLI bridge to the Worker without opening a raw public port. | Tunnel config and token live outside the public repo. |
 | AWS EC2 | Runs the long-lived private Fastify CLI bridge because Workers cannot spawn local CLI binaries. | EC2 setup is documented in `docs/EC2_BARE_METAL_BRIDGE.md`; AWS credentials and instance secrets stay outside the repo. |
-| GitHub | Stores this public repo and backs agent tools for issue/PR summaries, file reads, and confirmed issue create/update actions. | `GITHUB_READ_TOKEN` and `GITHUB_WRITE_TOKEN` are Worker secrets; the EC2 bridge can also use authenticated `gh` CLI for read-only wrappers. |
+| GitHub | Stores this public repo and backs agent tools for issue/PR summaries, file reads, and confirmed issue create/update actions. | The EC2 bridge uses the authenticated `gh` CLI session for the `phoneclaw` service user. The Worker only proxies these routes with `CLI_BRIDGE_TOKEN`; no GitHub PAT is required in Cloudflare. |
 | Tavily | Preferred LLM-oriented web search provider for fast, compact voice answers. | Optional `TAVILY_API_KEY` Worker secret. With `WEB_SEARCH_PROVIDER=auto`, the Worker uses Tavily when the key exists and falls back to DuckDuckGo otherwise. |
 | DuckDuckGo | No-key fallback web search provider. | No secret required. Used only when Tavily is not configured. |
 | Yahoo Finance public chart API | Market-history enrichment for WTI crude high/low/range questions. | No secret required. Used as a compact fallback to avoid relying only on generic search snippets. |
@@ -96,8 +96,6 @@ wrangler secret put WEB_SEARCH_TOKEN
 wrangler secret put TAVILY_API_KEY
 wrangler secret put CLI_BRIDGE_URL
 wrangler secret put CLI_BRIDGE_TOKEN
-wrangler secret put GITHUB_READ_TOKEN
-wrangler secret put GITHUB_WRITE_TOKEN
 ```
 
 Create and bind a KV namespace for Twilio stream/call diagnostic callbacks:
@@ -130,7 +128,15 @@ The ElevenLabs agent has read-only GitHub webhook tools:
 - `github_issue_create` for confirmed GitHub issue creation.
 - `github_issue_update` for confirmed GitHub issue updates.
 
-The hosted Worker uses `GITHUB_READ_TOKEN` for reads and `GITHUB_WRITE_TOKEN` for issue writes. Keep both tokens out of the public repo. Prefer fine-grained tokens with the narrowest repo permissions possible.
+The hosted Worker proxies these GitHub routes to the private EC2 bridge. The bridge executes authenticated `gh` commands under the `phoneclaw` service user, so private and organization repository access follows that GitHub CLI session, including any required SSO or org approval.
+
+Authenticate or refresh the bridge login as the service user:
+
+```bash
+sudo -iu phoneclaw gh auth login --hostname github.com --scopes repo,read:org,workflow
+```
+
+Do not store GitHub PATs as Worker secrets for these tools.
 
 ## CLI Bridge Tools
 
