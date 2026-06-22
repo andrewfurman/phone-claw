@@ -7,6 +7,12 @@ const MAX_LIMIT = 50;
 const MAX_CONTEXT_CONVERSATIONS = 10;
 const MAX_KEYWORDS = 50;
 const MAX_SUMMARY_WORDS = 100;
+const DEFAULT_TRANSCRIPT_EXCERPT_TURNS = 12;
+const MAX_TRANSCRIPT_EXCERPT_TURNS = 50;
+const DEFAULT_TOOL_DETAIL_ITEMS = 12;
+const MAX_TOOL_DETAIL_ITEMS = 50;
+const MAX_TRANSCRIPT_TURN_WORDS = 80;
+const MAX_TOOL_RESULT_PREVIEW_WORDS = 50;
 
 let pool;
 let schemaReady;
@@ -235,7 +241,13 @@ export async function conversationHistorySearch({
   };
 }
 
-export async function conversationHistoryGet({ conversationId } = {}) {
+export async function conversationHistoryGet({
+  conversationId,
+  includeTranscript = false,
+  includeToolDetails = false,
+  maxTranscriptTurns = DEFAULT_TRANSCRIPT_EXCERPT_TURNS,
+  maxToolItems = DEFAULT_TOOL_DETAIL_ITEMS,
+} = {}) {
   if (!conversationHistoryConfigured()) return notConfiguredResponse();
   await ensureConversationHistorySchema();
 
@@ -262,11 +274,48 @@ export async function conversationHistoryGet({ conversationId } = {}) {
     };
   }
 
+  const row = result.rows[0];
+  const transcript = Array.isArray(row.transcript) ? row.transcript : [];
+  const toolCalls = Array.isArray(row.tool_calls) ? row.tool_calls : [];
+  const toolResults = Array.isArray(row.tool_results) ? row.tool_results : [];
+  const transcriptLimit = clampInteger(
+    maxTranscriptTurns,
+    1,
+    MAX_TRANSCRIPT_EXCERPT_TURNS,
+    DEFAULT_TRANSCRIPT_EXCERPT_TURNS
+  );
+  const toolLimit = clampInteger(
+    maxToolItems,
+    1,
+    MAX_TOOL_DETAIL_ITEMS,
+    DEFAULT_TOOL_DETAIL_ITEMS
+  );
+  const transcriptExcerpt = compactTranscriptTurns(transcript, transcriptLimit);
+
+  const conversation = {
+    ...compactConversationRow(row),
+    transcript_turn_count: transcript.length,
+    transcript_excerpt: transcriptExcerpt,
+    transcript_truncated: transcript.length > transcriptExcerpt.length,
+    tool_calls: compactToolCalls(toolCalls, toolLimit),
+    tool_call_truncated: toolCalls.length > toolLimit,
+    tool_result_count: toolResults.length,
+    tool_results: toBoolean(includeToolDetails)
+      ? compactToolResults(toolResults, toolLimit)
+      : [],
+    tool_results_truncated: toolResults.length > toolLimit,
+    metadata: compactConversationMetadata(row.metadata),
+  };
+
+  if (toBoolean(includeTranscript)) {
+    conversation.transcript = transcriptExcerpt;
+  }
+
   return {
     ok: true,
     status: "ok",
-    conversation: result.rows[0],
-    answer_text: `Retrieved archived conversation ${id}.`,
+    conversation,
+    answer_text: "Retrieved the archived conversation summary and a compact transcript excerpt.",
   };
 }
 
@@ -445,6 +494,62 @@ function compactConversationRow(row) {
   };
 }
 
+function compactTranscriptTurns(transcript, maxTurns) {
+  return transcript.slice(-maxTurns).map((turn, index) => ({
+    excerpt_index: index,
+    role: turn.role || "unknown",
+    message: limitWords(turn.message || "", MAX_TRANSCRIPT_TURN_WORDS),
+    tool_calls: (turn.tool_calls || []).map((call) => ({
+      tool_name: call.tool_name || "",
+    })),
+    tool_results: (turn.tool_results || []).map((result) => ({
+      tool_name: result.tool_name || "",
+      is_error: Boolean(result.is_error),
+    })),
+  }));
+}
+
+function compactToolCalls(toolCalls, maxItems) {
+  return toolCalls.slice(0, maxItems).map((call) => ({
+    transcript_index: call.transcript_index,
+    tool_name: call.tool_name || "",
+    param_keys: Object.keys(call.params || {}).slice(0, 20),
+  }));
+}
+
+function compactToolResults(toolResults, maxItems) {
+  return toolResults.slice(0, maxItems).map((toolResult) => {
+    const result = toolResult.result;
+    const resultObject = result && typeof result === "object" ? result : {};
+    return {
+      transcript_index: toolResult.transcript_index,
+      tool_name: toolResult.tool_name || "",
+      is_error: Boolean(toolResult.is_error),
+      status: normalizeString(resultObject.status),
+      action: normalizeString(resultObject.action),
+      returned_count: resultObject.returned_count ?? null,
+      answer_text: limitWords(resultObject.answer_text || "", MAX_TOOL_RESULT_PREVIEW_WORDS),
+      result_preview: limitWords(
+        typeof result === "string" ? result : JSON.stringify(resultObject),
+        MAX_TOOL_RESULT_PREVIEW_WORDS
+      ),
+    };
+  });
+}
+
+function compactConversationMetadata(metadata) {
+  const value = metadata && typeof metadata === "object" ? metadata : {};
+  return {
+    termination_reason: value.metadata?.termination_reason || value.termination_reason || "",
+    error_code: value.metadata?.error?.code || value.error?.code || null,
+    error_reason: value.metadata?.error?.reason || value.error?.reason || "",
+    phone_call: {
+      direction: value.metadata?.phone_call?.direction || value.phone_call?.direction || "",
+      type: value.metadata?.phone_call?.type || value.phone_call?.type || "",
+    },
+  };
+}
+
 function formatRecentContext(items) {
   if (items.length === 0) return "No prior phone conversations are archived yet.";
   return items
@@ -490,6 +595,13 @@ function limitWords(value, maxWords) {
 function normalizeString(value, fallback = "") {
   const normalized = String(value ?? "").trim();
   return normalized || fallback;
+}
+
+function toBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  return Boolean(value);
 }
 
 function normalizeDate(value) {

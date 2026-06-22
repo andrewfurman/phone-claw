@@ -24,7 +24,9 @@ import {
   otterSpeechesList,
 } from "./cli-tools.mjs";
 import {
+  economistRssBridgeConfigured,
   minifluxConfigured,
+  economistFullTextBrowserConfigured,
   rssEntryFullText,
   rssRecentEntries,
   rssRefreshFeeds,
@@ -60,6 +62,9 @@ const githubReadToken = process.env.GITHUB_READ_TOKEN;
 const githubWriteToken = process.env.GITHUB_WRITE_TOKEN;
 const claudeBridgeUrl = process.env.CLAUDE_BRIDGE_URL;
 const claudeBridgeToken = process.env.CLAUDE_BRIDGE_TOKEN;
+const economistPublicRssToken = process.env.ECONOMIST_PUBLIC_RSS_TOKEN;
+const economistRssBridgeBaseUrl =
+  process.env.ECONOMIST_RSS_BRIDGE_BASE_URL || "http://127.0.0.1:3000/";
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 const enforceTwilioSignature =
   process.env.ENFORCE_TWILIO_SIGNATURE === "true" && Boolean(twilioAuthToken);
@@ -69,7 +74,19 @@ const outsideCoverageMessage =
 const twilioEvents = [];
 
 const app = Fastify({
-  logger: true,
+  logger: {
+    serializers: {
+      req(request) {
+        return {
+          method: request.method,
+          url: redactUrlForLogs(request.url),
+          host: request.hostname,
+          remoteAddress: request.ip,
+          remotePort: request.socket?.remotePort,
+        };
+      },
+    },
+  },
   trustProxy: true,
   bodyLimit: 1_000_000,
 });
@@ -124,6 +141,9 @@ app.get("/health", async () => ({
   github_write_configured: Boolean(githubWriteToken),
   claude_code_bridge_configured: true,
   miniflux_configured: minifluxConfigured(),
+  economist_rss_bridge_configured: economistRssBridgeConfigured(),
+  economist_public_rss_configured: Boolean(economistPublicRssToken),
+  economist_browser_fetch_configured: economistFullTextBrowserConfigured(),
   conversation_history_configured: conversationHistoryConfigured(),
   expected_elevenlabs_audio_format: ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
   allowed_caller_numbers_configured:
@@ -131,6 +151,10 @@ app.get("/health", async () => ({
   twilio_signature_enforced: enforceTwilioSignature,
   twilio_event_log_configured: true,
 }));
+
+app.get("/rss/economist/:topic.atom", async (request, reply) =>
+  handleEconomistPublicRss(request, reply)
+);
 
 app.post("/twilio/inbound", async (request, reply) =>
   handleTwilioCall(request, reply, "inbound")
@@ -247,6 +271,55 @@ app.post("/conversation-history/recent-context", async (request, reply) =>
 app.post("/conversation-history/archive-elevenlabs", async (request, reply) =>
   handleConversationArchiveElevenLabs(request, reply)
 );
+
+async function handleEconomistPublicRss(request, reply) {
+  if (!isValidEconomistPublicRssRequest(request)) {
+    return reply.code(404).send({ ok: false, status: "not_found" });
+  }
+
+  const topic = String(request.params?.topic || "").toLowerCase();
+  if (topic !== "latest") {
+    return reply.code(404).send({ ok: false, status: "not_found" });
+  }
+
+  const upstreamUrl = new URL(economistRssBridgeBaseUrl);
+  upstreamUrl.searchParams.set("action", "display");
+  upstreamUrl.searchParams.set("bridge", "Economist");
+  upstreamUrl.searchParams.set(
+    "context",
+    process.env.ECONOMIST_RSS_BRIDGE_LATEST_CONTEXT || "latest"
+  );
+  upstreamUrl.searchParams.set("format", "Atom");
+
+  const response = await fetch(upstreamUrl, {
+    headers: {
+      accept: "application/atom+xml, application/xml;q=0.9, text/xml;q=0.8",
+      "user-agent": "phoneclaw-economist-public-rss/1.0",
+    },
+  });
+  const text = await response.text();
+
+  if (!response.ok) {
+    request.log.warn(
+      {
+        statusCode: response.status,
+        topic,
+      },
+      "Economist RSS-Bridge upstream request failed"
+    );
+    return reply.code(502).send({ ok: false, status: "rss_bridge_upstream_failed" });
+  }
+
+  const maxEntries = clampInteger(process.env.ECONOMIST_PUBLIC_RSS_MAX_ENTRIES, 1, 20, 10);
+  const cacheSeconds = clampInteger(process.env.ECONOMIST_PUBLIC_RSS_CACHE_SECONDS, 0, 3600, 900);
+
+  return reply
+    .code(200)
+    .header("content-type", "application/atom+xml; charset=UTF-8")
+    .header("cache-control", `private, max-age=${cacheSeconds}`)
+    .header("x-robots-tag", "noindex, nofollow")
+    .send(clampAtomFeedEntries(text, maxEntries));
+}
 
 try {
   await app.listen({ host, port });
@@ -845,6 +918,7 @@ async function handleRssGetEconomistArticleText(request, reply) {
   const body = request.body || {};
   const result = await rssEntryFullText({
     entryId: body.entry_id || body.entryId || body.id,
+    articleUrl: body.article_url || body.articleUrl || body.url,
     fetchOriginal: body.fetch_original ?? body.fetchOriginal,
     updateContent: body.update_content ?? body.updateContent,
     maxTextChars: body.max_text_chars || body.maxTextChars,
@@ -902,6 +976,10 @@ async function handleConversationHistoryGet(request, reply) {
   const body = request.body || {};
   const result = await conversationHistoryGet({
     conversationId: body.conversation_id || body.conversationId || body.id,
+    includeTranscript: body.include_transcript || body.includeTranscript,
+    includeToolDetails: body.include_tool_details || body.includeToolDetails,
+    maxTranscriptTurns: body.max_transcript_turns || body.maxTranscriptTurns,
+    maxToolItems: body.max_tool_items || body.maxToolItems,
   });
 
   return reply.code(result.ok ? 200 : 400).send(result);
@@ -1002,6 +1080,25 @@ function validateCliToolAuth(request, reply) {
   return true;
 }
 
+function isValidEconomistPublicRssRequest(request) {
+  if (!economistPublicRssToken) return false;
+
+  const queryToken = request.query?.token;
+  if (queryToken && secureEquals(queryToken, economistPublicRssToken)) return true;
+
+  const authHeader = request.headers.authorization || "";
+  if (secureEquals(authHeader, `Bearer ${economistPublicRssToken}`)) return true;
+
+  if (authHeader.toLowerCase().startsWith("basic ")) {
+    const encoded = authHeader.slice("basic ".length).trim();
+    const decoded = Buffer.from(encoded, "base64").toString("utf8");
+    const password = decoded.includes(":") ? decoded.split(":").slice(1).join(":") : decoded;
+    return secureEquals(password, economistPublicRssToken);
+  }
+
+  return false;
+}
+
 function githubToolError(error) {
   return {
     ok: false,
@@ -1065,6 +1162,23 @@ function publicRequestUrl(request) {
   return `${proto}://${hostHeader}${request.url}`;
 }
 
+function redactUrlForLogs(value) {
+  try {
+    const url = new URL(String(value || ""), "https://phoneclaw.local");
+    for (const key of [...url.searchParams.keys()]) {
+      if (/token|secret|key|password|signature/i.test(key)) {
+        url.searchParams.set(key, "[redacted]");
+      }
+    }
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return String(value || "").replace(
+      /([?&][^=]*(?:token|secret|key|password|signature)[^=]*=)[^&]*/gi,
+      "$1[redacted]"
+    );
+  }
+}
+
 function firstHeaderValue(value) {
   if (Array.isArray(value)) return value[0];
   return value?.split(",")[0]?.trim();
@@ -1078,6 +1192,21 @@ function extractTwiml(text, contentType) {
   }
 
   return text;
+}
+
+function clampAtomFeedEntries(xml, maxEntries) {
+  const text = String(xml || "");
+  const entries = [...text.matchAll(/<entry\b[\s\S]*?<\/entry>/gi)];
+  if (entries.length <= maxEntries) return text;
+
+  const selectedEntries = entries.slice(0, maxEntries).map((entry) => entry[0]).join("\n");
+  const firstEntry = entries[0];
+  const lastEntry = entries.at(-1);
+  return [
+    text.slice(0, firstEntry.index),
+    selectedEntries,
+    text.slice(lastEntry.index + lastEntry[0].length),
+  ].join("");
 }
 
 function parseMaybeJson(text) {

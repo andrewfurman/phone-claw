@@ -9,6 +9,12 @@ const apiKey = process.env.ELEVENLABS_API_KEY;
 const workerBaseUrl =
   process.env.PHONECLAW_WORKER_BASE_URL || "https://webhooks.aifurman.com";
 const toolToken = process.env.WEB_SEARCH_TOKEN || process.env.COMMAND_BRIDGE_TOKEN;
+const streamErrorWindowMinutes = clampInteger(
+  process.env.TWILIO_STREAM_ERROR_WINDOW_MINUTES,
+  1,
+  24 * 60,
+  30
+);
 
 if (!agentId || !apiKey) {
   console.error("Missing ELEVENLABS_AGENT_ID or ELEVENLABS_API_KEY.");
@@ -37,6 +43,9 @@ const audio = audioFormatStatus({
 });
 const events = Array.isArray(twilioEvents.events) ? twilioEvents.events : [];
 const streamErrors = events.filter((event) => event.stream_error || event.stream_event === "stream-error");
+const recentStreamErrors = streamErrors.filter((event) =>
+  isWithinWindow(event.received_at, streamErrorWindowMinutes)
+);
 const recentStops = events.filter((event) => event.stream_event === "stream-stopped");
 const recentStarts = events.filter((event) => event.stream_event === "stream-started");
 
@@ -45,7 +54,7 @@ const ok =
   audio.tts_matches_expected &&
   audio.formats_match_each_other &&
   workerHealth.expected_elevenlabs_audio_format === ELEVENLABS_TELEPHONY_AUDIO_FORMAT &&
-  streamErrors.length === 0;
+  recentStreamErrors.length === 0;
 
 console.log(
   JSON.stringify(
@@ -62,6 +71,8 @@ console.log(
         stream_started_count: recentStarts.length,
         stream_stopped_count: recentStops.length,
         stream_error_count: streamErrors.length,
+        recent_stream_error_window_minutes: streamErrorWindowMinutes,
+        recent_stream_error_count: recentStreamErrors.length,
         latest_stream_errors: streamErrors.slice(0, 5).map((event) => ({
           received_at: event.received_at,
           call_sid: event.call_sid,
@@ -70,8 +81,8 @@ console.log(
         })),
       },
       diagnosis: ok
-        ? "Audio formats are aligned on ulaw_8000 and no recent Twilio stream errors were found."
-        : "Investigate audio format drift or Twilio stream errors before changing codecs.",
+        ? `Audio formats are aligned on ulaw_8000 and no Twilio stream errors were found in the last ${streamErrorWindowMinutes} minutes.`
+        : "Investigate audio format drift or current-window Twilio stream errors before changing codecs.",
     },
     null,
     2
@@ -104,4 +115,16 @@ function parseMaybeJson(value) {
   } catch {
     return value;
   }
+}
+
+function isWithinWindow(value, minutes) {
+  const timestamp = Date.parse(value || "");
+  if (Number.isNaN(timestamp)) return false;
+  return Date.now() - timestamp <= minutes * 60_000;
+}
+
+function clampInteger(value, min, max, fallback = min) {
+  const number = Number.parseInt(value, 10);
+  if (Number.isNaN(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
 }

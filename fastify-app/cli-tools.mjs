@@ -9,6 +9,7 @@ const MAX_LIST_RESULTS = 50;
 const MAX_EMAIL_LIST_PAGES = 200;
 const DEFAULT_EMAIL_LIST_MAX_ITEMS = 200;
 const MAX_EMAIL_LIST_ITEMS = 1_000;
+const DEFAULT_HIMALAYA_SEND_TIMEOUT_MS = 8_000;
 
 export async function himalayaEmailList({
   query = "",
@@ -66,7 +67,7 @@ export async function himalayaEmailList({
   const exact = normalizedPage === 1 && envelopes.length < normalizedPageSize;
 
   return {
-    ...result,
+    ...compactCliResult(result),
     command: "himalaya envelope list",
     folder: normalizedFolder,
     query: normalizedQuery,
@@ -155,7 +156,7 @@ export async function himalayaEmailArchive({
 
   if (!toBoolean(confirmed)) {
     return confirmationRequired(
-      `Confirm that Andrew wants to archive email envelope ${messageId} from ${sourceFolder} to ${targetFolder}.`
+      `Confirm that Andrew wants to archive the selected email from ${sourceFolder} to ${targetFolder}.`
     );
   }
 
@@ -184,7 +185,7 @@ export async function himalayaEmailArchive({
     source_folder: sourceFolder,
     target_folder: targetFolder,
     answer_text: result.ok
-      ? `Archived email envelope ${messageId}.`
+      ? "Archived the selected email."
       : result.answer_text,
   };
 }
@@ -269,7 +270,7 @@ export async function himalayaDraftReply({
 
   if (!toBoolean(confirmed)) {
     return confirmationRequired(
-      `Confirm that Andrew wants to save a reply draft for email envelope ${messageId}.`
+      "Confirm that Andrew wants to save a reply draft for the selected email."
     );
   }
 
@@ -334,7 +335,7 @@ export async function himalayaDraftReply({
     source_folder: sourceFolder,
     draft_folder: normalizedDraftFolder,
     answer_text: saved.ok
-      ? `Saved a reply draft for email envelope ${messageId}.`
+      ? "Saved a reply draft for the selected email."
       : saved.answer_text,
   };
 }
@@ -430,18 +431,25 @@ export async function himalayaEmailSend({
     maxRawBytes,
   });
 
+  const action = sent.ok
+    ? "email_sent"
+    : sent.status === "cli_timeout"
+      ? "email_send_timeout"
+      : "email_send_failed";
+
   return {
     ...sent,
     command: "himalaya message send",
-    action: "email_sent",
+    action,
     emergency: true,
     to: normalizedTo,
     cc: normalizedCc,
     bcc: normalizedBcc,
     subject: normalizedSubject,
-    answer_text: sent.ok
-      ? `Sent the emergency email to ${normalizedTo} with subject "${normalizedSubject}".`
-      : sent.answer_text,
+    answer_text: emailSendAnswerText(sent, {
+      to: normalizedTo,
+      subject: normalizedSubject,
+    }),
   };
 }
 
@@ -772,6 +780,7 @@ function runCli({ command, args, timeoutMs = DEFAULT_TIMEOUT_MS, maxRawBytes }) 
           resolve({
             ok: false,
             status: error.killed ? "cli_timeout" : "cli_failed",
+            timeout_ms: timeoutMs,
             exit_code: typeof error.code === "number" ? error.code : null,
             signal: error.signal || null,
             message: cleanStderr.trim() || error.message || "CLI command failed.",
@@ -788,6 +797,7 @@ function runCli({ command, args, timeoutMs = DEFAULT_TIMEOUT_MS, maxRawBytes }) 
         resolve({
           ok: true,
           status: "ok",
+          timeout_ms: timeoutMs,
           exit_code: 0,
           raw_json: truncated.value,
           raw_truncated: truncated.truncated,
@@ -963,9 +973,24 @@ async function sendRawHimalayaMessage({
   return runCli({
     command: process.env.HIMALAYA_BIN || "himalaya",
     args,
-    timeoutMs: 45_000,
+    timeoutMs: clampInteger(
+      process.env.HIMALAYA_SEND_TIMEOUT_MS,
+      2_000,
+      40_000,
+      DEFAULT_HIMALAYA_SEND_TIMEOUT_MS
+    ),
     maxRawBytes,
   });
+}
+
+function emailSendAnswerText(result, { to, subject }) {
+  if (result.ok) {
+    return `Sent the emergency email to ${to} with subject "${subject}".`;
+  }
+  if (result.status === "cli_timeout") {
+    return "The emergency email send timed out before Himalaya confirmed completion. I cannot claim it was sent; check Sent Mail before retrying.";
+  }
+  return result.answer_text || "The emergency email send failed.";
 }
 
 function buildRawEmailMessage({
@@ -1171,10 +1196,11 @@ function normalizeSearchText(value) {
 }
 
 function summarizeAddressList(value) {
-  if (!Array.isArray(value)) return String(value || "");
-  return value
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+  return values
     .map((item) => {
       if (typeof item === "string") return item;
+      if (!item || typeof item !== "object") return "";
       const name = item.name || item.display_name || "";
       const address = item.address || item.email || "";
       return name && address ? `${name} <${address}>` : name || address;
@@ -1222,7 +1248,7 @@ async function himalayaEmailListAllPages({
       }
 
       return {
-        ...result,
+        ...compactCliResult(result),
         command: "himalaya envelope list",
         folder,
         query,
@@ -1427,6 +1453,16 @@ function emailListResponse({
   };
 }
 
+function compactCliResult(result) {
+  const { raw_json, raw_truncated, parsed_json, stderr, ...compact } = result;
+  return {
+    ...compact,
+    raw_json: "",
+    raw_truncated: false,
+    stderr: stderr ? truncateUtf8(stderr, 1_000).value : "",
+  };
+}
+
 function isHimalayaPageOutOfBounds(result) {
   const text = `${result.message || ""}\n${result.stderr || ""}`.toLowerCase();
   return text.includes("out of bound") || text.includes("out of range");
@@ -1494,10 +1530,14 @@ function formatOtterListAnswer(speeches) {
   }
 
   const lines = speeches.slice(0, 5).map((speech, index) => {
-    const title = speech.title || speech.otid || "Untitled transcript";
-    return `${index + 1}. ${title}. Use otid ${speech.otid} to fetch the raw JSON.`;
+    const title = speech.title || "Untitled transcript";
+    const date = speech.created_at || speech.modified_at || speech.date;
+    return `${index + 1}. ${title}${date ? `, dated ${date}` : ""}.`;
   });
-  return [`Otter returned ${speeches.length} transcripts.`, ...lines].join("\n");
+  return [
+    `Otter returned ${speeches.length} transcripts. Use the structured tool result to pick a transcript if Andrew asks for raw JSON.`,
+    ...lines,
+  ].join("\n");
 }
 
 function formatGithubCliAnswer(action, parsed) {

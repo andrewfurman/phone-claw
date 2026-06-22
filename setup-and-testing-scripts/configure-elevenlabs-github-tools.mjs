@@ -961,7 +961,7 @@ function rssGetEconomistArticleTextToolConfig() {
   return webhookTool({
     name: "rss_get_economist_article_text",
     description:
-      "Fetch readable full text for a specific Economist article entry id returned by rss_recent_economist_entries or rss_search_economist_entries. Uses Miniflux's original-content fetcher when requested.",
+      "Fetch readable full text for a specific Economist article entry id returned by rss_recent_economist_entries or rss_search_economist_entries. Prefers the secure RSS-Bridge full-text feed when available, then falls back to Miniflux and the authenticated browser fetcher.",
     url: `${workerBaseUrl}/cli/rss/economist/article-text`,
     required: ["entry_id"],
     responseTimeoutSecs: 45,
@@ -969,7 +969,12 @@ function rssGetEconomistArticleTextToolConfig() {
     toolCallSound: "typing",
     requestProperties: {
       entry_id: integerProperty({
-        description: "Miniflux entry id from a recent/search result.",
+        description:
+          "Economist entry id from a recent/search result. This may be a Miniflux id or a virtual RSS-Bridge id.",
+      }),
+      article_url: stringProperty({
+        description:
+          "Optional Economist article URL when an entry id is not available.",
       }),
       fetch_original: booleanProperty(
         "Set true by default to ask Miniflux to fetch the original article content."
@@ -989,10 +994,31 @@ function rssGetEconomistArticleTextToolConfig() {
       provider: stringProperty({ description: "RSS backend provider." }),
       source: stringProperty({ description: "Article source." }),
       entry_id: integerProperty({ description: "Miniflux entry id." }),
-      content_source: stringProperty({ description: "stored_entry_content or original_article_fetch." }),
+      content_source: stringProperty({
+        description:
+          "economist_rss_bridge, stored_entry_content, original_article_fetch, or economist_browser_fetch.",
+      }),
       original_fetch_status: stringProperty({ description: "Status of original-content fetch." }),
       original_fetch_message: stringProperty({
         description: "Error message when original-content fetch failed.",
+      }),
+      rss_bridge_fetch_status: stringProperty({
+        description: "Status of secure RSS-Bridge full-text fetch.",
+      }),
+      rss_bridge_fetch_message: stringProperty({
+        description: "RSS-Bridge message or reason it did not match the requested article.",
+      }),
+      rss_bridge_url: stringProperty({
+        description: "Redacted RSS-Bridge feed URL used for the request.",
+      }),
+      browser_fetch_status: stringProperty({
+        description: "Status of authenticated browser fallback fetch.",
+      }),
+      browser_fetch_message: stringProperty({
+        description: "Browser fallback message or reason it did not return full text.",
+      }),
+      browser_fetch_url: stringProperty({
+        description: "Final URL visited by the browser fallback.",
       }),
       full_text_chars: integerProperty({ description: "Full extracted text length." }),
       returned_text_chars: integerProperty({ description: "Returned text length." }),
@@ -1091,7 +1117,7 @@ function conversationHistoryGetToolConfig() {
   return webhookTool({
     name: "conversation_history_get",
     description:
-      "Fetch the full archived transcript, tool calls, and tool results for a specific Phoneclaw conversation_id returned by conversation_history_search.",
+      "Fetch compact details for a specific archived Phoneclaw conversation_id returned by conversation_history_search. Returns a capped transcript excerpt by default to avoid overloading the live call.",
     url: `${workerBaseUrl}/conversation-history/get`,
     required: ["conversation_id"],
     responseTimeoutSecs: 20,
@@ -1101,43 +1127,67 @@ function conversationHistoryGetToolConfig() {
       conversation_id: stringProperty({
         description: "Conversation id returned by conversation_history_search.",
       }),
+      include_transcript: booleanProperty(
+        "Set true only when Andrew explicitly asks for transcript details. The response still returns a capped excerpt."
+      ),
+      include_tool_details: booleanProperty(
+        "Set true only when Andrew explicitly asks for tool result details. The response still returns capped previews."
+      ),
+      max_transcript_turns: integerProperty({
+        description: "Maximum latest transcript turns to return. Use 12 by default; maximum is 50.",
+      }),
+      max_tool_items: integerProperty({
+        description: "Maximum tool calls/results to return. Use 12 by default; maximum is 50.",
+      }),
     },
-    responseDescription: "Archived conversation full retrieval response.",
+    responseDescription: "Archived conversation compact retrieval response.",
     responseProperties: {
       ok: booleanProperty("Whether the retrieval succeeded."),
       status: stringProperty({ description: "Status code." }),
       answer_text: stringProperty({
-        description: "Compact spoken summary. Prefer this before using the full transcript.",
+        description: "Compact spoken summary. Prefer this before using transcript excerpts.",
       }),
       conversation: objectProperty({
-        description: "Full archived conversation record.",
+        description: "Compact archived conversation record.",
         properties: {
           ...conversationSummaryProperties(),
-          transcript: arrayProperty({
-            description: "Raw ElevenLabs transcript turns.",
-            itemDescription: "One transcript turn.",
+          transcript_turn_count: integerProperty({ description: "Total transcript turns stored." }),
+          transcript_excerpt: arrayProperty({
+            description: "Latest capped transcript turns.",
+            itemDescription: "One compact transcript turn.",
             properties: {
+              excerpt_index: integerProperty({ description: "Index within the returned excerpt." }),
               role: stringProperty({ description: "Turn role." }),
-              message: stringProperty({ description: "Turn message." }),
+              message: stringProperty({ description: "Truncated turn message." }),
             },
           }),
+          transcript_truncated: booleanProperty("Whether earlier transcript turns were omitted."),
           tool_calls: arrayProperty({
-            description: "Tool calls executed during the conversation.",
+            description: "Capped tool call list with parameter keys only.",
             itemDescription: "One tool call.",
             properties: {
+              transcript_index: integerProperty({ description: "Original transcript turn index." }),
               tool_name: stringProperty({ description: "Tool name." }),
-              params: objectProperty({ description: "Tool parameters.", properties: {} }),
+              param_keys: stringArrayProperty("Tool parameter keys present in the call."),
             },
           }),
+          tool_call_truncated: booleanProperty("Whether additional tool calls were omitted."),
+          tool_result_count: integerProperty({ description: "Total stored tool results." }),
           tool_results: arrayProperty({
-            description: "Tool results returned during the conversation.",
+            description: "Optional capped tool result previews.",
             itemDescription: "One tool result.",
             properties: {
+              transcript_index: integerProperty({ description: "Original transcript turn index." }),
               tool_name: stringProperty({ description: "Tool name." }),
               is_error: booleanProperty("Whether the tool errored."),
-              result: objectProperty({ description: "Tool result JSON.", properties: {} }),
+              status: stringProperty({ description: "Tool result status." }),
+              action: stringProperty({ description: "Tool result action when applicable." }),
+              returned_count: integerProperty({ description: "Returned item count when applicable." }),
+              answer_text: stringProperty({ description: "Truncated spoken result summary." }),
+              result_preview: stringProperty({ description: "Short result preview." }),
             },
           }),
+          tool_results_truncated: booleanProperty("Whether additional tool results were omitted."),
         },
       }),
     },
@@ -1356,6 +1406,10 @@ function rssEntryProperties() {
     feed_title: stringProperty({ description: "Feed title." }),
     feed_url: stringProperty({ description: "Feed URL." }),
     category_title: stringProperty({ description: "Category title." }),
+    content_source: stringProperty({
+      description: "Optional source hint such as economist_rss_bridge.",
+    }),
+    full_text_available: booleanProperty("Whether full text is known to be available."),
     excerpt: stringProperty({ description: "Short readable excerpt." }),
   };
 }
@@ -1365,7 +1419,7 @@ function emailWriteResponseProperties() {
     ...cliResponseProperties(),
     action: stringProperty({
       description:
-        "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, or email_sent.",
+        "Action performed, such as archived, draft_created, reply_draft_created, email_send_preview_required, email_send_confirmation_required, email_sent, email_send_timeout, or email_send_failed.",
     }),
     id: stringProperty({ description: "Himalaya envelope id when applicable." }),
     source_folder: stringProperty({ description: "Source folder when applicable." }),
@@ -1560,7 +1614,7 @@ Conversation memory:
 - At the start of a call, the dynamic variable recent_conversation_context may contain compact summaries of recent archived Phoneclaw conversations. Use it quietly as background context; do not read it aloud unless Andrew asks what context you have.
 - You have webhook tools named conversation_history_search and conversation_history_get.
 - Use conversation_history_search when Andrew asks about prior phone calls, previous conversations, things discussed earlier, or wants to find a past call by keyword/date.
-- conversation_history_search returns compact summaries and keywords only. Use conversation_history_get only when Andrew asks for the full transcript, tool calls, or exact details from a specific archived conversation_id.
+- conversation_history_search returns compact summaries and keywords only. Use conversation_history_get only when Andrew asks for transcript excerpts, tool calls, or exact details from a specific archived conversation_id. It returns capped excerpts by default; set include_transcript=true or include_tool_details=true only when Andrew explicitly asks for those details.
 - If conversation history returns conversation_history_not_configured, say the memory tools are coded but the Neon/Postgres database URL still needs to be configured on the bridge.
 
 GitHub capability:
@@ -1593,6 +1647,7 @@ CLI capability:
 - Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. This mode returns at most 200 envelopes by default to protect context; if capped or has_more is true, say it is a partial list and suggest narrowing the query.
 - Only treat total_count as exact when complete or exact is true.
 - Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result.
+- Do not read internal email envelope ids, Otter otids, database ids, UUIDs, Twilio SIDs, or Claude job/session ids aloud unless Andrew explicitly asks for the id or is confirming an action that requires that exact id. Use human-readable subjects, titles, senders, dates, and summaries in normal speech.
 - Use himalaya_email_archive only after Andrew explicitly confirms the exact envelope id and source folder. Set confirmed=true only after that confirmation.
 - Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.
 - Use himalaya_draft_reply only after Andrew explicitly confirms the exact envelope id and reply body. It saves a reply draft only; it does not send email.
@@ -1600,13 +1655,16 @@ CLI capability:
 - For himalaya_email_send, first read the exact recipients, subject, and body aloud and ask, "Is this an emergency email, and do you want me to send it now?" Call the tool with previewed=true and confirmed=true only after Andrew says yes after that preview.
 - If Andrew asks to send ordinary non-emergency email, save a draft instead and say sending is restricted to emergency sends.
 - Only claim you sent email when himalaya_email_send returns ok=true and action="email_sent".
+- If himalaya_email_send returns action="email_send_timeout" or action="email_send_failed", say the send was not confirmed and Andrew should check Sent Mail before retrying.
 - Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.
 - Use github_cli_common for common read-only GitHub CLI actions such as repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.
 - You also have RSS tools backed by Miniflux: rss_recent_economist_entries, rss_search_economist_entries, rss_get_economist_article_text, and rss_refresh_economist_feeds.
 - Use rss_recent_economist_entries when Andrew asks for recent or latest Economist articles.
 - Use rss_search_economist_entries when Andrew asks to search Economist articles by date, topic, keyword, or section.
 - Use rss_get_economist_article_text only after you have an exact entry_id from recent/search results. Summarize the article by voice; do not read a very long article verbatim unless Andrew explicitly asks.
-- If rss_get_economist_article_text returns an access_note saying the text may be an excerpt or needs authenticated access, say that plainly and offer to use an authenticated Economist cookie/private feed later.
+- If rss_get_economist_article_text returns content_source="economist_rss_bridge", full Economist article text was fetched through the secure RSS-Bridge feed. Treat it as full text unless access_note says otherwise.
+- If rss_get_economist_article_text returns content_source="economist_browser_fetch", full subscriber text was fetched through the authenticated bridge browser. Summarize it by voice instead of reading the article verbatim.
+- If rss_get_economist_article_text returns an access_note saying the text may be an excerpt or needs authenticated access, say that plainly. If browser_fetch_status indicates login or Cloudflare, say the EC2 browser profile needs to be authenticated.
 - Use rss_refresh_economist_feeds before listing when Andrew asks for the latest possible Economist results.
 - These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.
 - Before slow searches or CLI calls, say a brief natural status phrase, then call the tool.`;
