@@ -61,6 +61,12 @@ Runtime secrets live on the host:
 - `/home/phoneclaw/.aws/`
 - `/var/lib/phoneclaw/claude-jobs/`
 
+Common bridge environment settings include:
+
+```text
+HIMALAYA_SEND_TIMEOUT_MS=8000
+```
+
 ## Services
 
 Check status:
@@ -101,6 +107,7 @@ Validation should cover:
 
 - `GET https://cli-bridge.aifurman.com/health`
 - Worker proxy call to `/cli/himalaya/email-list`
+- Worker proxy call to `/cli/himalaya/email-send` validation path; SMTP timeouts should return an explicit unconfirmed-send result within `HIMALAYA_SEND_TIMEOUT_MS`, not a gateway timeout.
 - Worker proxy call to `/cli/otter/speeches-list`
 - Worker proxy call to `/cli/otter/speech-get`
 - Worker proxy call to `/cli/github/common`
@@ -140,6 +147,16 @@ The live bridge can run Miniflux privately on `127.0.0.1:8080` with PostgreSQL. 
 MINIFLUX_BASE_URL=http://127.0.0.1:8080
 MINIFLUX_API_TOKEN=<miniflux-api-token>
 MINIFLUX_ECONOMIST_CATEGORY_TITLE=Economist
+ECONOMIST_RSS_BRIDGE_URL=https://cli-bridge.aifurman.com/rss/economist/latest.atom
+ECONOMIST_RSS_BRIDGE_TOKEN=<rss-bridge-token>
+ECONOMIST_PUBLIC_RSS_TOKEN=<rss-bridge-token>
+ECONOMIST_RSS_BRIDGE_BASE_URL=http://127.0.0.1:3000/
+ECONOMIST_PUBLIC_RSS_MAX_ENTRIES=10
+ECONOMIST_PUBLIC_RSS_CACHE_SECONDS=900
+ECONOMIST_BROWSER_FETCH_ENABLED=true
+ECONOMIST_BROWSER_STORAGE_STATE=/var/lib/phoneclaw/economist-browser-state.json
+ECONOMIST_BROWSER_USER_DATA_DIR=/var/lib/phoneclaw/economist-browser-profile
+ECONOMIST_BROWSER_HEADLESS=true
 ```
 
 After Miniflux is running, bootstrap Economist feeds:
@@ -150,9 +167,13 @@ npm run miniflux:economist:setup
 sudo systemctl restart phoneclaw-bridge
 ```
 
-Do not store publisher account passwords in the repo or bridge env. If a publisher requires login for full text, prefer Miniflux feed cookies or a separate locked-down browser-cookie fetcher over raw account credentials.
+Do not store publisher account passwords in the repo or bridge env. If a publisher requires login for full text, prefer Miniflux feed cookies or the locked-down browser-cookie fetcher over raw account credentials.
 
 For The Economist specifically, list/search works from section RSS feeds, but Miniflux original-content fetches can be rejected by the site's Cloudflare challenge. Treat `access_note` on `rss_get_economist_article_text` as authoritative: when it says the returned text is only an excerpt, the bridge needs a separate authenticated fetch path before it can provide subscriber full text.
+
+The live bridge can expose a secure RSS-Bridge latest-article Atom feed without publishing RSS-Bridge itself. RSS-Bridge should stay bound to `127.0.0.1`; the Fastify bridge proxies only allow-listed Economist topics such as `latest`, requires a secret token, and clamps the feed limit. Phoneclaw uses that token-protected route as the preferred full-text source when `rss_get_economist_article_text` receives the matching latest entry id.
+
+The browser fallback uses Playwright/Chromium on the EC2 host. It should run as the `phoneclaw` service user with browser state under `/var/lib/phoneclaw/`, so cookies are readable only by the bridge service. The tool still returns `access_note` when the browser profile is not logged in, is challenged, or only sees an excerpt.
 
 ## Conversation Memory
 
