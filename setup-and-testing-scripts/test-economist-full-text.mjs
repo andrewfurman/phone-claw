@@ -18,9 +18,12 @@ const article = await workerJson("/cli/rss/economist/article-text", {
 
 const fullArticleAvailable =
   article.ok === true &&
-  ["economist_rss_bridge", "economist_browser_fetch", "original_article_fetch"].includes(
-    article.content_source
-  ) &&
+  [
+    "economist_rss_bridge",
+    "economist_browser_fetch",
+    "original_article_fetch",
+    "stored_entry_content",
+  ].includes(article.content_source) &&
   Number(article.full_text_chars || 0) >= 700 &&
   !article.access_note;
 

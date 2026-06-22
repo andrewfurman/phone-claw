@@ -163,6 +163,7 @@ ECONOMIST_RSS_BRIDGE_URL=https://cli-bridge.aifurman.com/rss/economist/latest.at
 ECONOMIST_RSS_BRIDGE_TOKEN=<rss-bridge-token>
 ECONOMIST_PUBLIC_RSS_TOKEN=<rss-bridge-token>
 ECONOMIST_RSS_BRIDGE_BASE_URL=http://127.0.0.1:3000/
+ECONOMIST_PUBLIC_RSS_ALLOWED_TOPICS=latest
 ECONOMIST_PUBLIC_RSS_MAX_ENTRIES=10
 ECONOMIST_PUBLIC_RSS_CACHE_SECONDS=900
 ECONOMIST_BROWSER_FETCH_ENABLED=true
@@ -183,7 +184,9 @@ Do not store publisher account passwords in the repo or bridge env. If a publish
 
 For The Economist specifically, list/search works from section RSS feeds, but Miniflux original-content fetches can be rejected by the site's Cloudflare challenge. Treat `access_note` on `rss_get_economist_article_text` as authoritative: when it says the returned text is only an excerpt, the bridge needs a separate authenticated fetch path before it can provide subscriber full text.
 
-The live bridge can expose a secure RSS-Bridge latest-article Atom feed without publishing RSS-Bridge itself. RSS-Bridge should stay bound to `127.0.0.1`; the Fastify bridge proxies only allow-listed Economist topics such as `latest`, requires a secret token, and clamps the feed limit. Phoneclaw uses that token-protected route as the preferred full-text source when `rss_get_economist_article_text` receives the matching latest entry id.
+The live bridge can expose secure RSS-Bridge Atom feeds without publishing RSS-Bridge itself. RSS-Bridge should stay bound to `127.0.0.1`; the Fastify bridge proxies only allow-listed Economist topics such as `latest`, requires a secret token, and clamps the feed limit. For internal article-text lookups on EC2, Phoneclaw can also use `ECONOMIST_RSS_BRIDGE_BASE_URL` directly and infer the section topic from an Economist article URL before falling back to the latest feed.
+
+RSS-Bridge's Economist cookie is operationally sensitive. When the publisher returns a Cloudflare `403 Forbidden` placeholder, Phoneclaw reports `rss_bridge_article_fetch_failed` instead of treating that placeholder as full text. Refresh the RSS-Bridge cookie or browser profile before expecting full subscriber text again.
 
 The browser fallback uses Playwright/Chromium on the EC2 host. It should run as the `phoneclaw` service user with browser state under `/var/lib/phoneclaw/`, so cookies are readable only by the bridge service. The tool still returns `access_note` when the browser profile is not logged in, is challenged, or only sees an excerpt.
 

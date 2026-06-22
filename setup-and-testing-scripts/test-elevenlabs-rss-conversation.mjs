@@ -184,9 +184,12 @@ function verifyConversation(details) {
   const searchItems = Array.isArray(searchResult?.items) ? searchResult.items : [];
   const articleTextChars = Number(articleResult?.full_text_chars || 0);
   const fullArticleAvailable =
-    ["economist_rss_bridge", "original_article_fetch", "economist_browser_fetch"].includes(
-      articleResult?.content_source
-    ) &&
+    [
+      "economist_rss_bridge",
+      "original_article_fetch",
+      "economist_browser_fetch",
+      "stored_entry_content",
+    ].includes(articleResult?.content_source) &&
     articleTextChars >= 700 &&
     !articleResult?.access_note;
 
