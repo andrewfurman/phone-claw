@@ -26,7 +26,7 @@ For the bridge host, authenticate each CLI under a restricted service user:
 
 - `himalaya account configure` or copy a minimal Himalaya config through an encrypted secret channel.
 - `otter login` on the host, or copy only the required Otter config through an encrypted secret channel.
-- `gh auth login` or `GH_TOKEN` with the least scopes required.
+- `gh auth login` as the service user, with only the scopes and organization approvals required for the repositories the assistant should access.
 - `claude auth login` as the service user, or an Anthropic API key in the bridge env.
 
 Prefer a VM/container secret manager over baking credentials into an image.
@@ -49,6 +49,7 @@ HIMALAYA_BIN=himalaya
 HIMALAYA_SEND_TIMEOUT_MS=8000
 OTTER_BIN=otter
 GH_BIN=gh
+GITHUB_USERNAME=andrewfurman
 CLAUDE_BIN=claude
 CLAUDE_CODE_JOB_DIR=/var/lib/phoneclaw/claude-jobs
 CLAUDE_CODE_ALLOWED_DIRS=/opt/phoneclaw

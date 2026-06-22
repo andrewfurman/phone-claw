@@ -222,7 +222,7 @@ function githubSummaryToolConfig() {
   return webhookTool({
     name: "github_summary",
     description:
-      "Returns read-only summaries of open GitHub issues or pull requests visible to Andrew Furman's configured GitHub token. Supports optional repo, owner, and organization filters.",
+      "Returns read-only summaries of open GitHub issues or pull requests visible to the GitHub CLI account authenticated on the private Phoneclaw bridge. Supports optional repo, owner, and organization filters.",
     url: `${workerBaseUrl}/github-summary`,
     required: ["item_type"],
     forcePreToolSpeech: true,
@@ -1629,7 +1629,7 @@ GitHub capability:
 - Use github_issue_update only after Andrew explicitly confirms the exact repo, issue number, and requested change. Set confirmed=true only after that confirmation.
 - After creating or updating a GitHub issue, give a brief fifteen-second summary. Do not read the full title and body unless Andrew explicitly asks for the full details.
 - The GitHub issue tools can create and update issues only. They cannot merge, approve, push code, or edit files.
-- If a private repo returns 403, 404, or a GitHub validation failure, say the configured token may not have access to that repo, org approval, or Contents read permission.
+- If a private repo returns 403, 404, or a GitHub validation failure, say the bridge's gh session may not have access to that repo, SSO authorization, org approval, or Contents read permission.
 
 Claude Code capability:
 - You have a webhook tool named claude_code that can check auth, start a session, submit an async Claude Code job on EC2, and check job status.

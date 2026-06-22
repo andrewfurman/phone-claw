@@ -25,8 +25,6 @@ wrangler secret put WEB_SEARCH_TOKEN
 wrangler secret put TAVILY_API_KEY
 wrangler secret put CLI_BRIDGE_URL
 wrangler secret put CLI_BRIDGE_TOKEN
-wrangler secret put GITHUB_READ_TOKEN
-wrangler secret put GITHUB_WRITE_TOKEN
 ```
 
 Create a KV namespace for Twilio stream/call event diagnostics, then add the returned ID to local `wrangler.toml`:
@@ -95,7 +93,7 @@ For other production-quality search backends, add another provider behind the sa
 
 ## GitHub Summary Tool
 
-`POST /github-summary` is an authenticated ElevenLabs webhook tool for read-only GitHub issue and pull request summaries. The Worker calls GitHub with `GITHUB_READ_TOKEN`, which must be stored as a Worker secret.
+`POST /github-summary` is an authenticated ElevenLabs webhook tool for read-only GitHub issue and pull request summaries. The Worker validates the public tool bearer token, then proxies the request to the private CLI bridge. The bridge calls GitHub through its authenticated `gh` session.
 
 Supported request fields:
 
@@ -137,13 +135,13 @@ When `AUTO_ARCHIVE_CONVERSATIONS_ON_CALL_END` is unset or true, terminal Twilio 
 - `ref`: optional branch, tag, or commit SHA
 - `max_bytes`: optional file content cap
 
-The responses include a `gh_equivalent` field showing the closest GitHub CLI command, but the Worker does not execute shell commands.
+The responses include a `gh_equivalent` field showing the closest GitHub CLI command. The Worker does not execute shell commands; the private bridge executes fixed `gh` commands with `execFile`.
 
 ## GitHub Issue Write Tools
 
 `POST /github-issues/create` and `POST /github-issues/update` are authenticated ElevenLabs webhook tools for issue-only writes.
 
-Both require `confirmed=true`, which the agent prompt reserves for after Andrew has verbally confirmed the exact change. Store the write-capable token as `GITHUB_WRITE_TOKEN`, preferably using a fine-grained token scoped only to selected repositories and issue permissions.
+Both require `confirmed=true`, which the agent prompt reserves for after Andrew has verbally confirmed the exact change. Writes use the same authenticated `gh` session on the private bridge, so keep that service-user GitHub authorization as narrow as the product requirements allow.
 
 The write tools can create and update issues. They cannot merge, approve, push code, or edit repository files.
 

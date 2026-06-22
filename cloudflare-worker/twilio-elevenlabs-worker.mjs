@@ -2,9 +2,6 @@ import {
   ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
 } from "../shared/telephony-audio-format.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
-import { githubCliCat, githubCliLs } from "../shared/github-cli-tools.mjs";
-import { githubIssueCreate, githubIssueUpdate } from "../shared/github-issues.mjs";
-import { githubSummary } from "../shared/github-summary.mjs";
 import {
   isAllowedCaller,
   lastFourDigits,
@@ -44,8 +41,7 @@ export default {
         web_search_provider:
           env.WEB_SEARCH_PROVIDER || (env.TAVILY_API_KEY ? "auto" : "duckduckgo"),
         cli_bridge_configured: Boolean(env.CLI_BRIDGE_URL && env.CLI_BRIDGE_TOKEN),
-        github_read_configured: Boolean(env.GITHUB_READ_TOKEN),
-        github_write_configured: Boolean(env.GITHUB_WRITE_TOKEN),
+        github_cli_bridge_configured: Boolean(env.CLI_BRIDGE_URL && env.CLI_BRIDGE_TOKEN),
         expected_elevenlabs_audio_format:
           env.ELEVENLABS_TELEPHONY_AUDIO_FORMAT || ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
         allowed_caller_numbers_configured: parseAllowedCallerNumbers(
@@ -139,29 +135,14 @@ export default {
       return handleWebSearch(request, env);
     }
 
-    if (request.method === "POST" && url.pathname === "/github-summary") {
-      return handleGithubSummary(request, env);
-    }
-
-    if (request.method === "POST" && url.pathname === "/github-cli/ls") {
-      return handleGithubCliLs(request, env);
-    }
-
-    if (request.method === "POST" && url.pathname === "/github-cli/cat") {
-      return handleGithubCliCat(request, env);
-    }
-
-    if (request.method === "POST" && url.pathname === "/github-issues/create") {
-      return handleGithubIssueCreate(request, env);
-    }
-
-    if (request.method === "POST" && url.pathname === "/github-issues/update") {
-      return handleGithubIssueUpdate(request, env);
-    }
-
     if (
       request.method === "POST" &&
       [
+        "/github-summary",
+        "/github-cli/ls",
+        "/github-cli/cat",
+        "/github-issues/create",
+        "/github-issues/update",
         "/cli/himalaya/email-list",
         "/cli/himalaya/email-read",
         "/cli/himalaya/email-archive",
@@ -470,118 +451,6 @@ async function handleWebSearch(request, env) {
   return json(result, result.ok ? 200 : 400);
 }
 
-async function handleGithubSummary(request, env) {
-  const auth = validateToolAuth(request, env);
-  if (auth) return auth;
-
-  try {
-    const body = await parseRequestBody(request);
-    const result = await githubSummary({
-      githubToken: env.GITHUB_READ_TOKEN,
-      username: env.GITHUB_USERNAME,
-      itemType: body.item_type || body.itemType || body.type || body.kind,
-      scope: body.scope,
-      maxResults: body.max_results || body.maxResults || 5,
-      repo: body.repo || body.repository,
-      owner: body.owner,
-      organization: body.organization || body.org,
-    });
-
-    return json(result, result.ok ? 200 : 400);
-  } catch (error) {
-    return json(githubToolError(error), 400);
-  }
-}
-
-async function handleGithubCliLs(request, env) {
-  const auth = validateToolAuth(request, env);
-  if (auth) return auth;
-
-  try {
-    const body = await parseRequestBody(request);
-    const result = await githubCliLs({
-      githubToken: env.GITHUB_READ_TOKEN,
-      repo: body.repo || body.repository,
-      path: body.path || "",
-      ref: body.ref || body.branch || body.sha,
-      recursive: body.recursive,
-      maxEntries: body.max_entries || body.maxEntries,
-    });
-
-    return json(result, result.ok ? 200 : 400);
-  } catch (error) {
-    return json(githubToolError(error), 400);
-  }
-}
-
-async function handleGithubCliCat(request, env) {
-  const auth = validateToolAuth(request, env);
-  if (auth) return auth;
-
-  try {
-    const body = await parseRequestBody(request);
-    const result = await githubCliCat({
-      githubToken: env.GITHUB_READ_TOKEN,
-      repo: body.repo || body.repository,
-      path: body.path,
-      ref: body.ref || body.branch || body.sha,
-      maxBytes: body.max_bytes || body.maxBytes,
-    });
-
-    return json(result, result.ok ? 200 : 400);
-  } catch (error) {
-    return json(githubToolError(error), 400);
-  }
-}
-
-async function handleGithubIssueCreate(request, env) {
-  const auth = validateToolAuth(request, env);
-  if (auth) return auth;
-
-  try {
-    const body = await parseRequestBody(request);
-    const result = await githubIssueCreate({
-      githubToken: env.GITHUB_WRITE_TOKEN,
-      repo: body.repo || body.repository,
-      title: body.title,
-      body: body.body,
-      labels: body.labels,
-      assignees: body.assignees,
-      confirmed: body.confirmed,
-    });
-
-    return json(result, result.ok || result.status === "confirmation_required" ? 200 : 400);
-  } catch (error) {
-    return json(githubToolError(error), 400);
-  }
-}
-
-async function handleGithubIssueUpdate(request, env) {
-  const auth = validateToolAuth(request, env);
-  if (auth) return auth;
-
-  try {
-    const body = await parseRequestBody(request);
-    const result = await githubIssueUpdate({
-      githubToken: env.GITHUB_WRITE_TOKEN,
-      repo: body.repo || body.repository,
-      number: body.number,
-      issueNumber: body.issue_number || body.issueNumber,
-      title: body.title,
-      body: body.body,
-      state: body.state,
-      stateReason: body.state_reason || body.stateReason,
-      labels: body.labels,
-      assignees: body.assignees,
-      confirmed: body.confirmed,
-    });
-
-    return json(result, result.ok || result.status === "confirmation_required" ? 200 : 400);
-  } catch (error) {
-    return json(githubToolError(error), 400);
-  }
-}
-
 async function handleCliBridgeProxy(request, env, pathname) {
   const auth = validateToolAuth(request, env);
   if (auth) return auth;
@@ -723,15 +592,6 @@ function validateToolAuth(request, env) {
   }
 
   return null;
-}
-
-function githubToolError(error) {
-  return {
-    ok: false,
-    status: "github_tool_error",
-    message: error?.message || "GitHub tool request failed.",
-    entries: [],
-  };
 }
 
 function isValidTwilioWebhookRequest(request, env) {
