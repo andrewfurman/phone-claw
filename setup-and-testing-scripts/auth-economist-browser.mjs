@@ -130,7 +130,7 @@ try {
 async function fillLoginForm(page, { email, password }) {
   const emailInput = page
     .locator(
-      'input[type="email"], input[name*="email" i], input[id*="email" i], input[autocomplete="username"]'
+      'input[type="email"], input[name="username"], input[type="text"][name*="user" i], input[name*="email" i], input[id*="email" i], input[autocomplete="username"], lightning-input input[name="username"]'
     )
     .first();
   await emailInput.waitFor({ state: "visible", timeout: 60_000 });
@@ -145,7 +145,7 @@ async function fillLoginForm(page, { email, password }) {
 
   const passwordInput = page
     .locator(
-      'input[type="password"], input[name*="password" i], input[id*="password" i], input[autocomplete="current-password"]'
+      'input[type="password"], input[name*="password" i], input[id*="password" i], input[autocomplete="current-password"], lightning-input input[type="password"]'
     )
     .first();
   await passwordInput.waitFor({ state: "visible", timeout: 60_000 });

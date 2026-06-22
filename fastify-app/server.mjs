@@ -68,6 +68,9 @@ const claudeBridgeToken = process.env.CLAUDE_BRIDGE_TOKEN;
 const economistPublicRssToken = process.env.ECONOMIST_PUBLIC_RSS_TOKEN;
 const economistRssBridgeBaseUrl =
   process.env.ECONOMIST_RSS_BRIDGE_BASE_URL || "http://127.0.0.1:3000/";
+const economistPublicRssAllowedTopics = new Set(
+  parseCsv(process.env.ECONOMIST_PUBLIC_RSS_ALLOWED_TOPICS || "latest")
+);
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 const enforceTwilioSignature =
   process.env.ENFORCE_TWILIO_SIGNATURE === "true" && Boolean(twilioAuthToken);
@@ -285,17 +288,30 @@ async function handleEconomistPublicRss(request, reply) {
   }
 
   const topic = String(request.params?.topic || "").toLowerCase();
-  if (topic !== "latest") {
+  if (!economistPublicRssAllowedTopics.has(topic)) {
     return reply.code(404).send({ ok: false, status: "not_found" });
   }
 
   const upstreamUrl = new URL(economistRssBridgeBaseUrl);
   upstreamUrl.searchParams.set("action", "display");
-  upstreamUrl.searchParams.set("bridge", "Economist");
-  upstreamUrl.searchParams.set(
-    "context",
-    process.env.ECONOMIST_RSS_BRIDGE_LATEST_CONTEXT || "latest"
-  );
+  if (topic === "world-in-brief") {
+    upstreamUrl.searchParams.set("bridge", "EconomistWorldInBrief");
+    upstreamUrl.searchParams.set("mergeEverything", "1");
+    upstreamUrl.searchParams.set("agenda", "1");
+    upstreamUrl.searchParams.set("quote", "1");
+  } else {
+    upstreamUrl.searchParams.set("bridge", "Economist");
+    upstreamUrl.searchParams.set("context", "Topics");
+    upstreamUrl.searchParams.set(
+      "topic",
+      topic === "latest" ? process.env.ECONOMIST_RSS_BRIDGE_LATEST_CONTEXT || "latest" : topic
+    );
+  }
+  const maxEntries = clampInteger(process.env.ECONOMIST_PUBLIC_RSS_MAX_ENTRIES, 1, 20, 10);
+  const requestedLimit = clampInteger(request.query?.limit, 1, maxEntries, maxEntries);
+  if (topic !== "world-in-brief") {
+    upstreamUrl.searchParams.set("limit", String(requestedLimit));
+  }
   upstreamUrl.searchParams.set("format", "Atom");
 
   const response = await fetch(upstreamUrl, {
@@ -317,7 +333,6 @@ async function handleEconomistPublicRss(request, reply) {
     return reply.code(502).send({ ok: false, status: "rss_bridge_upstream_failed" });
   }
 
-  const maxEntries = clampInteger(process.env.ECONOMIST_PUBLIC_RSS_MAX_ENTRIES, 1, 20, 10);
   const cacheSeconds = clampInteger(process.env.ECONOMIST_PUBLIC_RSS_CACHE_SECONDS, 0, 3600, 900);
 
   return reply
@@ -325,7 +340,7 @@ async function handleEconomistPublicRss(request, reply) {
     .header("content-type", "application/atom+xml; charset=UTF-8")
     .header("cache-control", `private, max-age=${cacheSeconds}`)
     .header("x-robots-tag", "noindex, nofollow")
-    .send(clampAtomFeedEntries(text, maxEntries));
+    .send(clampAtomFeedEntries(text, requestedLimit));
 }
 
 try {
@@ -1263,6 +1278,13 @@ function secureEquals(left, right) {
   const rightBuffer = Buffer.from(String(right));
   if (leftBuffer.length !== rightBuffer.length) return false;
   return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function parseCsv(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 function clampInteger(value, min, max, fallback = min) {

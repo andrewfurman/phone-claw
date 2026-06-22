@@ -12,6 +12,34 @@ const MAX_TEXT_CHARS = 120_000;
 const RSS_BRIDGE_VIRTUAL_ID_BASE = 900_000_000;
 const DEFAULT_RSS_BRIDGE_URL =
   "https://cli-bridge.aifurman.com/rss/economist/latest.atom";
+const RSS_BRIDGE_SECTION_TOPICS = new Set([
+  "latest",
+  "the-world-this-week",
+  "letters",
+  "leaders",
+  "briefing",
+  "special-report",
+  "britain",
+  "europe",
+  "united-states",
+  "the-americas",
+  "middle-east-and-africa",
+  "asia",
+  "china",
+  "international",
+  "business",
+  "finance-and-economics",
+  "science-and-technology",
+  "books-and-arts",
+  "obituary",
+  "graphic-detail",
+  "economic-and-financial-indicators",
+  "the-economist-reads",
+]);
+const RSS_BRIDGE_PATH_TOPIC_ALIASES = new Map([
+  ["culture", "books-and-arts"],
+  ["obituaries", "obituary"],
+]);
 
 export function minifluxConfigured() {
   return Boolean(process.env.MINIFLUX_API_TOKEN);
@@ -23,7 +51,8 @@ export function economistFullTextBrowserConfigured() {
 
 export function economistRssBridgeConfigured() {
   return Boolean(
-    normalizeString(process.env.ECONOMIST_RSS_BRIDGE_URL) ||
+    normalizeString(process.env.ECONOMIST_RSS_BRIDGE_BASE_URL) ||
+      normalizeString(process.env.ECONOMIST_RSS_BRIDGE_URL) ||
       normalizeString(process.env.ECONOMIST_RSS_BRIDGE_TOKEN) ||
       normalizeString(process.env.ECONOMIST_PUBLIC_RSS_TOKEN)
   );
@@ -160,7 +189,20 @@ export async function rssEntryFullText({
       articleUrl: normalizedUrl,
       maxTextChars: boundedMax,
     });
-    if (rssBridgeResult.ok || isRssBridgeVirtualId(normalizedId)) return rssBridgeResult;
+    if (rssBridgeResult.ok) {
+      const completeRssBridgeResult =
+        rssBridgeResult.content_source === "economist_rss_bridge" &&
+        Number(rssBridgeResult.full_text_chars || 0) >= 700 &&
+        !rssBridgeResult.access_note;
+      if (completeRssBridgeResult) return rssBridgeResult;
+
+      const browserResult = await browserFallbackFromRssBridgeResult({
+        rssBridgeResult,
+        maxTextChars: boundedMax,
+      });
+      return browserResult || rssBridgeResult;
+    }
+    if (isRssBridgeVirtualId(normalizedId)) return rssBridgeResult;
   }
 
   if (!minifluxConfigured()) return notConfiguredResponse();
@@ -280,6 +322,54 @@ function shouldTryBrowserFallback({ contentText, fetchStatus }) {
   return String(contentText || "").length < 700;
 }
 
+async function browserFallbackFromRssBridgeResult({ rssBridgeResult, maxTextChars }) {
+  const articleUrl = rssBridgeResult?.entry?.url;
+  if (!economistBrowserFetchConfigured() || !articleUrl) return null;
+
+  const browserResult = await fetchEconomistArticleWithBrowser({
+    url: articleUrl,
+    maxTextChars,
+  });
+
+  if (browserResult.ok && browserResult.full_text_chars > rssBridgeResult.full_text_chars) {
+    const truncated = truncateText(browserResult.full_text || "", maxTextChars);
+    return {
+      ...rssBridgeResult,
+      provider: "rss_bridge+browser",
+      content_source: "economist_browser_fetch",
+      browser_fetch_status: browserResult.status || "ok",
+      browser_fetch_message: browserResult.message || "",
+      browser_fetch_url: browserResult.final_url || browserResult.url || articleUrl,
+      full_text_chars: browserResult.full_text_chars,
+      returned_text_chars: truncated.value.length,
+      full_text_truncated: truncated.truncated,
+      full_text: truncated.value,
+      access_note: accessNote(browserResult.full_text || "", rssBridgeResult.entry, {
+        contentSource: "economist_browser_fetch",
+        browserFetchStatus: browserResult.status || "ok",
+        browserFetchMessage: browserResult.message || "",
+        rssBridgeFetchStatus: rssBridgeResult.rss_bridge_fetch_status,
+        rssBridgeFetchMessage: rssBridgeResult.rss_bridge_fetch_message,
+      }),
+      answer_text: `Retrieved full Economist article text for "${rssBridgeResult.entry?.title || "the article"}" from the authenticated browser fallback. ${truncated.truncated ? "The returned text is truncated." : "The returned text is complete within the configured limit."}`,
+    };
+  }
+
+  return {
+    ...rssBridgeResult,
+    browser_fetch_status: browserResult.status || "browser_fetch_unknown",
+    browser_fetch_message: browserResult.message || "",
+    browser_fetch_url: browserResult.final_url || browserResult.url || articleUrl,
+    access_note: accessNote(rssBridgeResult.full_text || "", rssBridgeResult.entry, {
+      contentSource: rssBridgeResult.content_source,
+      rssBridgeFetchStatus: rssBridgeResult.rss_bridge_fetch_status,
+      rssBridgeFetchMessage: rssBridgeResult.rss_bridge_fetch_message,
+      browserFetchStatus: browserResult.status || "browser_fetch_unknown",
+      browserFetchMessage: browserResult.message || "",
+    }),
+  };
+}
+
 async function rssBridgeCompactEntries({
   query = "",
   startDate,
@@ -296,6 +386,7 @@ async function rssBridgeCompactEntries({
   const after = unixSeconds(startDate);
   const before = unixSeconds(endDate);
   const items = feed.entries
+    .filter((entry) => !rssBridgeEntryFetchError(entry))
     .filter((entry) => {
       const published = unixSeconds(entry.published_at || entry.updated_at);
       if (after && published && published < after) return false;
@@ -323,28 +414,59 @@ async function rssBridgeFullTextResult({
   maxTextChars = DEFAULT_MAX_TEXT_CHARS,
   allowNoMatch = false,
 } = {}) {
-  const feed = await rssBridgeLatestFeed();
-  if (!feed.ok) {
+  const feeds = await rssBridgeCandidateFeeds({ articleUrl, entryId });
+  if (feeds.length === 1 && !feeds[0].ok) {
     return {
       ok: false,
-      status: feed.status,
-      message: feed.message,
+      status: feeds[0].status,
+      message: feeds[0].message,
       answer_text: "The Economist RSS-Bridge full-text feed is not available.",
     };
   }
 
-  const match = findRssBridgeEntry(feed.entries, { entryId, articleUrl, title });
-  if (!match) {
+  let firstOkFeed = null;
+  let articleFetchError = null;
+  for (const feed of feeds) {
+    if (!feed.ok) continue;
+    firstOkFeed ||= feed;
+    const match = findRssBridgeEntry(feed.entries, { entryId, articleUrl, title });
+    if (!match) continue;
+    const fetchError = rssBridgeEntryFetchError(match);
+    if (fetchError) {
+      articleFetchError ||= { ...fetchError, feed };
+      continue;
+    }
+    return rssBridgeEntryResult({ match, feed, maxTextChars });
+  }
+
+  const checkedTopics = feeds.map((feed) => feed.topic).filter(Boolean);
+  const failedFeed = feeds.find((feed) => !feed.ok);
+  if (articleFetchError) {
     return {
       ok: false,
-      status: allowNoMatch ? "rss_bridge_no_matching_entry" : "rss_bridge_entry_not_found",
-      message: "The RSS-Bridge latest feed did not contain the requested Economist article.",
-      rss_bridge_url: feed.url,
+      status: articleFetchError.status,
+      message: articleFetchError.message,
+      checked_topics: checkedTopics,
+      rss_bridge_url: articleFetchError.feed?.url || firstOkFeed?.url || "",
       answer_text:
-        "The Economist full-text bridge is available, but it did not contain that specific article.",
+        "RSS-Bridge found the Economist article, but the upstream article fetch was blocked.",
     };
   }
 
+  return {
+    ok: false,
+    status: allowNoMatch ? "rss_bridge_no_matching_entry" : "rss_bridge_entry_not_found",
+    message: firstOkFeed
+      ? "The RSS-Bridge feeds did not contain the requested Economist article."
+      : failedFeed?.message || "The RSS-Bridge feeds were not available.",
+    checked_topics: checkedTopics,
+    rss_bridge_url: firstOkFeed?.url || failedFeed?.url || "",
+    answer_text:
+      "The Economist full-text bridge is available, but it did not contain that specific article in the checked feeds.",
+  };
+}
+
+function rssBridgeEntryResult({ match, feed, maxTextChars }) {
   const text = normalizeArticleText(match.full_text || "");
   const truncated = truncateText(text, maxTextChars);
   const entry = compactRssBridgeEntry(match, { maxExcerptChars: 420 });
@@ -360,8 +482,9 @@ async function rssBridgeFullTextResult({
     original_fetch_status: "not_requested",
     original_fetch_message: "",
     rss_bridge_fetch_status: "ok",
-    rss_bridge_fetch_message: "",
+    rss_bridge_fetch_message: feed.topic ? `Matched RSS-Bridge topic "${feed.topic}".` : "",
     rss_bridge_url: feed.url,
+    rss_bridge_topic: feed.topic || "",
     browser_fetch_status: "not_requested",
     browser_fetch_message: "",
     browser_fetch_url: "",
@@ -485,7 +608,41 @@ async function minifluxRequest(path, { method = "GET", body, expectNoContent = f
   };
 }
 
-async function rssBridgeLatestFeed() {
+async function rssBridgeCandidateFeeds({ articleUrl, entryId } = {}) {
+  const topics = rssBridgeCandidateTopics({ articleUrl, entryId });
+  const feeds = [];
+  for (const topic of topics) {
+    feeds.push(await rssBridgeLatestFeed({ topic, limit: 30 }));
+  }
+  return feeds;
+}
+
+function rssBridgeCandidateTopics({ articleUrl, entryId } = {}) {
+  if (isRssBridgeVirtualId(normalizeInteger(entryId)) && !articleUrl) return ["latest"];
+
+  const inferredTopic = economistTopicFromArticleUrl(articleUrl);
+  return uniqueStrings([inferredTopic, "latest"]);
+}
+
+function economistTopicFromArticleUrl(value) {
+  const raw = normalizeString(value);
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    const [section] = url.pathname.split("/").filter(Boolean);
+    const normalized = RSS_BRIDGE_PATH_TOPIC_ALIASES.get(section) || section;
+    if (normalized === "the-world-in-brief") return "world-in-brief";
+    return RSS_BRIDGE_SECTION_TOPICS.has(normalized) ? normalized : "";
+  } catch {
+    return "";
+  }
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.map((value) => normalizeString(value)).filter(Boolean))];
+}
+
+async function rssBridgeLatestFeed({ topic = "latest", limit } = {}) {
   if (!economistRssBridgeConfigured()) {
     return {
       ok: false,
@@ -495,7 +652,7 @@ async function rssBridgeLatestFeed() {
     };
   }
 
-  const { url, headers: rssBridgeHeaders } = economistRssBridgeRequest();
+  const { url, headers: rssBridgeHeaders } = economistRssBridgeRequest({ topic, limit });
   const timeoutMs = clampInteger(process.env.ECONOMIST_RSS_BRIDGE_TIMEOUT_MS, 2_000, 30_000, 12_000);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -523,6 +680,7 @@ async function rssBridgeLatestFeed() {
     return {
       ok: true,
       status: "ok",
+      topic,
       url: redactedUrl(url),
       entries: parseAtomEntries(text),
     };
@@ -544,8 +702,12 @@ function economistRssBridgeUrl() {
   return url;
 }
 
-function economistRssBridgeRequest() {
-  const url = economistRssBridgeUrl();
+function economistRssBridgeRequest({ topic = "latest", limit } = {}) {
+  const directBaseUrl = normalizeString(process.env.ECONOMIST_RSS_BRIDGE_BASE_URL);
+  const normalizedTopic = normalizeString(topic, "latest");
+  const url = directBaseUrl
+    ? economistRssBridgeDirectUrl({ baseUrl: directBaseUrl, topic: normalizedTopic, limit })
+    : economistRssBridgePublicUrl({ topic: normalizedTopic, limit });
   const token = normalizeString(
     process.env.ECONOMIST_RSS_BRIDGE_TOKEN || process.env.ECONOMIST_PUBLIC_RSS_TOKEN
   );
@@ -554,6 +716,37 @@ function economistRssBridgeRequest() {
     headers.authorization = `Bearer ${token}`;
   }
   return { url, headers };
+}
+
+function economistRssBridgeDirectUrl({ baseUrl, topic, limit }) {
+  const url = new URL(baseUrl);
+  url.searchParams.set("action", "display");
+  if (topic === "world-in-brief") {
+    url.searchParams.set("bridge", "EconomistWorldInBrief");
+    url.searchParams.set("mergeEverything", "1");
+    url.searchParams.set("agenda", "1");
+    url.searchParams.set("quote", "1");
+  } else {
+    url.searchParams.set("bridge", "Economist");
+    url.searchParams.set("context", "Topics");
+    url.searchParams.set("topic", topic);
+    url.searchParams.set("limit", String(clampInteger(limit, 1, 30, 30)));
+  }
+  url.searchParams.set("format", "Atom");
+  return url;
+}
+
+function economistRssBridgePublicUrl({ topic, limit }) {
+  const url = economistRssBridgeUrl();
+  if (topic && topic !== "latest") {
+    if (/\/[^/]+\.atom$/i.test(url.pathname)) {
+      url.pathname = url.pathname.replace(/\/[^/]+\.atom$/i, `/${topic}.atom`);
+    } else {
+      url.searchParams.set("topic", topic);
+    }
+  }
+  if (limit) url.searchParams.set("limit", String(clampInteger(limit, 1, 30, 30)));
+  return url;
 }
 
 function parseAtomEntries(xml) {
@@ -659,6 +852,7 @@ function compactEntry(entry, { maxExcerptChars }) {
 }
 
 function compactRssBridgeEntry(entry, { maxExcerptChars }) {
+  const fetchError = rssBridgeEntryFetchError(entry);
   return {
     id: entry.id || rssBridgeVirtualId(entry),
     title: entry.title || "",
@@ -675,7 +869,8 @@ function compactRssBridgeEntry(entry, { maxExcerptChars }) {
     feed_url: redactedUrl(economistRssBridgeUrl()),
     category_title: "Economist",
     content_source: "economist_rss_bridge",
-    full_text_available: normalizeArticleText(entry.full_text).length >= 700,
+    full_text_available: !fetchError && normalizeArticleText(entry.full_text).length >= 700,
+    fetch_error: fetchError?.message || "",
     excerpt: truncateText(normalizeArticleText(entry.full_text), maxExcerptChars).value,
   };
 }
@@ -732,7 +927,19 @@ function accessNote(text, entry, {
   browserFetchMessage,
 } = {}) {
   const normalized = text.toLowerCase();
+  const looksLikeLoginOrPaywall =
+    normalized.includes("subscribe") &&
+    (normalized.includes("sign in") || normalized.includes("log in"));
   if (contentSource === "economist_rss_bridge" && text.length >= 700) {
+    return "";
+  }
+  if (
+    ["stored_entry_content", "original_article_fetch", "economist_browser_fetch"].includes(
+      contentSource
+    ) &&
+    text.length >= 700 &&
+    !looksLikeLoginOrPaywall
+  ) {
     return "";
   }
   if (
@@ -758,16 +965,28 @@ function accessNote(text, entry, {
   if (text.length < 700) {
     return "The returned article text is short; it may be an RSS excerpt, not the full subscriber article.";
   }
-  if (
-    normalized.includes("subscribe") &&
-    (normalized.includes("sign in") || normalized.includes("log in"))
-  ) {
+  if (looksLikeLoginOrPaywall) {
     return "The fetched article text appears to include subscription or login language; full subscriber access may need an authenticated Economist cookie/private feed.";
   }
   if (entry?.feed?.title) {
     return `Text came from ${entry.feed.title}.`;
   }
   return "";
+}
+
+function rssBridgeEntryFetchError(entry) {
+  const text = normalizeArticleText(entry?.full_text || "");
+  const url = canonicalArticleUrl(entry?.url);
+  const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = url
+    ? new RegExp(`^${escapedUrl}\\s+resulted in\\s+([0-9]{3}\\s+[^.]+)`, "i")
+    : /^https?:\/\/\S+\s+resulted in\s+([0-9]{3}\s+[^.]+)/i;
+  const match = text.match(pattern);
+  if (!match) return null;
+  return {
+    status: "rss_bridge_article_fetch_failed",
+    message: `RSS-Bridge upstream article fetch failed: ${match[1].trim()}.`,
+  };
 }
 
 function findRssBridgeEntry(entries, { entryId, articleUrl, title } = {}) {
