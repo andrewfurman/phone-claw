@@ -12,6 +12,10 @@ import {
   buildTwilioEvent,
   summarizeTwilioEvent,
 } from "../shared/twilio-events.mjs";
+import {
+  visualizerAssets,
+  visualizerHtml,
+} from "./visualizer-assets.generated.mjs";
 
 const XML_HEADERS = {
   "content-type": "application/xml; charset=utf-8",
@@ -25,10 +29,16 @@ const JSON_HEADERS = {
 
 const OUTSIDE_COVERAGE_MESSAGE =
   "Thanks for calling Andrew's assistance line. Sorry we haven't set up outside coverage yet.";
+const VISUALIZER_COOKIE = "phoneclaw_visualizer";
+const VISUALIZER_SESSION_TTL_SECONDS = 86_400;
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/visualizer" || url.pathname.startsWith("/visualizer/")) {
+      return handleVisualizerRequest(request, env, ctx, url);
+    }
 
     if (request.method === "GET" && url.pathname === "/health") {
       return json({
@@ -87,6 +97,7 @@ export default {
           conversation_history_get: "POST /conversation-history/get",
           conversation_history_recent_context: "POST /conversation-history/recent-context",
           conversation_history_archive: "POST /conversation-history/archive-elevenlabs",
+          visualizer: "GET /visualizer",
           future_claude_tool: "POST /agent-command",
           health: "GET /health",
         },
@@ -172,6 +183,555 @@ export default {
     return json({ ok: false, error: "not_found" }, 404);
   },
 };
+
+async function handleVisualizerRequest(request, env, ctx, url) {
+  if (url.pathname === "/visualizer/logout") {
+    return redirectWithCookie("/visualizer/login", expiredVisualizerCookie());
+  }
+
+  if (url.pathname === "/visualizer/login") {
+    if (request.method === "GET") return visualizerLoginPage();
+    if (request.method !== "POST") return json({ ok: false, status: "method_not_allowed" }, 405);
+    return handleVisualizerLogin(request, env);
+  }
+
+  const authenticated = await isValidVisualizerSession(request, env);
+  if (!authenticated) {
+    if (url.pathname.startsWith("/visualizer/api/")) {
+      return json({ ok: false, status: "unauthorized" }, 401);
+    }
+    return visualizerLoginPage();
+  }
+
+  if (url.pathname.startsWith("/visualizer/api/")) {
+    return handleVisualizerApi(request, env, ctx, url);
+  }
+
+  const asset = visualizerAssets[url.pathname];
+  if (asset) {
+    return new Response(asset.body, {
+      headers: {
+        "content-type": asset.content_type,
+        "cache-control": "public, max-age=31536000, immutable",
+      },
+    });
+  }
+
+  return new Response(visualizerHtml, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    },
+  });
+}
+
+async function handleVisualizerLogin(request, env) {
+  if (!env.VISUALIZER_PASSWORD) {
+    return new Response(visualizerLoginHtml("Visualizer password is not configured."), {
+      status: 503,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
+
+  const body = await parseRequestBody(request);
+  const password = String(body.password || "");
+  if (!constantTimeStringEqual(password, env.VISUALIZER_PASSWORD)) {
+    return new Response(visualizerLoginHtml("Incorrect password."), {
+      status: 401,
+      headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
+
+  const cookie = await signedVisualizerCookie(env);
+  return redirectWithCookie("/visualizer/", cookie);
+}
+
+async function handleVisualizerApi(request, env, ctx, url) {
+  if (request.method === "GET" && url.pathname === "/visualizer/api/bootstrap") {
+    return handleVisualizerBootstrap(env, url);
+  }
+
+  if (request.method === "GET" && url.pathname.startsWith("/visualizer/api/conversations/")) {
+    const conversationId = decodeURIComponent(
+      url.pathname.replace("/visualizer/api/conversations/", "")
+    );
+    return handleVisualizerConversation(env, conversationId);
+  }
+
+  if (request.method === "POST" && url.pathname === "/visualizer/api/archive-latest") {
+    const result = await postCliBridge(env, "/conversation-history/archive-elevenlabs", {
+      latest: true,
+      limit: 8,
+      source: "visualizer",
+    }, 12_000);
+    if (ctx?.waitUntil) {
+      ctx.waitUntil(Promise.resolve(result).catch(() => {}));
+    }
+    return json(result, result.ok === false ? 502 : 200);
+  }
+
+  if (request.method === "GET" && url.pathname === "/visualizer/api/twilio-events") {
+    return json(await visualizerTwilioEvents(env, url));
+  }
+
+  return json({ ok: false, status: "not_found" }, 404);
+}
+
+async function handleVisualizerBootstrap(env, url) {
+  const limit = clampInteger(url.searchParams.get("limit"), 1, 30, 12);
+  const query = url.searchParams.get("query") || "";
+  const [liveConversations, archivedConversations, twilioEvents] = await Promise.all([
+    fetchElevenLabsLiveConversations(env, { limit: Math.min(limit, 12) }),
+    postCliBridge(env, "/conversation-history/search", { query, limit }, 6_000),
+    visualizerTwilioEvents(env, url),
+  ]);
+
+  return json({
+    ok: true,
+    generated_at: new Date().toISOString(),
+    health: {
+      elevenlabs_agent_configured: Boolean(env.ELEVENLABS_API_KEY && env.ELEVENLABS_AGENT_ID),
+      cli_bridge_configured: Boolean(env.CLI_BRIDGE_URL && env.CLI_BRIDGE_TOKEN),
+      twilio_event_log_configured: Boolean(env.TWILIO_EVENT_LOGS),
+    },
+    live_conversations: liveConversations,
+    archived_conversations: normalizeArchivedConversationList(archivedConversations),
+    twilio_events: twilioEvents,
+  });
+}
+
+async function handleVisualizerConversation(env, conversationId) {
+  if (!conversationId) {
+    return json({ ok: false, status: "missing_conversation_id" }, 400);
+  }
+
+  const [live, archive] = await Promise.all([
+    fetchElevenLabsConversationDetail(env, conversationId),
+    postCliBridge(env, "/conversation-history/get", {
+      conversation_id: conversationId,
+      include_transcript: true,
+      include_tool_details: true,
+      max_transcript_turns: 50,
+      max_tool_items: 50,
+    }, 8_000),
+  ]);
+
+  const archivedConversation = archive?.conversation || null;
+  const liveConversation = live?.conversation || null;
+  if (!archivedConversation && !liveConversation) {
+    return json({
+      ok: false,
+      status: "conversation_not_found",
+      live_status: live?.status || "",
+      archive_status: archive?.status || "",
+    }, 404);
+  }
+
+  return json({
+    ok: true,
+    conversation: mergeVisualizerConversation(archivedConversation, liveConversation),
+  });
+}
+
+async function fetchElevenLabsLiveConversations(env, { limit }) {
+  if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_AGENT_ID) {
+    return { ok: false, status: "elevenlabs_not_configured", items: [] };
+  }
+
+  try {
+    const apiBase = env.ELEVENLABS_API_BASE || "https://api.elevenlabs.io";
+    const listUrl = new URL(`${apiBase}/v1/convai/conversations`);
+    listUrl.searchParams.set("agent_id", env.ELEVENLABS_AGENT_ID);
+    listUrl.searchParams.set("page_size", String(limit));
+    const response = await fetchWithTimeout(listUrl.toString(), {
+      headers: { "xi-api-key": env.ELEVENLABS_API_KEY },
+    }, 7_000);
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: "elevenlabs_conversation_list_failed",
+        upstream_status: response.status,
+        items: [],
+      };
+    }
+
+    const conversations = body.conversations || body.items || body.data || [];
+    const details = await Promise.all(
+      conversations.slice(0, Math.min(limit, 6)).map((item) => {
+        const id = item.conversation_id || item.id;
+        return id ? fetchElevenLabsConversationDetail(env, id) : null;
+      })
+    );
+    const detailMap = new Map(
+      details
+        .filter((item) => item?.conversation)
+        .map((item) => [item.conversation.conversation_id, item.conversation])
+    );
+
+    return {
+      ok: true,
+      status: "ok",
+      returned_count: conversations.length,
+      items: conversations.map((item) => {
+        const id = item.conversation_id || item.id;
+        return normalizeLiveConversation(item, detailMap.get(id));
+      }),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "elevenlabs_conversation_list_error",
+      message: error?.message || String(error),
+      items: [],
+    };
+  }
+}
+
+async function fetchElevenLabsConversationDetail(env, conversationId) {
+  if (!env.ELEVENLABS_API_KEY) {
+    return { ok: false, status: "elevenlabs_not_configured" };
+  }
+
+  try {
+    const apiBase = env.ELEVENLABS_API_BASE || "https://api.elevenlabs.io";
+    const response = await fetchWithTimeout(
+      `${apiBase}/v1/convai/conversations/${encodeURIComponent(conversationId)}`,
+      { headers: { "xi-api-key": env.ELEVENLABS_API_KEY } },
+      7_000
+    );
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: "elevenlabs_conversation_fetch_failed",
+        upstream_status: response.status,
+      };
+    }
+
+    return {
+      ok: true,
+      status: "ok",
+      conversation: normalizeLiveConversation(body, body),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "elevenlabs_conversation_fetch_error",
+      message: error?.message || String(error),
+    };
+  }
+}
+
+async function postCliBridge(env, pathname, body, timeoutMs) {
+  if (!env.CLI_BRIDGE_URL || !env.CLI_BRIDGE_TOKEN) {
+    return { ok: false, status: "cli_bridge_not_configured", items: [] };
+  }
+
+  try {
+    const baseUrl = env.CLI_BRIDGE_URL.endsWith("/")
+      ? env.CLI_BRIDGE_URL
+      : `${env.CLI_BRIDGE_URL}/`;
+    const upstreamUrl = new URL(pathname.replace(/^\//, ""), baseUrl);
+    const response = await fetchWithTimeout(upstreamUrl.toString(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${env.CLI_BRIDGE_TOKEN}`,
+      },
+      body: JSON.stringify(body || {}),
+    }, timeoutMs);
+    const text = await response.text();
+    const parsed = parseMaybeJson(text);
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: "cli_bridge_request_failed",
+        upstream_status: response.status,
+        message: typeof parsed === "string" ? parsed.slice(0, 300) : parsed?.message || "",
+        items: [],
+      };
+    }
+    return parsed;
+  } catch (error) {
+    return {
+      ok: false,
+      status: "cli_bridge_request_error",
+      message: error?.message || String(error),
+      items: [],
+    };
+  }
+}
+
+async function visualizerTwilioEvents(env, url) {
+  if (!env.TWILIO_EVENT_LOGS) {
+    return { ok: false, status: "event_log_not_configured", events: [] };
+  }
+  const limit = clampInteger(url.searchParams.get("event_limit"), 1, 100, 50);
+  const callSid = url.searchParams.get("call_sid") || url.searchParams.get("callSid");
+  const events = callSid
+    ? await readTwilioEventsForCall(env, callSid, limit)
+    : await readLatestTwilioEvents(env, limit);
+  return { ok: true, status: "ok", returned_count: events.length, events };
+}
+
+function normalizeArchivedConversationList(result) {
+  if (!result || result.ok === false) {
+    return {
+      ok: false,
+      status: result?.status || "archive_unavailable",
+      items: [],
+      returned_count: 0,
+    };
+  }
+  return {
+    ...result,
+    items: (result.items || []).map((item) => ({ ...item, source: "archive" })),
+  };
+}
+
+function normalizeLiveConversation(summary, detail) {
+  const id =
+    detail?.conversation_id ||
+    detail?.id ||
+    summary?.conversation_id ||
+    summary?.id ||
+    "";
+  const transcript = Array.isArray(detail?.transcript) ? detail.transcript : [];
+  const toolCalls = transcript.flatMap((turn) => turn.tool_calls || []);
+  const toolResults = transcript.flatMap((turn) => turn.tool_results || []);
+  const startedAt =
+    isoFromUnixSeconds(summary?.start_time_unix_secs || detail?.start_time_unix_secs) ||
+    detail?.metadata?.start_time ||
+    summary?.created_at ||
+    detail?.created_at ||
+    "";
+
+  return {
+    source: "live",
+    conversation_id: id,
+    twilio_call_sid:
+      detail?.metadata?.twilio_call_sid ||
+      detail?.conversation_initiation_client_data?.dynamic_variables?.twilio_call_sid ||
+      "",
+    caller_number: "",
+    started_at: startedAt,
+    ended_at: isoFromUnixSeconds(summary?.end_time_unix_secs || detail?.end_time_unix_secs),
+    duration_seconds:
+      summary?.call_duration_secs ??
+      summary?.duration_seconds ??
+      detail?.metadata?.call_duration_secs ??
+      detail?.duration_seconds ??
+      null,
+    status: detail?.status || summary?.status || summary?.call_successful || "",
+    summary:
+      detail?.analysis?.transcript_summary ||
+      detail?.transcript_summary ||
+      firstTranscriptMessage(transcript) ||
+      "",
+    keywords: detail?.analysis?.topics || [],
+    tool_call_count: toolCalls.length || summary?.tool_call_count || 0,
+    transcript_turn_count: transcript.length,
+    transcript,
+    transcript_excerpt: transcript,
+    tool_calls: toolCalls,
+    tool_results: toolResults,
+    metadata: compactLiveMetadata(summary, detail),
+  };
+}
+
+function mergeVisualizerConversation(archivedConversation, liveConversation) {
+  if (!archivedConversation) return liveConversation;
+  if (!liveConversation) return { ...archivedConversation, source: "archive" };
+  return {
+    ...archivedConversation,
+    ...liveConversation,
+    source: liveConversation.source || "live",
+    summary: archivedConversation.summary || liveConversation.summary,
+    keywords: archivedConversation.keywords?.length
+      ? archivedConversation.keywords
+      : liveConversation.keywords,
+    tool_calls: liveConversation.tool_calls?.length
+      ? liveConversation.tool_calls
+      : archivedConversation.tool_calls,
+    tool_results: liveConversation.tool_results?.length
+      ? liveConversation.tool_results
+      : archivedConversation.tool_results,
+    metadata: {
+      ...(archivedConversation.metadata || {}),
+      ...(liveConversation.metadata || {}),
+    },
+  };
+}
+
+function compactLiveMetadata(summary, detail) {
+  return {
+    call_successful: summary?.call_successful || detail?.call_successful || "",
+    message_count: summary?.message_count || detail?.message_count || null,
+    has_audio: summary?.has_audio ?? detail?.has_audio ?? null,
+  };
+}
+
+function firstTranscriptMessage(transcript) {
+  return (
+    transcript.find((turn) => turn.role === "user" && turn.message)?.message ||
+    transcript.find((turn) => turn.role === "agent" && turn.message && turn.message !== "...")?.message ||
+    ""
+  );
+}
+
+function isoFromUnixSeconds(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return "";
+  return new Date(number * 1000).toISOString();
+}
+
+async function signedVisualizerCookie(env) {
+  const expiresAt = Math.floor(Date.now() / 1000) + VISUALIZER_SESSION_TTL_SECONDS;
+  const payload = base64UrlEncode(JSON.stringify({ exp: expiresAt }));
+  const signature = await hmacSign(payload, visualizerSessionSecret(env));
+  return `${VISUALIZER_COOKIE}=${payload}.${signature}; Path=/visualizer; Max-Age=${VISUALIZER_SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+function expiredVisualizerCookie() {
+  return `${VISUALIZER_COOKIE}=; Path=/visualizer; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+}
+
+async function isValidVisualizerSession(request, env) {
+  const cookie = cookieValue(request.headers.get("cookie") || "", VISUALIZER_COOKIE);
+  if (!cookie || !cookie.includes(".")) return false;
+  const [payload, signature] = cookie.split(".", 2);
+  const expected = await hmacSign(payload, visualizerSessionSecret(env));
+  if (!constantTimeStringEqual(signature, expected)) return false;
+
+  const decoded = parseMaybeJson(base64UrlDecode(payload));
+  const exp = Number(decoded?.exp);
+  return Number.isFinite(exp) && exp > Math.floor(Date.now() / 1000);
+}
+
+function visualizerSessionSecret(env) {
+  return (
+    env.VISUALIZER_SESSION_SECRET ||
+    env.VISUALIZER_PASSWORD ||
+    env.COMMAND_BRIDGE_TOKEN ||
+    env.CLI_BRIDGE_TOKEN ||
+    "phoneclaw-visualizer-dev"
+  );
+}
+
+async function hmacSign(value, secret) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(value));
+  return base64UrlEncodeBytes(new Uint8Array(signature));
+}
+
+function constantTimeStringEqual(left, right) {
+  const leftText = String(left || "");
+  const rightText = String(right || "");
+  const max = Math.max(leftText.length, rightText.length);
+  let diff = leftText.length ^ rightText.length;
+  for (let index = 0; index < max; index += 1) {
+    diff |= (leftText.charCodeAt(index) || 0) ^ (rightText.charCodeAt(index) || 0);
+  }
+  return diff === 0;
+}
+
+function cookieValue(cookieHeader, name) {
+  return cookieHeader
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`))
+    ?.slice(name.length + 1) || "";
+}
+
+function redirectWithCookie(location, cookie) {
+  return new Response("", {
+    status: 302,
+    headers: {
+      location,
+      "set-cookie": cookie,
+      "cache-control": "no-store",
+    },
+  });
+}
+
+function visualizerLoginPage(message = "") {
+  return new Response(visualizerLoginHtml(message), {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    },
+  });
+}
+
+function visualizerLoginHtml(message) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phoneclaw Login</title>
+  <style>
+    :root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1d2430; background: #f6f7f9; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 18px; }
+    main { width: min(100%, 380px); border: 1px solid #d9dee7; background: #fff; border-radius: 8px; padding: 22px; }
+    h1 { margin: 0 0 6px; font-size: 1.2rem; letter-spacing: 0; }
+    p { margin: 0 0 18px; color: #6a7483; line-height: 1.45; }
+    label { display: block; font-weight: 800; margin-bottom: 8px; }
+    input { width: 100%; min-height: 40px; border: 1px solid #c9d1dd; border-radius: 6px; padding: 0 10px; font: inherit; }
+    button { width: 100%; min-height: 40px; margin-top: 12px; border: 0; border-radius: 6px; background: #176b87; color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+    .message { border: 1px solid #f1b4b4; background: #fff0f0; color: #8a1f1f; border-radius: 6px; padding: 9px 10px; margin-bottom: 12px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Phoneclaw Live</h1>
+    <p>Enter the visualizer password to view live transcripts, tool calls, and call events.</p>
+    ${message ? `<div class="message">${escapeHtml(message)}</div>` : ""}
+    <form method="post" action="/visualizer/login">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" autofocus>
+      <button type="submit">Open visualizer</button>
+    </form>
+  </main>
+</body>
+</html>`;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function base64UrlEncode(value) {
+  return base64UrlEncodeBytes(new TextEncoder().encode(value));
+}
+
+function base64UrlEncodeBytes(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function base64UrlDecode(value) {
+  const normalized = String(value || "").replaceAll("-", "+").replaceAll("_", "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return atob(padded);
+}
 
 async function handleTwilioCall(request, env, direction) {
   try {

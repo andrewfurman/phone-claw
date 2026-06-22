@@ -25,3 +25,4 @@ TWILIO_PHONE_NUMBER = "+15555550123"
 TWILIO_EVENT_LOG_TTL_SECONDS = "604800"
 # Keep real values in Worker secrets or uncommitted wrangler.toml.
 # CLI_BRIDGE_URL = "https://private-cli-bridge.example.com"
+# VISUALIZER_PASSWORD and VISUALIZER_SESSION_SECRET should be Worker secrets.
