@@ -21,6 +21,9 @@ wrangler secret put TWILIO_WEBHOOK_TOKEN
 wrangler secret put ALLOWED_CALLER_NUMBERS
 wrangler secret put OUTSIDE_COVERAGE_MESSAGE
 wrangler secret put WEB_SEARCH_TOKEN
+wrangler secret put VISUALIZER_PASSWORD
+# Optional: separate session-signing secret for the visualizer cookie.
+wrangler secret put VISUALIZER_SESSION_SECRET
 # Optional Tavily search backend.
 wrangler secret put TAVILY_API_KEY
 wrangler secret put CLI_BRIDGE_URL
@@ -75,6 +78,10 @@ npm run worker:deploy
 - `POST /conversation-history/recent-context`
 - `POST /conversation-history/archive-elevenlabs`
 - `POST /agent-command`
+- `GET /visualizer`
+- `GET /visualizer/api/bootstrap`
+- `GET /visualizer/api/conversations/:conversation_id`
+- `POST /visualizer/api/archive-latest`
 
 ## Caller Allow-List
 
@@ -152,7 +159,7 @@ The `/cli/*` endpoints are authenticated ElevenLabs webhook tools, but the Worke
 
 Supported bridge-backed tools:
 
-- Himalaya: email envelope list/search, all-pages capped listing/count, preview read, confirmed archive, confirmed new draft, confirmed reply draft, confirmed forward draft with inline original HTML when available plus `.eml` attachment, and emergency-only confirmed send.
+- Himalaya: email envelope list/search, all-pages capped listing/count, preview read, confirmed archive, confirmed new draft, confirmed reply draft, confirmed forward draft with inline original HTML when available and no `.eml` attachment, and emergency-only confirmed send.
 - Otter: transcript list, raw JSON fetch, and transcript search.
 - GitHub CLI: common read-only repo, issue, PR, and search commands.
 - RSS/Miniflux: Economist recent entries, keyword/date search, original article text fetch attempt, and feed refresh. Article-text responses include `access_note` when the bridge only has an RSS excerpt or the publisher blocks original-content fetching.
@@ -161,3 +168,22 @@ Supported bridge-backed tools:
 The Himalaya write tools and Claude Code task submission require `confirmed=true`. Ordinary email composition and forwarding should use draft tools. The send path is isolated in `himalaya_email_send` and additionally requires `emergency=true`, `previewed=true`, and `confirmed=true`.
 
 If `CLI_BRIDGE_URL` or `CLI_BRIDGE_TOKEN` is unset, these endpoints return `cli_bridge_not_configured`. See `docs/CLI_BRIDGE_SECURITY.md` before deploying a bridge with real email/Otter/GitHub/Claude Code credentials.
+
+## Live Conversation Visualizer
+
+`GET /visualizer` serves a password-protected React Router dashboard from the same Worker. The dashboard shows recent ElevenLabs conversations, archived Neon conversation summaries, transcript turns, tool calls/results, Gmail draft search links, and recent Twilio stream/call events.
+
+Set `VISUALIZER_PASSWORD` as a Worker secret. Do not commit the real password to `wrangler.toml`. The Worker sets a signed, HttpOnly session cookie after login; the browser never receives `CLI_BRIDGE_TOKEN` or `ELEVENLABS_API_KEY`.
+
+Build the embedded Worker assets before deploy:
+
+```bash
+npm run visualizer:build
+npm run worker:deploy
+```
+
+After deploy, validate the password gate and API with:
+
+```bash
+VISUALIZER_PASSWORD='<local test password>' npm run visualizer:test
+```
