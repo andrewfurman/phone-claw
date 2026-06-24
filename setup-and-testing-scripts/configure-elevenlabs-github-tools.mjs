@@ -21,6 +21,8 @@ if (!toolToken) {
   process.exit(1);
 }
 
+await verifyWorkerToolToken();
+
 const configs = [
   webSearchToolConfig(),
   githubSummaryToolConfig(),
@@ -164,6 +166,29 @@ async function findToolByName(name) {
 
   const body = await requestJson(url.toString());
   return (body.tools || []).find((tool) => tool.tool_config?.name === name) || null;
+}
+
+async function verifyWorkerToolToken() {
+  if (process.env.SKIP_TOOL_TOKEN_PREFLIGHT === "true") return;
+
+  const response = await fetch(`${workerBaseUrl}/web-search`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${toolToken}`,
+    },
+    body: JSON.stringify({
+      query: "phone-claw webhook token preflight",
+      max_results: 1,
+    }),
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(
+      `Webhook token preflight failed (${response.status}) against ${workerBaseUrl}. ` +
+        "Refusing to patch ElevenLabs tool Authorization headers with a token the Worker rejects."
+    );
+  }
 }
 
 function webSearchToolConfig() {

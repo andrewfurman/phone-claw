@@ -168,6 +168,8 @@ Publisher-specific scraping, browser automation, subscriber cookies, and paywall
 
 Use `npm run elevenlabs:rss:conversation:test` to run an automated ElevenLabs smoke test for recent-list, keyword/date search, and article-text tool calls. Use `npm run elevenlabs:claude-steering:test` to verify that the live ElevenLabs agent can start a Claude Code session and append confirmed steering instructions without launching a code job.
 
+`npm run elevenlabs:tools:configure` verifies the configured webhook token against the Worker before patching live ElevenLabs tool definitions. If that preflight returns `401` or `403`, it refuses to update tool Authorization headers so a stale local token cannot break all live tools.
+
 On the EC2 bridge, run-mode Claude Code jobs may be configured with `CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true`. That starts confirmed run jobs with Claude Code `bypassPermissions` plus `--dangerously-skip-permissions`, so jobs do not hang on permission prompts. This setting should be paired with a locked-down bridge: localhost-only Fastify, Cloudflare Tunnel, bearer-token tool auth, restricted SSH, and no public bridge port.
 
 ## Conversation Memory
