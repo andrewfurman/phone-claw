@@ -28,6 +28,7 @@ This log captures the prototype shape without publishing credentials or live pro
 - Added confirmed GitHub issue create/update webhook tools backed by a separate write token.
 - Increased the ElevenLabs phone conversation maximum duration from 10 minutes to 30 minutes after confirming a call ended at the prior limit.
 - Increased the ElevenLabs phone conversation maximum duration from 30 minutes to two hours and enabled the `end_call` system tool so the agent can hang up when Andrew says goodbye.
+- Added an ElevenLabs tool-configuration preflight that checks the webhook token against the Worker before rewriting live tool Authorization headers.
 
 ## Current Prototype
 

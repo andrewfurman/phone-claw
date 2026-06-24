@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-06-24T10:39:42.021Z",
+  "exported_at": "2026-06-24T11:48:34.716Z",
   "source": "ElevenLabs API: GET /v1/convai/agents/:agent_id and /v1/convai/tools/:tool_id",
   "redaction_note": "access_info, phone_numbers, whatsapp_accounts, auth headers, secret-like strings, and phone numbers are redacted or omitted recursively.",
   "observed_dashboard_changes": {
@@ -726,6 +726,7 @@
         "retranscribe_on_turn_timeout": false,
         "turn_model": "turn_v3",
         "interruption_ignore_terms": [],
+        "transcribe_on_disabled_interruptions": false,
         "soft_timeout_config": {
           "timeout_seconds": -1,
           "message": "Hhmmmm...yeah.",
@@ -10871,7 +10872,7 @@
     },
     "metadata": {
       "created_at_unix_secs": 1781809543,
-      "updated_at_unix_secs": 1782297573
+      "updated_at_unix_secs": 1782301704
     },
     "platform_settings": {
       "evaluation": {
@@ -11208,7 +11209,7 @@
       "phoneclaw",
       "personal-assistant"
     ],
-    "version_id": "agtvrsn_7401kvwkdenze1btnjz2qaeyn8pm",
+    "version_id": "agtvrsn_4101kvwqbgxqf84rqyeq3m4krap1",
     "branch_id": "agtbrch_2901kve1zy2de42vw26fw72reaac",
     "main_branch_id": "agtbrch_2901kve1zy2de42vw26fw72reaac",
     "procedures": {},
@@ -11695,7 +11696,7 @@
         }
       },
       "usage_stats": {
-        "total_calls": 196,
+        "total_calls": 197,
         "avg_latency_secs": 0.96
       },
       "response_mocks": null
@@ -13685,8 +13686,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 90,
-        "avg_latency_secs": 1.4
+        "total_calls": 92,
+        "avg_latency_secs": 1.41
       },
       "response_mocks": null
     },
@@ -14137,8 +14138,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 6,
-        "avg_latency_secs": 1.55
+        "total_calls": 7,
+        "avg_latency_secs": 1.35
       },
       "response_mocks": null
     },
@@ -19639,8 +19640,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 12,
-        "avg_latency_secs": 0.26
+        "total_calls": 13,
+        "avg_latency_secs": 0.25
       },
       "response_mocks": null
     },
@@ -20158,8 +20159,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 13,
-        "avg_latency_secs": 0.61
+        "total_calls": 14,
+        "avg_latency_secs": 0.58
       },
       "response_mocks": null
     },
