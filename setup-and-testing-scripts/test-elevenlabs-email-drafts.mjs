@@ -75,7 +75,7 @@ async function fetchRecentNewsletterLikeEmail() {
 
   return (
     body.items.find((item) =>
-      /\b(newsletter|digest|brief|daily|weekly|roundup|update|news|morning|substack|economist|axios|semafor|stratechery)\b/i.test(
+      /\b(newsletter|digest|brief|daily|weekly|roundup|update|news|morning|substack)\b/i.test(
         `${item.from || ""} ${item.subject || ""}`
       )
     ) || body.items[0]

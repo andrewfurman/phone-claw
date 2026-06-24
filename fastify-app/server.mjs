@@ -27,15 +27,6 @@ import {
   otterSpeechesList,
 } from "./cli-tools.mjs";
 import {
-  economistRssBridgeConfigured,
-  minifluxConfigured,
-  economistFullTextBrowserConfigured,
-  rssEntryFullText,
-  rssRecentEntries,
-  rssRefreshFeeds,
-  rssSearchEntries,
-} from "./miniflux-tools.mjs";
-import {
   configuredRssFeedsConfigured,
   rssConfiguredEntryFullText,
   rssConfiguredRecentEntries,
@@ -75,12 +66,6 @@ const webSearchToken = process.env.WEB_SEARCH_TOKEN || commandBridgeToken;
 const cliBridgeToken = process.env.CLI_BRIDGE_TOKEN;
 const claudeBridgeUrl = process.env.CLAUDE_BRIDGE_URL;
 const claudeBridgeToken = process.env.CLAUDE_BRIDGE_TOKEN;
-const economistPublicRssToken = process.env.ECONOMIST_PUBLIC_RSS_TOKEN;
-const economistRssBridgeBaseUrl =
-  process.env.ECONOMIST_RSS_BRIDGE_BASE_URL || "http://127.0.0.1:3000/";
-const economistPublicRssAllowedTopics = new Set(
-  parseCsv(process.env.ECONOMIST_PUBLIC_RSS_ALLOWED_TOPICS || "latest")
-);
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
 const enforceTwilioSignature =
   process.env.ENFORCE_TWILIO_SIGNATURE === "true" && Boolean(twilioAuthToken);
@@ -136,10 +121,6 @@ app.get("/", async () => ({
     otter_speech_get: "POST /cli/otter/speech-get",
     otter_speech_search: "POST /cli/otter/speech-search",
     github_cli_common: "POST /cli/github/common",
-    rss_recent_economist_entries: "POST /cli/rss/economist/recent",
-    rss_search_economist_entries: "POST /cli/rss/economist/search",
-    rss_get_economist_article_text: "POST /cli/rss/economist/article-text",
-    rss_refresh_economist_feeds: "POST /cli/rss/economist/refresh",
     rss_list_feeds: "POST /cli/rss/feeds",
     rss_recent_entries: "POST /cli/rss/recent",
     rss_search_entries: "POST /cli/rss/search",
@@ -163,10 +144,6 @@ app.get("/health", async () => ({
   cli_bridge_token_configured: Boolean(cliBridgeToken),
   github_cli_bridge_configured: Boolean(cliBridgeToken || webSearchToken),
   claude_code_bridge_configured: true,
-  miniflux_configured: minifluxConfigured(),
-  economist_rss_bridge_configured: economistRssBridgeConfigured(),
-  economist_public_rss_configured: Boolean(economistPublicRssToken),
-  economist_browser_fetch_configured: economistFullTextBrowserConfigured(),
   configured_rss_feeds_configured: configuredRssFeedsConfigured(),
   conversation_history_configured: conversationHistoryConfigured(),
   expected_elevenlabs_audio_format: ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
@@ -175,10 +152,6 @@ app.get("/health", async () => ({
   twilio_signature_enforced: enforceTwilioSignature,
   twilio_event_log_configured: true,
 }));
-
-app.get("/rss/economist/:topic.atom", async (request, reply) =>
-  handleEconomistPublicRss(request, reply)
-);
 
 app.post("/twilio/inbound", async (request, reply) =>
   handleTwilioCall(request, reply, "inbound")
@@ -272,22 +245,6 @@ app.post("/cli/github/common", async (request, reply) =>
   handleGithubCliCommon(request, reply)
 );
 
-app.post("/cli/rss/economist/recent", async (request, reply) =>
-  handleRssRecentEconomistEntries(request, reply)
-);
-
-app.post("/cli/rss/economist/search", async (request, reply) =>
-  handleRssSearchEconomistEntries(request, reply)
-);
-
-app.post("/cli/rss/economist/article-text", async (request, reply) =>
-  handleRssGetEconomistArticleText(request, reply)
-);
-
-app.post("/cli/rss/economist/refresh", async (request, reply) =>
-  handleRssRefreshEconomistFeeds(request, reply)
-);
-
 app.post("/cli/rss/feeds", async (request, reply) => handleRssListFeeds(request, reply));
 
 app.post("/cli/rss/recent", async (request, reply) =>
@@ -325,67 +282,6 @@ app.post("/conversation-history/recent-context", async (request, reply) =>
 app.post("/conversation-history/archive-elevenlabs", async (request, reply) =>
   handleConversationArchiveElevenLabs(request, reply)
 );
-
-async function handleEconomistPublicRss(request, reply) {
-  if (!isValidEconomistPublicRssRequest(request)) {
-    return reply.code(404).send({ ok: false, status: "not_found" });
-  }
-
-  const topic = String(request.params?.topic || "").toLowerCase();
-  if (!economistPublicRssAllowedTopics.has(topic)) {
-    return reply.code(404).send({ ok: false, status: "not_found" });
-  }
-
-  const upstreamUrl = new URL(economistRssBridgeBaseUrl);
-  upstreamUrl.searchParams.set("action", "display");
-  if (topic === "world-in-brief") {
-    upstreamUrl.searchParams.set("bridge", "EconomistWorldInBrief");
-    upstreamUrl.searchParams.set("mergeEverything", "1");
-    upstreamUrl.searchParams.set("agenda", "1");
-    upstreamUrl.searchParams.set("quote", "1");
-  } else {
-    upstreamUrl.searchParams.set("bridge", "Economist");
-    upstreamUrl.searchParams.set("context", "Topics");
-    upstreamUrl.searchParams.set(
-      "topic",
-      topic === "latest" ? process.env.ECONOMIST_RSS_BRIDGE_LATEST_CONTEXT || "latest" : topic
-    );
-  }
-  const maxEntries = clampInteger(process.env.ECONOMIST_PUBLIC_RSS_MAX_ENTRIES, 1, 20, 10);
-  const requestedLimit = clampInteger(request.query?.limit, 1, maxEntries, maxEntries);
-  if (topic !== "world-in-brief") {
-    upstreamUrl.searchParams.set("limit", String(requestedLimit));
-  }
-  upstreamUrl.searchParams.set("format", "Atom");
-
-  const response = await fetch(upstreamUrl, {
-    headers: {
-      accept: "application/atom+xml, application/xml;q=0.9, text/xml;q=0.8",
-      "user-agent": "phoneclaw-economist-public-rss/1.0",
-    },
-  });
-  const text = await response.text();
-
-  if (!response.ok) {
-    request.log.warn(
-      {
-        statusCode: response.status,
-        topic,
-      },
-      "Economist RSS-Bridge upstream request failed"
-    );
-    return reply.code(502).send({ ok: false, status: "rss_bridge_upstream_failed" });
-  }
-
-  const cacheSeconds = clampInteger(process.env.ECONOMIST_PUBLIC_RSS_CACHE_SECONDS, 0, 3600, 900);
-
-  return reply
-    .code(200)
-    .header("content-type", "application/atom+xml; charset=UTF-8")
-    .header("cache-control", `private, max-age=${cacheSeconds}`)
-    .header("x-robots-tag", "noindex, nofollow")
-    .send(clampAtomFeedEntries(text, requestedLimit));
-}
 
 try {
   await app.listen({ host, port });
@@ -1017,58 +913,6 @@ async function handleGithubCliCommon(request, reply) {
   return reply.code(toolResultStatusCode(result)).send(result);
 }
 
-async function handleRssRecentEconomistEntries(request, reply) {
-  if (!validateCliToolAuth(request, reply)) return;
-
-  const body = request.body || {};
-  const result = await rssRecentEntries({
-    limit: body.limit || body.max_results || body.maxResults,
-    status: body.status,
-    maxExcerptChars: body.max_excerpt_chars || body.maxExcerptChars,
-  });
-
-  return reply.code(toolResultStatusCode(result)).send(result);
-}
-
-async function handleRssSearchEconomistEntries(request, reply) {
-  if (!validateCliToolAuth(request, reply)) return;
-
-  const body = request.body || {};
-  const result = await rssSearchEntries({
-    query: body.query || body.search_query || body.searchQuery,
-    startDate: body.start_date || body.startDate,
-    endDate: body.end_date || body.endDate,
-    limit: body.limit || body.max_results || body.maxResults,
-    status: body.status,
-    maxExcerptChars: body.max_excerpt_chars || body.maxExcerptChars,
-  });
-
-  return reply.code(toolResultStatusCode(result)).send(result);
-}
-
-async function handleRssGetEconomistArticleText(request, reply) {
-  if (!validateCliToolAuth(request, reply)) return;
-
-  const body = request.body || {};
-  const result = await rssEntryFullText({
-    entryId: body.entry_id || body.entryId || body.id,
-    articleUrl: body.article_url || body.articleUrl || body.url,
-    fetchOriginal: body.fetch_original ?? body.fetchOriginal,
-    updateContent: body.update_content ?? body.updateContent,
-    maxTextChars: body.max_text_chars || body.maxTextChars,
-  });
-
-  return reply.code(toolResultStatusCode(result)).send(result);
-}
-
-async function handleRssRefreshEconomistFeeds(request, reply) {
-  if (!validateCliToolAuth(request, reply)) return;
-
-  const result = await rssRefreshFeeds();
-
-  return reply.code(toolResultStatusCode(result)).send(result);
-}
-
 async function handleRssListFeeds(request, reply) {
   if (!validateCliToolAuth(request, reply)) return;
 
@@ -1236,7 +1080,6 @@ function toolResultStatusCode(result) {
       "confirmation_required",
       "conversation_history_not_configured",
       "cli_bridge_not_configured",
-      "miniflux_not_configured",
       "rss_feeds_not_configured",
       "tool_auth_not_configured",
     ].includes(result.status)
@@ -1284,25 +1127,6 @@ function validateCliToolAuth(request, reply) {
   }
 
   return true;
-}
-
-function isValidEconomistPublicRssRequest(request) {
-  if (!economistPublicRssToken) return false;
-
-  const queryToken = request.query?.token;
-  if (queryToken && secureEquals(queryToken, economistPublicRssToken)) return true;
-
-  const authHeader = request.headers.authorization || "";
-  if (secureEquals(authHeader, `Bearer ${economistPublicRssToken}`)) return true;
-
-  if (authHeader.toLowerCase().startsWith("basic ")) {
-    const encoded = authHeader.slice("basic ".length).trim();
-    const decoded = Buffer.from(encoded, "base64").toString("utf8");
-    const password = decoded.includes(":") ? decoded.split(":").slice(1).join(":") : decoded;
-    return secureEquals(password, economistPublicRssToken);
-  }
-
-  return false;
 }
 
 function githubToolError(error) {
@@ -1400,21 +1224,6 @@ function extractTwiml(text, contentType) {
   return text;
 }
 
-function clampAtomFeedEntries(xml, maxEntries) {
-  const text = String(xml || "");
-  const entries = [...text.matchAll(/<entry\b[\s\S]*?<\/entry>/gi)];
-  if (entries.length <= maxEntries) return text;
-
-  const selectedEntries = entries.slice(0, maxEntries).map((entry) => entry[0]).join("\n");
-  const firstEntry = entries[0];
-  const lastEntry = entries.at(-1);
-  return [
-    text.slice(0, firstEntry.index),
-    selectedEntries,
-    text.slice(lastEntry.index + lastEntry[0].length),
-  ].join("");
-}
-
 function parseMaybeJson(text) {
   try {
     return JSON.parse(text);
@@ -1441,13 +1250,6 @@ function secureEquals(left, right) {
   const rightBuffer = Buffer.from(String(right));
   if (leftBuffer.length !== rightBuffer.length) return false;
   return timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function parseCsv(value) {
-  return String(value || "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
 }
 
 function clampInteger(value, min, max, fallback = min) {

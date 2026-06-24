@@ -9,7 +9,7 @@ const issueRepo = process.env.VISUALIZER_DEMO_REPO || "andrewfurman/phone-claw";
 const question = [
   "This is an automated phone-claw visualizer validation call.",
   "Please do all of the following so the live visualizer has real artifacts to show:",
-  "1. Use your configured RSS tools to get the latest article from the configured Economist feed and get the article text for the first entry.",
+  "1. Use your configured RSS tools to list configured feeds, get the latest article from the first configured feed, and get the article text for the first entry.",
   `2. Create a Gmail draft to ${recipient} with subject "${draftSubject}" and body "phone-claw visualizer validation draft. Please ignore." Do not send it.`,
   `3. Create a GitHub issue in ${issueRepo} with title "${issueTitle}" and body "Automated validation issue for the live conversation visualizer. This can be closed after validation."`,
   "I explicitly confirm the exact Gmail draft recipient, subject, and body.",
@@ -35,7 +35,7 @@ console.log(
       draft_subject: draftSubject,
       github_issue_url: verification.githubIssueUrl,
       gmail_draft_subject: verification.gmailDraftSubject,
-      economist_article_url: verification.economistArticleUrl,
+      rss_article_url: verification.rssArticleUrl,
       agent_response_preview: verification.agentResponse.slice(0, 700),
       checks: verification.checks,
     },
@@ -182,13 +182,13 @@ function verifyConversation(details) {
   const draftResult = resultValues.find((item) =>
     ["draft_created", "reply_draft_created", "forward_draft_created"].includes(item.value?.action)
   );
-  const economistArticle =
+  const rssArticle =
     resultValues
       .flatMap((item) => [
         item.value?.entry,
         ...(Array.isArray(item.value?.items) ? item.value.items : []),
       ])
-      .find((entry) => /^https:\/\/(www\.)?economist\.com\//i.test(entry?.url || "")) || null;
+      .find((entry) => /^https?:\/\//i.test(entry?.url || "")) || null;
 
   const checks = {
     transcript_available: transcript.length > 0,
@@ -205,7 +205,7 @@ function verifyConversation(details) {
       draftResult?.tool_name === "himalaya_draft_create" &&
       draftResult?.is_error === false &&
       draftResult?.value?.action === "draft_created",
-    economist_article_link_found: Boolean(economistArticle?.url),
+    rss_article_link_found: Boolean(rssArticle?.url),
     agent_answered_after_tools: agentResponse.length > 0,
   };
 
@@ -214,7 +214,7 @@ function verifyConversation(details) {
     checks,
     githubIssueUrl: githubIssue?.url || "",
     gmailDraftSubject: draftResult?.value?.subject || "",
-    economistArticleUrl: economistArticle?.url || "",
+    rssArticleUrl: rssArticle?.url || "",
     agentResponse,
   };
 }

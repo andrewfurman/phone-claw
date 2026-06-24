@@ -118,7 +118,7 @@ async function bridgeJson(path, body) {
 }
 
 function looksLikeNewsletter(value) {
-  return /\b(newsletter|digest|brief|daily|weekly|roundup|update|news|morning|substack|economist|axios|semafor|stratechery|notion|product)\b/i.test(
+  return /\b(newsletter|digest|brief|daily|weekly|roundup|update|news|morning|substack|notion|product)\b/i.test(
     value
   );
 }

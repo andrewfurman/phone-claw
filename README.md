@@ -32,8 +32,8 @@ This project intentionally keeps provider configuration explicit because the voi
 | Yahoo Finance public chart API | Market-history enrichment for WTI crude high/low/range questions. | No secret required. Used as a compact fallback to avoid relying only on generic search snippets. |
 | ESPN public scoreboard endpoint | Prototype sports enrichment for FIFA World Cup schedule/score queries. | No secret required. Treat as a convenience endpoint, not a committed long-term sports-data contract. |
 | Neon | Optional Postgres archive for phone-claw conversation memory. Stores transcript JSON, summaries, keywords, and tool-call logs. | `CONVERSATION_DATABASE_URL` on the bridge. `NEON_API_KEY` is used only by the setup script and should not be committed. |
-| Configured RSS feeds | Public or private RSS/Atom feeds exposed to the voice agent by feed id. | Store feed URLs in `RSS_FEEDS_CONFIG_PATH` or `RSS_FEEDS_JSON` on the EC2 bridge. Private URLs are redacted in tool responses and should never be committed. |
-| Miniflux/RSS-Bridge | Legacy RSS backends kept for compatibility while configured feeds replace publisher-specific tooling. | Legacy settings remain documented in `docs/EC2_BARE_METAL_BRIDGE.md`; new integrations should prefer generic configured feeds. |
+| Configured RSS feeds | Public or private RSS/Atom feeds exposed to the voice agent by feed id. | Store feed URLs in `RSS_FEEDS_CONFIG_PATH` or `RSS_FEEDS_JSON` on the phone-claw EC2 bridge. Private URLs are redacted in tool responses and should never be committed. |
+| External RSS feed services | Separate publisher-specific services that produce RSS/Atom feeds consumed by phone-claw. | Run these on separate infrastructure from the core phone-claw bridge. phone-claw should receive only a feed URL and optional token, never publisher credentials or scraper/browser state. |
 | Gmail | Email account accessed through the private CLI bridge for listing, reading previews, archiving, saving drafts/reply drafts/forward drafts, and emergency-only confirmed sends. | Authenticated locally on the bridge host through Himalaya CLI config; no Gmail credentials are committed. |
 | Himalaya CLI | Local email CLI used by the private bridge to access Gmail. | `HIMALAYA_BIN`, `HIMALAYA_ARCHIVE_FOLDER`, and `HIMALAYA_DRAFTS_FOLDER` in bridge env. |
 | Otter.ai | Transcript source for listing, fetching raw transcript JSON, and transcript search. | Authenticated on the bridge host through Otter CLI config; no Otter credentials are committed. |
@@ -77,7 +77,7 @@ npm run elevenlabs:claude-steering:test
 
 All non-trivial changes should go through a pull request before merging to `main`.
 
-Before merging a PR that changes agent behavior, tool schemas, tool endpoints, Twilio/ElevenLabs routing, or the EC2 bridge, run the most relevant automated ElevenLabs bot test. For Economist/RSS changes, run `npm run elevenlabs:rss:conversation:test`; for Claude Code steering changes, run `npm run elevenlabs:claude-steering:test`; for GitHub, email, logging, or audio changes, run the matching `elevenlabs:*:test` script. After the test, review the resulting ElevenLabs conversation transcript and bridge/Worker logs for tool errors, timeouts, or dropped media streams. Merge only after the automated test and logs support the change.
+Before merging a PR that changes agent behavior, tool schemas, tool endpoints, Twilio/ElevenLabs routing, or the EC2 bridge, run the most relevant automated ElevenLabs bot test. For RSS changes, run `npm run elevenlabs:rss:conversation:test`; for Claude Code steering changes, run `npm run elevenlabs:claude-steering:test`; for GitHub, email, logging, or audio changes, run the matching `elevenlabs:*:test` script. After the test, review the resulting ElevenLabs conversation transcript and bridge/Worker logs for tool errors, timeouts, or dropped media streams. Merge only after the automated test and logs support the change.
 
 ## Cloudflare Worker
 
@@ -159,7 +159,9 @@ Email write tools require explicit confirmation. They can archive email and save
 
 `claude_code` is intentionally not a default reasoning path. It supports `auth_status`, `start_session`, `submit_task`, `steer_session`, and `job_status`; task submission and steering instructions are confirmation-gated. Run jobs are asynchronous on the private EC2 bridge, and steering instructions let Andrew update or redirect the same Claude Code session instead of starting over.
 
-`rss_*` tools read configured RSS or Atom feeds from `RSS_FEEDS_CONFIG_PATH` or `RSS_FEEDS_JSON` on the private EC2 bridge. Each feed has an id, title, URL, optional request headers, privacy flag, and cache TTL. The bridge fetches feed XML only, parses `content:encoded`, Atom `content`, or summary fields, redacts private URLs in responses, and caches feed fetches to avoid repeated polling. Store private full-text feed URLs, including the Economist feed URL, in `/etc/phoneclaw/rss-feeds.json` or another host-local secret file, not in Git or Worker config.
+`rss_*` tools read configured RSS or Atom feeds from `RSS_FEEDS_CONFIG_PATH` or `RSS_FEEDS_JSON` on the private EC2 bridge. Each feed has an id, title, URL, optional request headers, privacy flag, and cache TTL. The bridge fetches feed XML only, parses `content:encoded`, Atom `content`, or summary fields, redacts private URLs in responses, and caches feed fetches to avoid repeated polling. Store private feed URLs in `/etc/phoneclaw/rss-feeds.json` or another host-local secret file, not in Git or Worker config.
+
+Publisher-specific scraping, browser automation, subscriber cookies, and paywalled article extraction should run on a separate EC2 instance or service that emits RSS/Atom. The core phone-claw bridge consumes that service only through a configured RSS/Atom URL.
 
 Use `npm run elevenlabs:rss:conversation:test` to run an automated ElevenLabs smoke test for recent-list, keyword/date search, and article-text tool calls. Use `npm run elevenlabs:claude-steering:test` to verify that the live ElevenLabs agent can start a Claude Code session and append confirmed steering instructions without launching a code job.
 
@@ -188,7 +190,7 @@ Run `npm run visualizer:build` before deploying the Worker. The build embeds the
 
 Useful demo scripts:
 
-- `npm run visualizer:demo-test` runs an ElevenLabs text conversation that exercises Economist RSS, Gmail draft creation, and GitHub issue creation.
+- `npm run visualizer:demo-test` runs an ElevenLabs text conversation that exercises configured RSS, Gmail draft creation, and GitHub issue creation.
 - `npm run visualizer:screenshots` captures desktop and mobile screenshots of the deployed visualizer. Set `VISUALIZER_CONVERSATION_ID` to pin the screenshots to a specific call.
 
 ## Twilio Diagnostics

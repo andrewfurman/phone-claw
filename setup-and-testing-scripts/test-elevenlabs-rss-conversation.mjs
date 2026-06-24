@@ -2,8 +2,9 @@ const apiBase = process.env.ELEVENLABS_API_BASE || "https://api.elevenlabs.io";
 const agentId = process.env.ELEVENLABS_AGENT_ID;
 const apiKey = process.env.ELEVENLABS_API_KEY;
 const question =
-  "Use your configured RSS tools, not memory. List the latest article from the configured Economist feed. Search configured RSS articles with the keyword America since June 1, 2026, limited to three results. Then get the full text for the first latest article entry id. In your final answer, start with RSS check complete, then say whether the article text is full text or an excerpt.";
+  "Use your configured RSS tools, not memory. List the configured feeds. Then use the first configured feed to list the latest article. Search configured RSS articles with a broad current-news keyword, limited to three results. Then get the full text for the first latest article entry id. In your final answer, start with RSS check complete, then say whether the article text is full text or an excerpt.";
 const RSS_TOOL_NAMES = [
+  "rss_list_feeds",
   "rss_recent_entries",
   "rss_search_entries",
   "rss_get_article_text",
@@ -31,8 +32,6 @@ console.log(
       article_title: verification.articleTitle,
       article_content_source: verification.articleContentSource,
       article_full_text_chars: verification.articleFullTextChars,
-      article_original_fetch_status: verification.articleOriginalFetchStatus,
-      article_rss_bridge_fetch_status: verification.articleRssBridgeFetchStatus,
       full_article_available: verification.fullArticleAvailable,
       article_access_note: verification.articleAccessNote,
       agent_response_preview: verification.agentResponse.slice(0, 700),
@@ -100,14 +99,14 @@ async function runTextConversation(messageText) {
 
     if (message.type === "agent_response") {
       const text = message.agent_response_event?.agent_response || "";
-      if (sentUserMessage && toolResponseCount >= 3 && isRealAgentMessage(text)) {
+      if (sentUserMessage && toolResponseCount >= RSS_TOOL_NAMES.length && isRealAgentMessage(text)) {
         settle();
       }
       return;
     }
 
     if (message.type === "agent_response_complete" && sentUserMessage) {
-      settle(toolResponseCount >= 3 ? 2_000 : 12_000);
+      settle(toolResponseCount >= RSS_TOOL_NAMES.length ? 2_000 : 12_000);
     }
   });
 
@@ -163,6 +162,7 @@ function verifyConversation(details) {
   const toolResults = transcript.flatMap((turn) => turn.tool_results || []);
   const callsByName = new Map(toolCalls.map((call) => [call.tool_name, call]));
   const resultsByName = new Map(toolResults.map((result) => [result.tool_name, result]));
+  const listResult = parseMaybeJson(resultsByName.get("rss_list_feeds")?.result_value);
   const recentResult = parseMaybeJson(resultsByName.get("rss_recent_entries")?.result_value);
   const searchResult = parseMaybeJson(resultsByName.get("rss_search_entries")?.result_value);
   const articleResult = parseMaybeJson(resultsByName.get("rss_get_article_text")?.result_value);
@@ -182,9 +182,6 @@ function verifyConversation(details) {
     [
       "feed_content_encoded",
       "feed_content",
-      "economist_rss_bridge",
-      "original_article_fetch",
-      "economist_browser_fetch",
       "stored_entry_content",
     ].includes(articleResult?.content_source) &&
     articleTextChars >= 700 &&
@@ -192,10 +189,14 @@ function verifyConversation(details) {
 
   const checks = {
     transcript_available: transcript.length > 0,
+    used_list_tool: callsByName.has("rss_list_feeds"),
     used_recent_tool: callsByName.has("rss_recent_entries"),
     used_search_tool: callsByName.has("rss_search_entries"),
     used_article_text_tool: callsByName.has("rss_get_article_text"),
     did_not_use_web_search: !callsByName.has(WEB_SEARCH_TOOL_NAME),
+    list_tool_returned_without_error:
+      resultsByName.has("rss_list_feeds") &&
+      resultsByName.get("rss_list_feeds").is_error === false,
     recent_tool_returned_without_error:
       resultsByName.has("rss_recent_entries") &&
       resultsByName.get("rss_recent_entries").is_error === false,
@@ -205,6 +206,7 @@ function verifyConversation(details) {
     article_text_tool_returned_without_error:
       resultsByName.has("rss_get_article_text") &&
       resultsByName.get("rss_get_article_text").is_error === false,
+    list_returned_feeds: Array.isArray(listResult?.feeds) && listResult.feeds.length > 0,
     recent_returned_items: recentItems.length > 0,
     search_returned_items: searchItems.length > 0,
     article_text_returned_controlled_result:
@@ -222,8 +224,6 @@ function verifyConversation(details) {
     articleTitle: articleResult?.entry?.title || "",
     articleContentSource: articleResult?.content_source || "",
     articleFullTextChars: articleTextChars,
-    articleOriginalFetchStatus: articleResult?.original_fetch_status || "",
-    articleRssBridgeFetchStatus: articleResult?.rss_bridge_fetch_status || "",
     fullArticleAvailable,
     articleAccessNote: articleResult?.access_note || "",
     agentResponse,

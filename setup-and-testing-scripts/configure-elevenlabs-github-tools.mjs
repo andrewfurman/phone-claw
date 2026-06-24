@@ -46,10 +46,6 @@ const configs = [
 ];
 const obsoleteToolNames = [
   "himalaya_email_count",
-  "rss_recent_economist_entries",
-  "rss_search_economist_entries",
-  "rss_get_economist_article_text",
-  "rss_refresh_economist_feeds",
 ];
 
 const tools = [];
@@ -1621,7 +1617,7 @@ function rssEntryProperties() {
     feed_url: stringProperty({ description: "Feed URL." }),
     category_title: stringProperty({ description: "Category title." }),
     content_source: stringProperty({
-      description: "Optional source hint such as economist_rss_bridge.",
+      description: "Optional source hint such as feed_content_encoded.",
     }),
     full_text_available: booleanProperty("Whether full text is known to be available."),
     excerpt: stringProperty({ description: "Short readable excerpt." }),
@@ -1823,8 +1819,8 @@ function promptWithGithubFileTools(currentPrompt) {
   const section = `Web search capability:
 - You have a webhook tool named web_search.
 - Use web_search when Andrew asks about current events, today, recent facts, schedules, sports, companies, products, documentation, or anything that may have changed.
-- Do not use web_search for Economist article listing, Economist article search, or Economist article discussion when the RSS/Economist tools can answer. Use the RSS/Economist tools first and answer from their returned article metadata or text.
-- Use web_search after an Economist tool only when Andrew explicitly asks for outside web corroboration/comparison, or when the Economist tools return no relevant article or no usable text and you briefly say you are switching to broader web search.
+- Do not use web_search for configured RSS article listing, configured RSS article search, or article discussion when the RSS tools can answer. Use the RSS tools first and answer from their returned article metadata or text.
+- Use web_search after an RSS tool only when Andrew explicitly asks for outside web corroboration/comparison, or when the RSS tools return no relevant article or no usable text and you briefly say you are switching to broader web search.
 - Use concise queries.
 - Set max_results=5 by default. Use fewer only when Andrew explicitly asks for a very quick answer; use up to 8 for deeper comparisons.
 - For sports schedules, include the sport/league/date if known.
