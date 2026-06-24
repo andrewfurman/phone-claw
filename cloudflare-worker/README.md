@@ -70,10 +70,6 @@ npm run worker:deploy
 - `POST /cli/otter/speech-get`
 - `POST /cli/otter/speech-search`
 - `POST /cli/github/common`
-- `POST /cli/rss/economist/recent`
-- `POST /cli/rss/economist/search`
-- `POST /cli/rss/economist/article-text`
-- `POST /cli/rss/economist/refresh`
 - `POST /cli/rss/feeds`
 - `POST /cli/rss/recent`
 - `POST /cli/rss/search`
@@ -197,4 +193,4 @@ After deploy, validate the password gate and API with:
 VISUALIZER_PASSWORD='<local test password>' npm run visualizer:test
 ```
 
-For a live demo validation, run `npm run visualizer:demo-test`. It starts an ElevenLabs text conversation that exercises Economist RSS, Gmail draft creation, and GitHub issue creation, then reports the resulting conversation id and links. Use that id with `VISUALIZER_CONVERSATION_ID=<id> npm run visualizer:screenshots` to capture desktop and mobile visual QA screenshots.
+For a live demo validation, run `npm run visualizer:demo-test`. It starts an ElevenLabs text conversation that exercises configured RSS, Gmail draft creation, and GitHub issue creation, then reports the resulting conversation id and links. Use that id with `VISUALIZER_CONVERSATION_ID=<id> npm run visualizer:screenshots` to capture desktop and mobile visual QA screenshots.

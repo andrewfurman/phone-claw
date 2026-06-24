@@ -655,7 +655,7 @@ function extractToolLinks(item) {
       continue;
     }
 
-    if (isRssArticleObject(object) || isEconomistUrl(url)) {
+    if (isRssArticleObject(object)) {
       links.push({
         type: "rss_article",
         label: object.title || object.name || "Open article",
@@ -821,7 +821,7 @@ function toolSummary(item) {
   if (item.name?.startsWith("rss_") && Array.isArray(value.items)) {
     return `Returned ${value.items.length} RSS article${value.items.length === 1 ? "" : "s"}.`;
   }
-  if (item.name === "rss_get_article_text" || item.name === "rss_get_economist_article_text") {
+  if (item.name === "rss_get_article_text") {
     return `Fetched ${value.full_text_chars || 0} characters from ${value.entry?.title || "the article"}.`;
   }
   if (value.answer_text) return value.answer_text;
@@ -886,10 +886,6 @@ function isGithubUrl(value) {
 
 function isGithubIssueUrl(value) {
   return /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+/i.test(String(value || ""));
-}
-
-function isEconomistUrl(value) {
-  return /^https:\/\/(www\.)?economist\.com\//i.test(String(value || ""));
 }
 
 function isRssArticleObject(value) {
