@@ -10,6 +10,8 @@ const DEFAULT_MAX_BUFFER_BYTES = 1_000_000;
 const DEFAULT_MAX_RAW_BYTES = 200_000;
 const MAX_RAW_BYTES = 750_000;
 const MAX_LIST_RESULTS = 50;
+const DEFAULT_GITHUB_REPO_LIST_LIMIT = 20;
+const MAX_GITHUB_REPO_LIST_RESULTS = 50;
 const MAX_EMAIL_LIST_PAGES = 200;
 const DEFAULT_EMAIL_LIST_MAX_ITEMS = 200;
 const MAX_EMAIL_LIST_ITEMS = 1_000;
@@ -854,15 +856,21 @@ export async function otterSpeechSearch({
 export async function githubCliCommon({
   action,
   repo,
+  owner,
   number,
   state = "open",
   query,
   limit = 10,
+  visibility,
+  includeArchived = false,
+  includeForks = true,
+  sort = "pushed",
   maxRawBytes = DEFAULT_MAX_RAW_BYTES,
 } = {}) {
   const normalizedAction = normalizeEnum(
     action,
     [
+      "repo_list",
       "repo_view",
       "issue_list",
       "issue_view",
@@ -876,8 +884,21 @@ export async function githubCliCommon({
   if (!normalizedAction) {
     return missingField(
       "action",
-      "Use one of repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, or search_prs."
+      "Use one of repo_list, repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, or search_prs."
     );
+  }
+
+  if (normalizedAction === "repo_list") {
+    return githubRepoList({
+      owner: normalizeString(owner || (repo && !String(repo).includes("/") ? repo : "")),
+      query: normalizeString(query),
+      visibility,
+      includeArchived,
+      includeForks,
+      sort,
+      limit,
+      maxRawBytes,
+    });
   }
 
   const args = githubArgsFor({
@@ -1005,6 +1026,166 @@ function githubArgsFor({ action, repo, number, state, query, limit }) {
   }
 
   return { error: missingField("action", "Unsupported GitHub CLI action.") };
+}
+
+async function githubRepoList({
+  owner,
+  query,
+  visibility,
+  includeArchived,
+  includeForks,
+  sort,
+  limit,
+  maxRawBytes,
+}) {
+  const boundedLimit = clampInteger(
+    limit,
+    1,
+    MAX_GITHUB_REPO_LIST_RESULTS,
+    DEFAULT_GITHUB_REPO_LIST_LIMIT
+  );
+  const normalizedVisibility = normalizeEnum(visibility, ["public", "private", "internal"], "");
+  const normalizedSort = normalizeEnum(sort, ["pushed", "updated", "name"], "pushed");
+  const normalizedIncludeArchived = toBoolean(includeArchived);
+  const normalizedIncludeForks = toBoolean(includeForks, true);
+  const fetchLimit = owner
+    ? boundedLimit
+    : Math.min(100, Math.max(50, boundedLimit * 3));
+  const args = githubRepoListArgs({
+    owner,
+    fetchLimit,
+    visibility: normalizedVisibility,
+    includeArchived: normalizedIncludeArchived,
+  });
+  const result = await runCli({
+    command: process.env.GH_BIN || "gh",
+    args,
+    maxRawBytes,
+  });
+
+  if (!result.ok) {
+    return {
+      ...compactCliResult(result),
+      command: "gh",
+      action: "repo_list",
+      gh_equivalent: `gh ${args.map(shellWord).join(" ")}`,
+      owner,
+      query,
+      visibility: normalizedVisibility,
+      include_archived: normalizedIncludeArchived,
+      include_forks: normalizedIncludeForks,
+      sort: normalizedSort,
+      limit: boundedLimit,
+      returned_count: 0,
+      total_count: null,
+      available_count: 0,
+      has_more: false,
+      items: [],
+      answer_text: result.answer_text,
+    };
+  }
+
+  const normalized = normalizeGithubRepoList(result.parsed_json);
+  const filtered = filterGithubRepos(normalized.items, {
+    query,
+    visibility: normalizedVisibility,
+    includeArchived: normalizedIncludeArchived,
+    includeForks: normalizedIncludeForks,
+  });
+  const sorted = sortGithubRepos(filtered, normalizedSort);
+  const items = sorted.slice(0, boundedLimit);
+  const totalCount = typeof normalized.totalCount === "number" ? normalized.totalCount : null;
+
+  return {
+    ...compactCliResult(result),
+    command: "gh",
+    action: "repo_list",
+    gh_equivalent: `gh ${args.map(shellWord).join(" ")}`,
+    owner,
+    query,
+    visibility: normalizedVisibility,
+    include_archived: normalizedIncludeArchived,
+    include_forks: normalizedIncludeForks,
+    sort: normalizedSort,
+    limit: boundedLimit,
+    returned_count: items.length,
+    total_count: totalCount,
+    available_count: filtered.length,
+    has_more: sorted.length > items.length || (totalCount !== null && totalCount > items.length),
+    items,
+    answer_text: formatGithubRepoListAnswer({
+      items,
+      owner,
+      query,
+      visibility: normalizedVisibility,
+      sort: normalizedSort,
+      totalCount,
+      availableCount: filtered.length,
+    }),
+  };
+}
+
+function githubRepoListArgs({ owner, fetchLimit, visibility, includeArchived }) {
+  const fields = [
+    "nameWithOwner",
+    "description",
+    "isPrivate",
+    "visibility",
+    "isArchived",
+    "isFork",
+    "pushedAt",
+    "updatedAt",
+    "url",
+    "primaryLanguage",
+    "owner",
+    "viewerPermission",
+  ].join(",");
+
+  if (owner) {
+    const args = ["repo", "list", owner, "--limit", String(fetchLimit), "--json", fields];
+    if (!includeArchived) args.push("--no-archived");
+    if (visibility) args.push("--visibility", visibility);
+    return args;
+  }
+
+  return [
+    "api",
+    "graphql",
+    "-f",
+    `query=${githubRepoListGraphqlQuery()}`,
+    "-F",
+    `first=${fetchLimit}`,
+  ];
+}
+
+function githubRepoListGraphqlQuery() {
+  return `
+query($first: Int!) {
+  viewer {
+    login
+    repositories(
+      first: $first
+      ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER]
+      orderBy: { field: PUSHED_AT, direction: DESC }
+    ) {
+      totalCount
+      nodes {
+        nameWithOwner
+        description
+        isPrivate
+        visibility
+        isArchived
+        isFork
+        pushedAt
+        updatedAt
+        url
+        primaryLanguage { name }
+        owner { login }
+        viewerPermission
+      }
+    }
+  }
+}`;
 }
 
 function runCli({ command, args, timeoutMs = DEFAULT_TIMEOUT_MS, maxRawBytes, input }) {
@@ -2475,6 +2656,137 @@ function formatGithubCliAnswer(action, parsed) {
   }
 
   return `GitHub CLI completed ${action}.`;
+}
+
+function normalizeGithubRepoList(parsed) {
+  if (Array.isArray(parsed)) {
+    return {
+      totalCount: null,
+      items: parsed.map(compactGithubRepo).filter(Boolean),
+    };
+  }
+
+  const repos = parsed?.data?.viewer?.repositories;
+  if (repos && Array.isArray(repos.nodes)) {
+    return {
+      totalCount: Number.isInteger(repos.totalCount) ? repos.totalCount : null,
+      items: repos.nodes.map(compactGithubRepo).filter(Boolean),
+    };
+  }
+
+  return { totalCount: null, items: [] };
+}
+
+function compactGithubRepo(repo) {
+  if (!repo || typeof repo !== "object") return null;
+  const nameWithOwner = repo.nameWithOwner || repo.fullName || "";
+  if (!nameWithOwner) return null;
+  return {
+    name_with_owner: nameWithOwner,
+    owner: repo.owner?.login || String(nameWithOwner).split("/")[0] || "",
+    name: String(nameWithOwner).split("/").slice(1).join("/") || repo.name || "",
+    description: normalizeString(repo.description),
+    visibility: normalizeString(repo.visibility).toLowerCase(),
+    is_private: Boolean(repo.isPrivate),
+    is_archived: Boolean(repo.isArchived),
+    is_fork: Boolean(repo.isFork),
+    pushed_at: repo.pushedAt || "",
+    updated_at: repo.updatedAt || "",
+    url: repo.url || "",
+    primary_language: repo.primaryLanguage?.name || repo.language || "",
+    viewer_permission: repo.viewerPermission || "",
+  };
+}
+
+function filterGithubRepos(items, { query, visibility, includeArchived, includeForks }) {
+  const queryParts = normalizeString(query)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return items.filter((item) => {
+    if (!includeArchived && item.is_archived) return false;
+    if (!includeForks && item.is_fork) return false;
+    if (visibility && item.visibility !== visibility) return false;
+    if (queryParts.length === 0) return true;
+    const haystack = [
+      item.name_with_owner,
+      item.description,
+      item.owner,
+      item.primary_language,
+      item.viewer_permission,
+      item.visibility,
+    ]
+      .join(" ")
+      .toLowerCase();
+    return queryParts.every((part) => haystack.includes(part));
+  });
+}
+
+function sortGithubRepos(items, sort) {
+  const timestampField = sort === "updated" ? "updated_at" : "pushed_at";
+  return [...items].sort((left, right) => {
+    if (sort === "name") {
+      return left.name_with_owner.localeCompare(right.name_with_owner);
+    }
+
+    const rightTime = Date.parse(right[timestampField] || right.updated_at || "");
+    const leftTime = Date.parse(left[timestampField] || left.updated_at || "");
+    return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime);
+  });
+}
+
+function formatGithubRepoListAnswer({
+  items,
+  owner,
+  query,
+  visibility,
+  sort,
+  totalCount,
+  availableCount,
+}) {
+  const scope = owner
+    ? `${owner} repositories`
+    : "repositories across Andrew's personal, collaborator, and organization access";
+  const filters = [
+    visibility ? `${visibility} only` : "",
+    query ? `matching ${query}` : "",
+  ].filter(Boolean);
+  const sortedBy = sort === "updated" ? "recent update" : sort === "name" ? "name" : "recent push";
+
+  if (items.length === 0) {
+    return `I found no ${scope}${filters.length ? ` ${filters.join(", ")}` : ""}.`;
+  }
+
+  const topItems = githubReposForVoiceSummary(items, { owner }).map((item) => {
+    const privacy = item.is_private ? "private" : "public";
+    const language = item.primary_language ? `, ${item.primary_language}` : "";
+    return `${item.name_with_owner} (${privacy}${language})`;
+  });
+  const countText =
+    typeof totalCount === "number"
+      ? `${totalCount} total accessible`
+      : `${availableCount} available in this result set`;
+  const moreText = availableCount > items.length ? ` I returned ${items.length}; narrow by owner or query for more.` : "";
+
+  return `GitHub returned ${items.length} ${scope}, sorted by ${sortedBy}. ${countText}. Top results: ${topItems.join("; ")}.${moreText}`;
+}
+
+function githubReposForVoiceSummary(items, { owner }) {
+  const selected = items.slice(0, owner ? 6 : 5);
+  if (owner) return selected;
+
+  const selectedNames = new Set(selected.map((item) => item.name_with_owner));
+  const selectedOwners = new Set(selected.map((item) => item.owner));
+  for (const item of items) {
+    if (selected.length >= 8) break;
+    if (selectedOwners.has(item.owner) || selectedNames.has(item.name_with_owner)) continue;
+    selected.push(item);
+    selectedOwners.add(item.owner);
+    selectedNames.add(item.name_with_owner);
+  }
+
+  return selected;
 }
 
 function splitSearchQuery(query) {

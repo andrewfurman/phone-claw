@@ -1119,8 +1119,9 @@ function githubCliCommonToolConfig() {
     requestProperties: {
       action: stringProperty({
         description:
-          "The GitHub CLI action to run: repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, or search_prs.",
+          "The GitHub CLI action to run: repo_list, repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, or search_prs.",
         values: [
+          "repo_list",
           "repo_view",
           "issue_list",
           "issue_view",
@@ -1132,7 +1133,11 @@ function githubCliCommonToolConfig() {
       }),
       repo: stringProperty({
         description:
-          "Full repository name in owner/name format. Required for repo_view, issue_list, issue_view, pr_list, and pr_view.",
+          "Full repository name in owner/name format. Required for repo_view, issue_list, issue_view, pr_list, and pr_view. For repo_list, use owner instead unless Andrew gives an owner as repo.",
+      }),
+      owner: stringProperty({
+        description:
+          "Optional owner or organization login for repo_list, for example andrewfurman or cover-node. Omit owner to list recently pushed repositories across all accessible personal, collaborator, and organization repos.",
       }),
       number: integerProperty({
         description: "Issue or pull request number for issue_view or pr_view.",
@@ -1142,10 +1147,20 @@ function githubCliCommonToolConfig() {
         values: ["open", "closed", "all"],
       }),
       query: stringProperty({
-        description: "GitHub search query for search_issues or search_prs.",
+        description: "GitHub search query for search_issues/search_prs, or a repo name/description filter for repo_list.",
       }),
       limit: integerProperty({
-        description: "Maximum results for list/search actions. Use 5 by default.",
+        description: "Maximum results for list/search actions. Use 10 for spoken repo browsing; use up to 50 only when Andrew asks for a larger list.",
+      }),
+      visibility: stringProperty({
+        description: "Optional repo_list visibility filter.",
+        values: ["public", "private", "internal"],
+      }),
+      include_archived: booleanProperty("Whether repo_list should include archived repositories. Default false."),
+      include_forks: booleanProperty("Whether repo_list should include forked repositories. Default true."),
+      sort: stringProperty({
+        description: "Sort for repo_list. Use pushed by default for most recently worked-on repos.",
+        values: ["pushed", "updated", "name"],
       }),
     },
     responseDescription: "GitHub CLI response.",
@@ -1153,6 +1168,19 @@ function githubCliCommonToolConfig() {
       ...cliResponseProperties(),
       action: stringProperty({ description: "Action performed." }),
       gh_equivalent: stringProperty({ description: "Closest shell command equivalent." }),
+      owner: stringProperty({ description: "Owner filter used for repo_list, if any." }),
+      query: stringProperty({ description: "Query filter used for repo_list, if any." }),
+      visibility: stringProperty({ description: "Visibility filter used for repo_list, if any." }),
+      sort: stringProperty({ description: "Sort used for repo_list." }),
+      returned_count: integerProperty({ description: "Number of repositories returned for repo_list." }),
+      total_count: integerProperty({ description: "Total accessible repositories reported by GitHub when available." }),
+      available_count: integerProperty({ description: "Number of repositories available after local filters." }),
+      has_more: booleanProperty("Whether additional repositories were omitted by repo_list limit."),
+      items: arrayProperty({
+        description: "Repositories returned by repo_list.",
+        itemDescription: "One GitHub repository.",
+        properties: githubRepositoryProperties(),
+      }),
     },
   });
 }
@@ -1650,6 +1678,24 @@ function githubEntryProperties() {
   };
 }
 
+function githubRepositoryProperties() {
+  return {
+    name_with_owner: stringProperty({ description: "Repository full name in owner/name format." }),
+    owner: stringProperty({ description: "Repository owner login." }),
+    name: stringProperty({ description: "Repository name without owner." }),
+    description: stringProperty({ description: "Repository description." }),
+    visibility: stringProperty({ description: "Repository visibility, such as public or private." }),
+    is_private: booleanProperty("Whether the repository is private."),
+    is_archived: booleanProperty("Whether the repository is archived."),
+    is_fork: booleanProperty("Whether the repository is a fork."),
+    pushed_at: stringProperty({ description: "Last pushed timestamp." }),
+    updated_at: stringProperty({ description: "Last updated timestamp." }),
+    url: stringProperty({ description: "GitHub repository URL." }),
+    primary_language: stringProperty({ description: "Primary language when GitHub reports one." }),
+    viewer_permission: stringProperty({ description: "Authenticated gh user's permission on this repository." }),
+  };
+}
+
 function githubIssueWriteResponseProperties() {
   return {
     ok: booleanProperty("Whether the GitHub write succeeded."),
@@ -2034,6 +2080,10 @@ GitHub capability:
 - After creating or updating a GitHub issue, give a brief fifteen-second summary. Do not read the full title and body unless Andrew explicitly asks for the full details.
 - The GitHub issue tools can create and update issues only. They cannot merge, approve, push code, or edit files.
 - If a private repo returns 403, 404, or a GitHub validation failure, say the bridge's gh session may not have access to that repo, SSO authorization, org approval, or Contents read permission.
+- Use github_cli_common with action="repo_list" when Andrew asks what GitHub repositories he has, asks for recently worked-on or recently updated repos, asks to find a repo when he does not know the exact name, or asks about personal versus CoverNode repositories.
+- For repo_list, omit owner to list recently pushed repositories across Andrew's personal, collaborator, and organization access. Use owner="andrewfurman" for personal repos and owner="cover-node" for CoverNode repos when Andrew asks for one side specifically.
+- Keep repo_list spoken answers concise: request limit=10 for normal voice browsing, summarize the top five or six repositories by owner/name and purpose, and mention whether there are more. Do not read every URL or timestamp unless Andrew asks.
+- Prefer sort="pushed" for "recently worked on" and sort="updated" only when Andrew asks for recently updated metadata.
 
 Claude Code capability:
 - You have a webhook tool named claude_code that can check auth, start a session, submit an async Claude Code job on EC2, append steering instructions to an existing Claude Code session/job, and check job status.
@@ -2067,7 +2117,7 @@ CLI capability:
 - Only claim you sent email when himalaya_email_send returns ok=true and action="email_sent".
 - If himalaya_email_send returns action="email_send_timeout" or action="email_send_failed", say the send was not confirmed and Andrew should check Sent Mail before retrying.
 - Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.
-- Use github_cli_common for common read-only GitHub CLI actions such as repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.
+- Use github_cli_common for common read-only GitHub CLI actions such as repo_list, repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.
 - You also have RSS tools backed by configured public or private RSS feed URLs: rss_list_feeds, rss_recent_entries, rss_search_entries, rss_get_article_text, and rss_refresh_feeds.
 - Use rss_list_feeds when Andrew asks what feeds are configured or when you need the feed_id for a named feed.
 - Use rss_recent_entries when Andrew asks for recent or latest articles from configured RSS feeds. Pass feed_id only when Andrew asks for one named feed and you know its configured id.
