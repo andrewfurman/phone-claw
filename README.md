@@ -128,7 +128,7 @@ All webhook tool calls are configured on the ElevenLabs agent. Public calls hit 
 | `github_cli_cat` | `/github-cli/cat` | EC2 bridge via `gh` | Read-only file content fetch by exact path/ref, capped by `max_bytes`. |
 | `github_issue_create` | `/github-issues/create` | EC2 bridge via `gh` | Creates an issue only after exact repo/title/body confirmation and `confirmed=true`. |
 | `github_issue_update` | `/github-issues/update` | EC2 bridge via `gh` | Updates title/body/state/labels/assignees only after exact confirmation and `confirmed=true`. |
-| `github_cli_common` | `/cli/github/common` | EC2 bridge via `gh` | Read-only `repo_view`, `issue_list`, `issue_view`, `pr_list`, `pr_view`, `search_issues`, and `search_prs`. |
+| `github_cli_common` | `/cli/github/common` | EC2 bridge via `gh` | Read-only `repo_list`, `repo_view`, `issue_list`, `issue_view`, `pr_list`, `pr_view`, `search_issues`, and `search_prs`. `repo_list` defaults to recently pushed accessible repositories across personal, collaborator, and organization access, with owner filters such as `andrewfurman` or `cover-node`. |
 | `himalaya_email_list` | `/cli/himalaya/email-list` | EC2 bridge via Himalaya CLI | Lists/searches Gmail envelopes. Paginated by default; `all_pages=true` is capped for count/complete-list questions. |
 | `himalaya_email_read` | `/cli/himalaya/email-read` | EC2 bridge via Himalaya CLI | Reads one envelope by id. Returns compact decoded headers/body excerpt; raw source is opt-in. |
 | `himalaya_email_archive` | `/cli/himalaya/email-archive` | EC2 bridge via Himalaya CLI | Moves one or more confirmed envelopes to the archive folder. Requires `confirmed=true`. |

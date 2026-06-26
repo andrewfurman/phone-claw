@@ -905,10 +905,15 @@ async function handleGithubCliCommon(request, reply) {
   const result = await githubCliCommon({
     action: body.action,
     repo: body.repo || body.repository,
+    owner: body.owner || body.organization,
     number: body.number || body.issue_number || body.issueNumber || body.pr_number || body.prNumber,
     state: body.state,
     query: body.query || body.search_query || body.searchQuery,
     limit: body.limit || body.max_results || body.maxResults,
+    visibility: body.visibility,
+    includeArchived: body.include_archived ?? body.includeArchived,
+    includeForks: body.include_forks ?? body.includeForks,
+    sort: body.sort,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   });
 
