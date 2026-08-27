@@ -59,6 +59,7 @@ npm run worker:deploy
 - `POST /github-issues/update`
 - `POST /cli/himalaya/email-list`
 - `POST /cli/himalaya/email-read`
+- `POST /cli/himalaya/email-images`
 - `POST /cli/himalaya/email-archive`
 - `POST /cli/himalaya/draft-create`
 - `POST /cli/himalaya/draft-reply`
@@ -75,6 +76,7 @@ npm run worker:deploy
 - `POST /cli/rss/search`
 - `POST /cli/rss/article-text`
 - `POST /cli/rss/refresh`
+- `POST /cli/url-fetch`
 - `POST /cli/claude-code`
 - `POST /conversation-history/search`
 - `POST /conversation-history/get`
@@ -162,10 +164,11 @@ The `/cli/*` endpoints are authenticated ElevenLabs webhook tools, but the Worke
 
 Supported bridge-backed tools:
 
-- Himalaya: email envelope list/search, all-pages capped listing/count, preview read, confirmed archive, confirmed new draft, confirmed reply-all draft with inline original thread, confirmed forward draft with inline original HTML when available and no `.eml` attachment, and emergency-only confirmed send.
+- Himalaya: email envelope list/search, all-pages capped listing/count, preview read, dedicated image inspection, confirmed archive, confirmed new draft, confirmed reply-all draft with inline original thread, confirmed forward draft with inline original HTML when available and no `.eml` attachment, and emergency-only confirmed send.
 - Otter: transcript list, raw JSON fetch, and transcript search.
 - GitHub CLI: common read-only repo, issue, PR, and search commands.
 - RSS: configured public/private RSS feed listing, recent entries, keyword/date search, article text from feed content fields, and bridge cache refresh. Article-text responses include `access_note` when the feed appears to provide only an excerpt.
+- URL fetch: public HTTP/HTTPS page fetch with private-network blocking, bounded readable text, redirect/link extraction, and confirmation required for unsubscribe or preference-management links.
 - Claude Code: auth status, session start, confirmed async task submission, and job status.
 
 The Himalaya write tools and Claude Code task submission require `confirmed=true`. Ordinary email composition and forwarding should use draft tools. The send path is isolated in `himalaya_email_send` and additionally requires `emergency=true`, `previewed=true`, and `confirmed=true`.

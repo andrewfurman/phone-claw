@@ -1,6 +1,9 @@
 import { execFile } from "node:child_process";
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { htmlToText } from "html-to-text";
@@ -17,9 +20,22 @@ const DEFAULT_EMAIL_LIST_MAX_ITEMS = 200;
 const MAX_EMAIL_LIST_ITEMS = 1_000;
 const DEFAULT_EMAIL_READ_BODY_CHARS = 8_000;
 const MAX_EMAIL_READ_BODY_CHARS = 40_000;
+const DEFAULT_EMAIL_IMAGE_MAX_IMAGES = 12;
+const MAX_EMAIL_IMAGE_MAX_IMAGES = 30;
+const DEFAULT_EMAIL_IMAGE_MAX_BYTES = 250_000;
+const MAX_EMAIL_IMAGE_MAX_BYTES = 1_000_000;
+const DEFAULT_EMAIL_IMAGE_MAX_ORIGINAL_BYTES = 2_000_000;
+const MAX_EMAIL_IMAGE_MAX_ORIGINAL_BYTES = 5_000_000;
 const DEFAULT_HIMALAYA_SEND_TIMEOUT_MS = 8_000;
 const DEFAULT_FORWARD_MAX_ORIGINAL_BYTES = 600_000;
 const MAX_FORWARD_ORIGINAL_BYTES = 1_500_000;
+const DEFAULT_URL_FETCH_BODY_CHARS = 12_000;
+const MAX_URL_FETCH_BODY_CHARS = 80_000;
+const DEFAULT_URL_FETCH_BYTES = 1_500_000;
+const MAX_URL_FETCH_BYTES = 3_000_000;
+const DEFAULT_URL_FETCH_TIMEOUT_MS = 12_000;
+const MAX_URL_FETCH_TIMEOUT_MS = 25_000;
+const MAX_URL_REDIRECTS = 5;
 const MAX_CLI_ARGUMENT_BYTES = 60_000;
 
 export async function himalayaEmailList({
@@ -166,6 +182,200 @@ export async function himalayaEmailRead({
     raw_truncated: toBoolean(includeRaw) ? result.raw_truncated : false,
     answer_text: formatEmailReadAnswer(compactMessage),
   };
+}
+
+export async function himalayaEmailImages({
+  id,
+  folder = "INBOX",
+  account,
+  includeEmbedded = true,
+  includeAttachments = true,
+  includeData = false,
+  maxImages = DEFAULT_EMAIL_IMAGE_MAX_IMAGES,
+  maxImageBytes = DEFAULT_EMAIL_IMAGE_MAX_BYTES,
+  maxOriginalBytes = DEFAULT_EMAIL_IMAGE_MAX_ORIGINAL_BYTES,
+  maxRawBytes = DEFAULT_MAX_RAW_BYTES,
+} = {}) {
+  const messageId = normalizeString(id);
+  const sourceFolder = normalizeString(folder, "INBOX");
+  if (!messageId) {
+    return missingField("id", "A Himalaya envelope id is required.");
+  }
+
+  const boundedMaxImages = clampInteger(
+    maxImages,
+    1,
+    MAX_EMAIL_IMAGE_MAX_IMAGES,
+    DEFAULT_EMAIL_IMAGE_MAX_IMAGES
+  );
+  const boundedMaxImageBytes = clampInteger(
+    maxImageBytes,
+    1_000,
+    MAX_EMAIL_IMAGE_MAX_BYTES,
+    DEFAULT_EMAIL_IMAGE_MAX_BYTES
+  );
+  const boundedMaxOriginalBytes = clampInteger(
+    maxOriginalBytes,
+    20_000,
+    MAX_EMAIL_IMAGE_MAX_ORIGINAL_BYTES,
+    DEFAULT_EMAIL_IMAGE_MAX_ORIGINAL_BYTES
+  );
+
+  const originalExport = await exportHimalayaRawMessage({
+    id: messageId,
+    folder: sourceFolder,
+    account,
+    maxOriginalBytes: boundedMaxOriginalBytes,
+    maxRawBytes,
+  });
+  if (!originalExport.ok) return originalExport;
+
+  const rawMessage = originalExport.raw_message_buffer.toString("latin1");
+  const inspection = inspectEmailImagesFromRawMessage(rawMessage, {
+    includeEmbedded: toBoolean(includeEmbedded, true),
+    includeAttachments: toBoolean(includeAttachments, true),
+    includeData: toBoolean(includeData),
+    maxImages: boundedMaxImages,
+    maxImageBytes: boundedMaxImageBytes,
+  });
+
+  return {
+    ...compactCliResult(originalExport),
+    ok: true,
+    status: "ok",
+    command: "himalaya message export",
+    id: messageId,
+    folder: sourceFolder,
+    message_size_bytes: originalExport.size_bytes,
+    include_embedded: toBoolean(includeEmbedded, true),
+    include_attachments: toBoolean(includeAttachments, true),
+    include_data: toBoolean(includeData),
+    max_images: boundedMaxImages,
+    max_image_bytes: boundedMaxImageBytes,
+    returned_count: inspection.images.length,
+    html_image_count: inspection.html_images.length,
+    has_more: inspection.has_more,
+    images: inspection.images,
+    html_images: inspection.html_images,
+    answer_text: formatEmailImagesAnswer(inspection.images, inspection.html_images),
+  };
+}
+
+export function inspectEmailImagesFromRawMessage(rawMessage, {
+  includeEmbedded = true,
+  includeAttachments = true,
+  includeData = false,
+  maxImages = DEFAULT_EMAIL_IMAGE_MAX_IMAGES,
+  maxImageBytes = DEFAULT_EMAIL_IMAGE_MAX_BYTES,
+} = {}) {
+  const root = parseMimeEntity(String(rawMessage || ""));
+  const normalizedIncludeEmbedded = toBoolean(includeEmbedded, true);
+  const normalizedIncludeAttachments = toBoolean(includeAttachments, true);
+  const boundedMaxImages = clampInteger(
+    maxImages,
+    1,
+    MAX_EMAIL_IMAGE_MAX_IMAGES,
+    DEFAULT_EMAIL_IMAGE_MAX_IMAGES
+  );
+  const boundedMaxImageBytes = clampInteger(
+    maxImageBytes,
+    1_000,
+    MAX_EMAIL_IMAGE_MAX_BYTES,
+    DEFAULT_EMAIL_IMAGE_MAX_BYTES
+  );
+  const images = collectEmailImageParts(root, {
+    includeEmbedded: normalizedIncludeEmbedded,
+    includeAttachments: normalizedIncludeAttachments,
+    includeData: toBoolean(includeData),
+    maxImages: boundedMaxImages,
+    maxImageBytes: boundedMaxImageBytes,
+  });
+  const htmlPart = findMimePart(root, "text/html");
+  const html = htmlPart ? decodeMimePartBody(htmlPart) : "";
+  const htmlImages = extractHtmlImageReferences(html, images);
+  const totalImageCount = countEmailImageParts(root, {
+    includeEmbedded: normalizedIncludeEmbedded,
+    includeAttachments: normalizedIncludeAttachments,
+  });
+
+  return {
+    images,
+    html_images: htmlImages,
+    has_more: totalImageCount > images.length,
+    total_image_count: totalImageCount,
+  };
+}
+
+export async function urlFetch({
+  url,
+  method = "GET",
+  purpose = "read_page",
+  confirmed = false,
+  followRedirects = true,
+  includeHtml = false,
+  maxBodyChars = DEFAULT_URL_FETCH_BODY_CHARS,
+  maxResponseBytes = DEFAULT_URL_FETCH_BYTES,
+  timeoutMs = DEFAULT_URL_FETCH_TIMEOUT_MS,
+} = {}) {
+  const requestedUrl = normalizeString(url);
+  if (!requestedUrl) {
+    return missingField("url", "A URL is required.");
+  }
+
+  const normalizedMethod = normalizeString(method, "GET").toUpperCase();
+  if (!["GET", "HEAD"].includes(normalizedMethod)) {
+    return {
+      ok: false,
+      status: "unsupported_method",
+      method: normalizedMethod,
+      message: "Only GET and HEAD URL fetches are supported.",
+      answer_text: "Only GET and HEAD URL fetches are supported.",
+    };
+  }
+
+  const normalizedPurpose = normalizeEnum(
+    purpose,
+    ["read_page", "verify", "unsubscribe"],
+    "read_page"
+  );
+  const parsedSafety = await validatePublicHttpUrl(requestedUrl);
+  if (!parsedSafety.ok) return parsedSafety;
+
+  if (urlFetchNeedsConfirmation(parsedSafety.url, normalizedPurpose) && !toBoolean(confirmed)) {
+    return confirmationRequired(
+      "Confirm that Andrew wants to open this URL. It looks like it may trigger an unsubscribe or account-preference action."
+    );
+  }
+
+  const maxChars = clampInteger(
+    maxBodyChars,
+    1_000,
+    MAX_URL_FETCH_BODY_CHARS,
+    DEFAULT_URL_FETCH_BODY_CHARS
+  );
+  const maxBytes = clampInteger(
+    maxResponseBytes,
+    10_000,
+    MAX_URL_FETCH_BYTES,
+    DEFAULT_URL_FETCH_BYTES
+  );
+  const timeout = clampInteger(
+    timeoutMs,
+    1_000,
+    MAX_URL_FETCH_TIMEOUT_MS,
+    DEFAULT_URL_FETCH_TIMEOUT_MS
+  );
+
+  return fetchPublicUrl({
+    url: parsedSafety.url,
+    method: normalizedMethod,
+    purpose: normalizedPurpose,
+    followRedirects: toBoolean(followRedirects, true),
+    includeHtml: toBoolean(includeHtml),
+    maxBodyChars: maxChars,
+    maxResponseBytes: maxBytes,
+    timeoutMs: timeout,
+  });
 }
 
 export async function himalayaEmailArchive({
@@ -1978,6 +2188,623 @@ function decodeMimePartBody(part) {
   return decodeTextBuffer(bytes, part.content_type_params.charset || "utf-8");
 }
 
+function collectEmailImageParts(
+  entity,
+  {
+    includeEmbedded,
+    includeAttachments,
+    includeData,
+    maxImages,
+    maxImageBytes,
+    path = "",
+    images = [],
+  }
+) {
+  if (!entity || images.length >= maxImages) return images;
+
+  if (entity.content_type.startsWith("image/")) {
+    const disposition = parseContentDisposition(headerValue(entity.headers, "content-disposition"));
+    const source = emailImageSource({ entity, disposition });
+    const shouldInclude =
+      (source === "attachment" && includeAttachments) ||
+      (source !== "attachment" && includeEmbedded);
+
+    if (shouldInclude) {
+      const bytes = decodeTransferToBuffer(entity.body, entity.transfer_encoding);
+      const boundedBytes = bytes.subarray(0, maxImageBytes);
+      const dimensions = imageDimensions(entity.content_type, bytes);
+      const filename =
+        decodedHeaderValue(disposition.params.filename) ||
+        decodedHeaderValue(entity.content_type_params.name) ||
+        "";
+      const contentId = normalizeContentId(headerValue(entity.headers, "content-id"));
+
+      images.push({
+        index: images.length + 1,
+        source,
+        media_type: entity.content_type,
+        disposition: disposition.value,
+        filename,
+        content_id: contentId,
+        content_location: decodedHeaderValue(headerValue(entity.headers, "content-location")),
+        size_bytes: bytes.byteLength,
+        returned_data_bytes: includeData ? boundedBytes.byteLength : 0,
+        data_truncated: includeData ? bytes.byteLength > boundedBytes.byteLength : false,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        width: dimensions.width,
+        height: dimensions.height,
+        path,
+        data_base64: includeData ? boundedBytes.toString("base64") : "",
+      });
+    }
+  }
+
+  for (const [index, part] of (entity.parts || []).entries()) {
+    collectEmailImageParts(part, {
+      includeEmbedded,
+      includeAttachments,
+      includeData,
+      maxImages,
+      maxImageBytes,
+      path: `${path}/${index}`,
+      images,
+    });
+    if (images.length >= maxImages) break;
+  }
+
+  return images;
+}
+
+function countEmailImageParts(entity, { includeEmbedded, includeAttachments }) {
+  if (!entity) return 0;
+  let count = 0;
+
+  if (entity.content_type.startsWith("image/")) {
+    const disposition = parseContentDisposition(headerValue(entity.headers, "content-disposition"));
+    const source = emailImageSource({ entity, disposition });
+    if (
+      (source === "attachment" && includeAttachments) ||
+      (source !== "attachment" && includeEmbedded)
+    ) {
+      count += 1;
+    }
+  }
+
+  for (const part of entity.parts || []) {
+    count += countEmailImageParts(part, { includeEmbedded, includeAttachments });
+  }
+
+  return count;
+}
+
+function emailImageSource({ entity, disposition }) {
+  if (disposition.value === "attachment") return "attachment";
+  if (disposition.value === "inline") return "embedded";
+  if (headerValue(entity.headers, "content-id")) return "embedded";
+  return "embedded";
+}
+
+function parseContentDisposition(value) {
+  const parts = splitHeaderParameters(value);
+  const type = normalizeString(parts.shift()).toLowerCase();
+  const params = {};
+
+  for (const part of parts) {
+    const equalIndex = part.indexOf("=");
+    if (equalIndex < 0) continue;
+    const key = part.slice(0, equalIndex).trim().toLowerCase();
+    const rawValue = part.slice(equalIndex + 1).trim();
+    params[key] = unquoteHeaderValue(rawValue);
+  }
+
+  return { value: type, params };
+}
+
+function normalizeContentId(value) {
+  return normalizeHeaderValue(value).replace(/^<|>$/g, "");
+}
+
+function extractHtmlImageReferences(html, imageParts) {
+  const htmlText = String(html || "");
+  if (!htmlText) return [];
+
+  const byContentId = new Map(
+    imageParts
+      .filter((image) => image.content_id)
+      .map((image) => [image.content_id.toLowerCase(), image.index])
+  );
+  const references = [];
+  const imgPattern = /<img\b[^>]*>/gi;
+  let match;
+
+  while ((match = imgPattern.exec(htmlText))) {
+    const attrs = htmlAttributes(match[0]);
+    const src = attrs.src || "";
+    const cid = src.toLowerCase().startsWith("cid:")
+      ? normalizeContentId(src.slice(4))
+      : "";
+
+    references.push({
+      index: references.length + 1,
+      src,
+      alt: attrs.alt || "",
+      title: attrs.title || "",
+      width: attrs.width || "",
+      height: attrs.height || "",
+      is_cid: Boolean(cid),
+      embedded_image_index: cid ? byContentId.get(cid.toLowerCase()) || null : null,
+    });
+  }
+
+  return references.slice(0, 50);
+}
+
+function htmlAttributes(tag) {
+  const attrs = {};
+  const pattern = /([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)/g;
+  let match;
+  while ((match = pattern.exec(String(tag || "")))) {
+    const key = match[1].toLowerCase();
+    const raw = match[2] || "";
+    attrs[key] = htmlDecode(raw.replace(/^["']|["']$/g, ""));
+  }
+  return attrs;
+}
+
+function htmlDecode(value) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function imageDimensions(mediaType, bytes) {
+  if (!Buffer.isBuffer(bytes) || bytes.length < 10) return { width: null, height: null };
+  const type = normalizeString(mediaType).toLowerCase();
+
+  if (type === "image/png" && bytes.length >= 24 && bytes.toString("ascii", 1, 4) === "PNG") {
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  }
+
+  if (type === "image/gif" && bytes.length >= 10 && bytes.toString("ascii", 0, 3) === "GIF") {
+    return { width: bytes.readUInt16LE(6), height: bytes.readUInt16LE(8) };
+  }
+
+  if (type === "image/jpeg" || type === "image/jpg") {
+    return jpegDimensions(bytes);
+  }
+
+  if (type === "image/webp") {
+    return webpDimensions(bytes);
+  }
+
+  return { width: null, height: null };
+}
+
+function jpegDimensions(bytes) {
+  let offset = 2;
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = bytes[offset + 1];
+    const length = bytes.readUInt16BE(offset + 2);
+    if (length < 2) break;
+    if (
+      marker >= 0xc0 &&
+      marker <= 0xcf &&
+      ![0xc4, 0xc8, 0xcc].includes(marker)
+    ) {
+      return {
+        width: bytes.readUInt16BE(offset + 7),
+        height: bytes.readUInt16BE(offset + 5),
+      };
+    }
+    offset += 2 + length;
+  }
+  return { width: null, height: null };
+}
+
+function webpDimensions(bytes) {
+  if (
+    bytes.length < 30 ||
+    bytes.toString("ascii", 0, 4) !== "RIFF" ||
+    bytes.toString("ascii", 8, 12) !== "WEBP"
+  ) {
+    return { width: null, height: null };
+  }
+
+  const subtype = bytes.toString("ascii", 12, 16);
+  if (subtype === "VP8X" && bytes.length >= 30) {
+    return {
+      width: 1 + bytes.readUIntLE(24, 3),
+      height: 1 + bytes.readUIntLE(27, 3),
+    };
+  }
+  if (subtype === "VP8 " && bytes.length >= 30) {
+    return {
+      width: bytes.readUInt16LE(26) & 0x3fff,
+      height: bytes.readUInt16LE(28) & 0x3fff,
+    };
+  }
+  if (subtype === "VP8L" && bytes.length >= 25) {
+    const bits = bytes.readUInt32LE(21);
+    return {
+      width: 1 + (bits & 0x3fff),
+      height: 1 + ((bits >> 14) & 0x3fff),
+    };
+  }
+  return { width: null, height: null };
+}
+
+function formatEmailImagesAnswer(images, htmlImages) {
+  if (images.length === 0 && htmlImages.length === 0) {
+    return "I found no image attachments or embedded image references in that email.";
+  }
+
+  const parts = [];
+  if (images.length > 0) {
+    const names = images
+      .slice(0, 5)
+      .map((image) => image.filename || image.media_type || `image ${image.index}`)
+      .join("; ");
+    parts.push(`I found ${images.length} embedded or attached image files: ${names}.`);
+  }
+  if (htmlImages.length > 0) {
+    parts.push(`The HTML body references ${htmlImages.length} image URLs or cid images.`);
+  }
+  return parts.join(" ");
+}
+
+async function fetchPublicUrl({
+  url,
+  method,
+  purpose,
+  followRedirects,
+  includeHtml,
+  maxBodyChars,
+  maxResponseBytes,
+  timeoutMs,
+}) {
+  const visited = [];
+  let currentUrl = url;
+  let response = null;
+  let responseBuffer = Buffer.alloc(0);
+  let responseTruncated = false;
+
+  for (let redirectCount = 0; redirectCount <= MAX_URL_REDIRECTS; redirectCount += 1) {
+    const safety = await validatePublicHttpUrl(currentUrl);
+    if (!safety.ok) return safety;
+
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+    try {
+      response = await fetch(safety.url, {
+        method,
+        redirect: "manual",
+        signal: abortController.signal,
+        headers: {
+          "accept": "text/html,application/xhtml+xml,text/plain,application/json;q=0.8,*/*;q=0.3",
+          "user-agent": "phone-claw-url-fetch/1.0",
+        },
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        status: error?.name === "AbortError" ? "url_fetch_timeout" : "url_fetch_failed",
+        url,
+        final_url: currentUrl,
+        method,
+        purpose,
+        message: error?.message || "URL fetch failed.",
+        answer_text:
+          error?.name === "AbortError"
+            ? "The URL fetch timed out."
+            : "The URL fetch failed.",
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    visited.push({
+      url: currentUrl,
+      status_code: response.status,
+    });
+
+    if (isRedirectStatus(response.status)) {
+      const location = response.headers.get("location") || "";
+      if (!location || !followRedirects) break;
+      const nextUrl = new URL(location, currentUrl).toString();
+      if (redirectCount >= MAX_URL_REDIRECTS) {
+        return {
+          ok: false,
+          status: "too_many_redirects",
+          url,
+          final_url: currentUrl,
+          method,
+          purpose,
+          redirects: visited,
+          answer_text: "The URL fetch stopped after too many redirects.",
+        };
+      }
+      currentUrl = nextUrl;
+      continue;
+    }
+
+    if (method !== "HEAD") {
+      const body = await readResponseBuffer(response, maxResponseBytes);
+      responseBuffer = body.buffer;
+      responseTruncated = body.truncated;
+    }
+    break;
+  }
+
+  if (!response) {
+    return {
+      ok: false,
+      status: "url_fetch_failed",
+      url,
+      method,
+      purpose,
+      answer_text: "The URL fetch failed.",
+    };
+  }
+
+  const contentTypeHeader = response.headers.get("content-type") || "";
+  const contentType = parseContentType(contentTypeHeader);
+  const decodedBody = responseBuffer.length
+    ? decodeTextBuffer(responseBuffer, contentType.params.charset || "utf-8")
+    : "";
+  const isHtml = contentType.value.includes("html");
+  const isText =
+    isHtml ||
+    contentType.value.startsWith("text/") ||
+    contentType.value.includes("json") ||
+    contentType.value.includes("xml");
+  const readableText = isHtml
+    ? htmlToText(decodedBody, {
+        wordwrap: false,
+        selectors: [{ selector: "a", options: { hideLinkHrefIfSameAsText: true } }],
+      })
+    : isText
+      ? decodedBody
+      : "";
+  const excerpt = truncateUtf8(normalizeEmailBody(readableText), maxBodyChars);
+  const htmlExcerpt = includeHtml && isHtml ? truncateUtf8(decodedBody, maxBodyChars) : null;
+  const links = isHtml ? extractHtmlLinks(decodedBody, currentUrl) : [];
+
+  return {
+    ok: response.status >= 200 && response.status < 400,
+    status: response.status >= 200 && response.status < 400 ? "ok" : "http_error",
+    command: "fetch URL",
+    url,
+    final_url: currentUrl,
+    method,
+    purpose,
+    status_code: response.status,
+    status_text: response.statusText,
+    content_type: contentTypeHeader,
+    content_length: response.headers.get("content-length") || "",
+    response_bytes: responseBuffer.byteLength,
+    response_truncated: responseTruncated,
+    body_text_chars: readableText.length,
+    max_body_chars: maxBodyChars,
+    body_text_truncated: excerpt.truncated || responseTruncated,
+    body_text: excerpt.value,
+    html: htmlExcerpt ? htmlExcerpt.value : "",
+    html_truncated: htmlExcerpt ? htmlExcerpt.truncated || responseTruncated : false,
+    title: isHtml ? htmlTitle(decodedBody) : "",
+    description: isHtml ? htmlMetaDescription(decodedBody) : "",
+    links,
+    redirects: visited,
+    answer_text: formatUrlFetchAnswer({
+      statusCode: response.status,
+      title: isHtml ? htmlTitle(decodedBody) : "",
+      bodyText: excerpt.value,
+      linkCount: links.length,
+      finalUrl: currentUrl,
+    }),
+  };
+}
+
+async function validatePublicHttpUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return {
+      ok: false,
+      status: "invalid_url",
+      message: "The URL is invalid.",
+      answer_text: "That URL is invalid.",
+    };
+  }
+
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    return {
+      ok: false,
+      status: "unsupported_url_protocol",
+      url: value,
+      message: "Only http and https URLs are supported.",
+      answer_text: "Only http and https URLs are supported.",
+    };
+  }
+
+  if (parsed.username || parsed.password) {
+    return {
+      ok: false,
+      status: "url_credentials_not_allowed",
+      url: value,
+      message: "URLs with embedded credentials are not allowed.",
+      answer_text: "URLs with embedded credentials are not allowed.",
+    };
+  }
+
+  const hostname = parsed.hostname.replace(/\.$/, "").toLowerCase();
+  if (isBlockedHostname(hostname)) {
+    return {
+      ok: false,
+      status: "blocked_private_url",
+      url: value,
+      message: "Localhost and private-network URLs are blocked.",
+      answer_text: "That URL points at localhost or a private network, so I blocked it.",
+    };
+  }
+
+  if (!isIP(hostname)) {
+    let addresses;
+    try {
+      addresses = await lookup(hostname, { all: true, verbatim: false });
+    } catch (error) {
+      return {
+        ok: false,
+        status: "dns_lookup_failed",
+        url: value,
+        message: error?.message || "DNS lookup failed.",
+        answer_text: "DNS lookup failed for that URL.",
+      };
+    }
+
+    if (addresses.some((entry) => isPrivateIp(entry.address))) {
+      return {
+        ok: false,
+        status: "blocked_private_url",
+        url: value,
+        message: "The URL resolves to a private-network address.",
+        answer_text: "That URL resolves to a private network, so I blocked it.",
+      };
+    }
+  }
+
+  return { ok: true, url: parsed.toString() };
+}
+
+function isBlockedHostname(hostname) {
+  if (!hostname) return true;
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+  if (isIP(hostname)) return isPrivateIp(hostname);
+  return false;
+}
+
+function isPrivateIp(address) {
+  const ipVersion = isIP(address);
+  if (ipVersion === 4) {
+    const parts = address.split(".").map((part) => Number.parseInt(part, 10));
+    if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return true;
+    const [a, b] = parts;
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a >= 224
+    );
+  }
+
+  if (ipVersion === 6) {
+    const normalized = address.toLowerCase();
+    return (
+      normalized === "::" ||
+      normalized === "::1" ||
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      normalized.startsWith("fe80:") ||
+      normalized.startsWith("::ffff:127.") ||
+      normalized.startsWith("::ffff:10.") ||
+      normalized.startsWith("::ffff:192.168.") ||
+      normalized.startsWith("::ffff:169.254.")
+    );
+  }
+
+  return true;
+}
+
+function urlFetchNeedsConfirmation(url, purpose) {
+  if (purpose === "unsubscribe") return true;
+  return /unsubscribe|opt[-_]?out|email-preference|preferences|subscription/i.test(url);
+}
+
+function isRedirectStatus(statusCode) {
+  return [301, 302, 303, 307, 308].includes(statusCode);
+}
+
+async function readResponseBuffer(response, maxBytes) {
+  if (!response.body) return { buffer: Buffer.alloc(0), truncated: false };
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  let truncated = false;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const chunk = Buffer.from(value);
+    if (total + chunk.byteLength > maxBytes) {
+      chunks.push(chunk.subarray(0, Math.max(0, maxBytes - total)));
+      truncated = true;
+      break;
+    }
+    chunks.push(chunk);
+    total += chunk.byteLength;
+  }
+
+  try {
+    await reader.cancel();
+  } catch {
+    // Ignore cancellation failures after collecting the bounded response body.
+  }
+
+  return { buffer: Buffer.concat(chunks), truncated };
+}
+
+function extractHtmlLinks(html, baseUrl) {
+  const links = [];
+  const anchorPattern = /<a\b[^>]*href\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)[^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+
+  while ((match = anchorPattern.exec(String(html || "")))) {
+    const rawHref = htmlDecode((match[1] || "").replace(/^["']|["']$/g, ""));
+    if (!rawHref || rawHref.startsWith("#")) continue;
+    let href = rawHref;
+    try {
+      href = new URL(rawHref, baseUrl).toString();
+    } catch {
+      // Keep the raw href if URL resolution fails.
+    }
+    const text = normalizeEmailBody(
+      htmlToText(match[2] || "", { wordwrap: false })
+    ).slice(0, 180);
+    links.push({ text, href });
+    if (links.length >= 40) break;
+  }
+
+  return links;
+}
+
+function htmlTitle(html) {
+  const match = String(html || "").match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? normalizeEmailBody(htmlToText(match[1], { wordwrap: false })).slice(0, 300) : "";
+}
+
+function htmlMetaDescription(html) {
+  const match = String(html || "").match(
+    /<meta\b(?=[^>]*\bname\s*=\s*["']?description["']?)(?=[^>]*\bcontent\s*=\s*("[^"]*"|'[^']*'|[^\s>]+))[^>]*>/i
+  );
+  return match ? htmlDecode((match[1] || "").replace(/^["']|["']$/g, "")).slice(0, 500) : "";
+}
+
+function formatUrlFetchAnswer({ statusCode, title, bodyText, linkCount, finalUrl }) {
+  const page = title ? ` "${title}"` : "";
+  const content = bodyText ? " I returned a readable body excerpt." : "";
+  const links = linkCount ? ` I also returned ${linkCount} page links.` : "";
+  return `Fetched${page} with HTTP ${statusCode}.${content}${links} Final URL: ${finalUrl}`;
+}
+
 function splitMimeHeadersAndBody(value) {
   const text = String(value || "");
   const match = text.match(/\r?\n\r?\n/);
@@ -2559,7 +3386,7 @@ function emailListResponse({
 }
 
 function compactCliResult(result) {
-  const { raw_json, raw_truncated, parsed_json, stderr, ...compact } = result;
+  const { raw_json, raw_truncated, parsed_json, stderr, raw_message_buffer, ...compact } = result;
   return {
     ...compact,
     raw_json: "",

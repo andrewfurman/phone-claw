@@ -32,6 +32,7 @@ The local app mirrors the Worker endpoints, including:
 - `POST /github-issues/update`
 - `POST /cli/himalaya/email-list`
 - `POST /cli/himalaya/email-read`
+- `POST /cli/himalaya/email-images`
 - `POST /cli/himalaya/email-archive`
 - `POST /cli/himalaya/draft-create`
 - `POST /cli/himalaya/draft-reply`
@@ -46,10 +47,11 @@ The local app mirrors the Worker endpoints, including:
 - `POST /cli/rss/search`
 - `POST /cli/rss/article-text`
 - `POST /cli/rss/refresh`
+- `POST /cli/url-fetch`
 - `POST /cli/claude-code`
 - `POST /agent-command`
 
-The `/cli/*` endpoints execute focused local CLI wrappers and should run on a private bridge host in production. Email write endpoints and Claude Code task submission are confirmation-gated. Email forwarding saves a draft and preserves original HTML inline when available. Email sends are isolated in the emergency-only `himalaya_email_send` tool, which requires preview plus second confirmation. See `docs/CLI_BRIDGE_SECURITY.md`.
+The `/cli/*` endpoints execute focused local CLI wrappers and should run on a private bridge host in production. Email image inspection is a separate read-only endpoint from normal email reading. URL fetching is limited to public HTTP/HTTPS destinations and blocks localhost/private-network targets. Email write endpoints and Claude Code task submission are confirmation-gated. Email forwarding saves a draft and preserves original HTML inline when available. Email sends are isolated in the emergency-only `himalaya_email_send` tool, which requires preview plus second confirmation. See `docs/CLI_BRIDGE_SECURITY.md`.
 
 ## Expose Locally
 
