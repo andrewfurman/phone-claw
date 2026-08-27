@@ -32,6 +32,7 @@ const configs = [
   githubIssueUpdateToolConfig(),
   himalayaEmailListToolConfig(),
   himalayaEmailReadToolConfig(),
+  himalayaEmailImagesToolConfig(),
   himalayaEmailArchiveToolConfig(),
   himalayaDraftCreateToolConfig(),
   himalayaDraftReplyToolConfig(),
@@ -48,6 +49,7 @@ const configs = [
   rssSearchEntriesToolConfig(),
   rssGetArticleTextToolConfig(),
   rssRefreshFeedsToolConfig(),
+  urlFetchToolConfig(),
   conversationHistorySearchToolConfig(),
   conversationHistoryGetToolConfig(),
   claudeCodeToolConfig(),
@@ -731,6 +733,46 @@ function himalayaEmailReadToolConfig() {
   });
 }
 
+function himalayaEmailImagesToolConfig() {
+  return webhookTool({
+    name: "himalaya_email_images",
+    description:
+      "Read-only Himalaya CLI email image inspector. Use only after himalaya_email_list or himalaya_email_read identifies an exact envelope id and Andrew asks about images, attachments, embedded images, logos, screenshots, or newsletter visuals. Normal email reading should continue to use himalaya_email_read.",
+    url: `${workerBaseUrl}/cli/himalaya/email-images`,
+    required: ["id"],
+    responseTimeoutSecs: 45,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      id: stringProperty({
+        description: "Himalaya envelope id returned by himalaya_email_list.",
+      }),
+      folder: stringProperty({
+        description: "Mailbox folder name. Use the same folder used for the list/read call.",
+      }),
+      include_embedded: booleanProperty(
+        "Include inline or Content-ID images. Keep true unless Andrew asks only for attachments."
+      ),
+      include_attachments: booleanProperty(
+        "Include image attachments. Keep true unless Andrew asks only for embedded images."
+      ),
+      include_data: booleanProperty(
+        "Set true only when Andrew explicitly asks to extract image bytes/base64. Leave false for normal inspection."
+      ),
+      max_images: integerProperty({
+        description:
+          "Maximum image parts to return. Use 12 by default; raise only when Andrew asks for more.",
+      }),
+      max_image_bytes: integerProperty({
+        description:
+          "Maximum bytes to return per image when include_data=true. Leave unset for metadata-only inspection.",
+      }),
+    },
+    responseDescription: "Himalaya email image inspection response.",
+    responseProperties: emailImagesResponseProperties(),
+  });
+}
+
 function himalayaEmailArchiveToolConfig() {
   return webhookTool({
     name: "himalaya_email_archive",
@@ -1380,6 +1422,46 @@ function rssRefreshFeedsToolConfig() {
   });
 }
 
+function urlFetchToolConfig() {
+  return webhookTool({
+    name: "url_fetch",
+    description:
+      "Read-only public URL fetcher for inspecting webpage contents, checking links from emails, and verifying unsubscribe/preference pages. It blocks localhost/private-network URLs. If the URL appears to unsubscribe or change preferences, ask Andrew to confirm before calling with confirmed=true.",
+    url: `${workerBaseUrl}/cli/url-fetch`,
+    required: ["url"],
+    responseTimeoutSecs: 30,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      url: stringProperty({
+        description: "HTTP or HTTPS URL to fetch. Do not read long tracking URLs aloud.",
+      }),
+      method: stringProperty({
+        description: "HTTP method. Use GET by default; use HEAD only when Andrew asks to check status.",
+        values: ["GET", "HEAD"],
+      }),
+      purpose: stringProperty({
+        description:
+          "Why the URL is being fetched. Use unsubscribe for unsubscribe or preference links, verify for checking a result page, and read_page for ordinary page reading.",
+        values: ["read_page", "verify", "unsubscribe"],
+      }),
+      confirmed: booleanProperty(
+        "Set true only after Andrew confirms opening an unsubscribe or account-preference URL."
+      ),
+      follow_redirects: booleanProperty("Follow HTTP redirects. Keep true unless debugging."),
+      include_html: booleanProperty(
+        "Set true only when Andrew explicitly asks for raw HTML. Leave false for readable text."
+      ),
+      max_body_chars: integerProperty({
+        description:
+          "Maximum readable text characters to return. Use the default 12000 for phone calls; raise only when Andrew asks.",
+      }),
+    },
+    responseDescription: "Public URL fetch response.",
+    responseProperties: urlFetchResponseProperties(),
+  });
+}
+
 function conversationHistorySearchToolConfig() {
   return webhookTool({
     name: "conversation_history_search",
@@ -1884,6 +1966,121 @@ function emailReadResponseProperties() {
   };
 }
 
+function emailImagesResponseProperties() {
+  return {
+    ...cliResponseProperties(),
+    id: stringProperty({ description: "Himalaya envelope id that was inspected." }),
+    folder: stringProperty({ description: "Mailbox folder used for the image inspection." }),
+    message_size_bytes: integerProperty({ description: "Exported email size in bytes." }),
+    include_embedded: booleanProperty("Whether embedded or Content-ID images were inspected."),
+    include_attachments: booleanProperty("Whether image attachments were inspected."),
+    include_data: booleanProperty("Whether base64 image bytes were returned."),
+    max_images: integerProperty({ description: "Maximum image parts returned." }),
+    max_image_bytes: integerProperty({
+      description: "Maximum bytes returned per image when include_data=true.",
+    }),
+    returned_count: integerProperty({
+      description: "Number of embedded or attached image MIME parts returned.",
+    }),
+    html_image_count: integerProperty({
+      description: "Number of image references found in the HTML body.",
+    }),
+    has_more: booleanProperty("Whether more image MIME parts were omitted by max_images."),
+    images: arrayProperty({
+      description: "Embedded or attached image MIME parts.",
+      itemDescription: "One embedded or attached image.",
+      properties: {
+        index: integerProperty({ description: "Image index in this result." }),
+        source: stringProperty({ description: "Image source: attachment or embedded." }),
+        media_type: stringProperty({ description: "Image MIME type." }),
+        disposition: stringProperty({ description: "Content-Disposition value when present." }),
+        filename: stringProperty({ description: "Image filename when present." }),
+        content_id: stringProperty({ description: "Content-ID for cid embedded images." }),
+        content_location: stringProperty({ description: "Content-Location when present." }),
+        size_bytes: integerProperty({ description: "Decoded image byte size." }),
+        returned_data_bytes: integerProperty({
+          description: "Returned base64 byte count when include_data=true.",
+        }),
+        data_truncated: booleanProperty("Whether data_base64 is truncated."),
+        sha256: stringProperty({ description: "SHA-256 hash of the decoded image bytes." }),
+        width: integerProperty({ description: "Image width when detected." }),
+        height: integerProperty({ description: "Image height when detected." }),
+        data_base64: stringProperty({
+          description:
+            "Base64 image bytes. Present only when include_data=true; may be truncated.",
+        }),
+      },
+    }),
+    html_images: arrayProperty({
+      description: "Image references found in the HTML email body.",
+      itemDescription: "One HTML img reference.",
+      properties: {
+        index: integerProperty({ description: "HTML image reference index." }),
+        src: stringProperty({ description: "Image src URL or cid reference." }),
+        alt: stringProperty({ description: "Image alt text." }),
+        title: stringProperty({ description: "Image title text." }),
+        width: stringProperty({ description: "HTML width attribute." }),
+        height: stringProperty({ description: "HTML height attribute." }),
+        is_cid: booleanProperty("Whether the src is a cid embedded image reference."),
+        embedded_image_index: integerProperty({
+          description: "Matching embedded image index when a cid image matched.",
+        }),
+      },
+    }),
+  };
+}
+
+function urlFetchResponseProperties() {
+  return {
+    ok: booleanProperty("Whether the URL fetch returned a 2xx or 3xx response."),
+    status: stringProperty({
+      description:
+        "Status code such as ok, http_error, invalid_url, blocked_private_url, confirmation_required, or url_fetch_timeout.",
+    }),
+    message: stringProperty({ description: "Error or status message." }),
+    command: stringProperty({ description: "Command family, usually fetch URL." }),
+    answer_text: stringProperty({
+      description: "Compact spoken summary. Prefer this before using body_text.",
+    }),
+    url: stringProperty({ description: "Requested URL." }),
+    final_url: stringProperty({ description: "Final URL after redirects." }),
+    method: stringProperty({ description: "HTTP method used." }),
+    purpose: stringProperty({ description: "Fetch purpose." }),
+    status_code: integerProperty({ description: "HTTP response status code." }),
+    status_text: stringProperty({ description: "HTTP response status text." }),
+    content_type: stringProperty({ description: "HTTP Content-Type header." }),
+    content_length: stringProperty({ description: "HTTP Content-Length header when present." }),
+    response_bytes: integerProperty({ description: "Downloaded response bytes." }),
+    response_truncated: booleanProperty("Whether the downloaded response body was capped."),
+    body_text_chars: integerProperty({ description: "Readable body text length." }),
+    max_body_chars: integerProperty({ description: "Maximum readable text returned." }),
+    body_text_truncated: booleanProperty("Whether body_text is truncated."),
+    body_text: stringProperty({ description: "Readable fetched page text excerpt." }),
+    html: stringProperty({
+      description: "Raw HTML excerpt only when include_html=true and content is HTML.",
+    }),
+    html_truncated: booleanProperty("Whether html is truncated."),
+    title: stringProperty({ description: "HTML title when present." }),
+    description: stringProperty({ description: "HTML meta description when present." }),
+    links: arrayProperty({
+      description: "Links found in the fetched HTML page.",
+      itemDescription: "One HTML link.",
+      properties: {
+        text: stringProperty({ description: "Readable link text." }),
+        href: stringProperty({ description: "Resolved link URL." }),
+      },
+    }),
+    redirects: arrayProperty({
+      description: "Redirect/status chain.",
+      itemDescription: "One visited URL.",
+      properties: {
+        url: stringProperty({ description: "Visited URL." }),
+        status_code: integerProperty({ description: "HTTP status code." }),
+      },
+    }),
+  };
+}
+
 function cliResponseProperties() {
   return {
     ok: booleanProperty("Whether the CLI command succeeded."),
@@ -2099,10 +2296,11 @@ Claude Code capability:
 - Do not ask Claude Code to push commits, deploy, rotate secrets, or perform destructive operations unless Andrew explicitly requested that exact action.
 
 CLI capability:
-- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_forward, create_reply_all_draft, create_forward_draft, himalaya_email_send, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.
+- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_images, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_forward, create_reply_all_draft, create_forward_draft, himalaya_email_send, otter_speeches_list, otter_speech_get, otter_speech_search, github_cli_common, and url_fetch.
 - Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. This mode returns at most 200 envelopes by default to protect context; if capped or has_more is true, say it is a partial list and suggest narrowing the query.
 - Only treat total_count as exact when complete or exact is true.
 - Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result. himalaya_email_read returns compact headers and body_text by default; do not set include_raw=true unless Andrew explicitly asks for raw email source or debugging output.
+- Use himalaya_email_images only when Andrew specifically asks about email images, screenshots, logos, embedded images, or image attachments. It inspects an exact email envelope id and returns image metadata plus HTML img references. Leave include_data=false unless Andrew explicitly asks to extract image bytes or base64. Do not use it for ordinary email reading.
 - Do not read internal email envelope ids, Otter otids, database ids, UUIDs, Twilio SIDs, or Claude job/session ids aloud unless Andrew explicitly asks for the id or is confirming an action that requires that exact id. Use human-readable subjects, titles, senders, dates, and summaries in normal speech.
 - Use himalaya_email_archive only after Andrew explicitly confirms the exact email or emails and source folder. For one email, pass id. For multiple emails, pass ids as an array in one tool call. Set confirmed=true only after that confirmation.
 - Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.
@@ -2131,6 +2329,7 @@ CLI capability:
 - If rss_get_article_text returns access_note saying the text may be an excerpt, say that plainly.
 - Do not call rss_refresh_feeds before every RSS lookup. Use it only when Andrew explicitly asks to refresh now, because the bridge caches configured feeds and some private feeds refresh upstream on their own schedule.
 - These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.
+- Use url_fetch when Andrew asks to fetch a specific webpage URL, inspect a link from an email, check an unsubscribe/preference page, or verify whether a public URL loaded. It returns readable page text, title, redirects, and links. It blocks localhost and private-network URLs. For unsubscribe, opt-out, preference, or subscription-management links, first repeat the intended action briefly and ask Andrew to confirm before calling url_fetch with purpose="unsubscribe" and confirmed=true.
 - Before slow CLI calls, and before the first web_search call in a user turn, say a brief natural status phrase, then call the tool. Do not say another status phrase before a second web_search call in the same user turn.
 
 End-call behavior:

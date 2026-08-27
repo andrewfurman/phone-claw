@@ -131,6 +131,7 @@ All webhook tool calls are configured on the ElevenLabs agent. Public calls hit 
 | `github_cli_common` | `/cli/github/common` | EC2 bridge via `gh` | Read-only `repo_list`, `repo_view`, `issue_list`, `issue_view`, `pr_list`, `pr_view`, `search_issues`, and `search_prs`. `repo_list` defaults to recently pushed accessible repositories across personal, collaborator, and organization access, with owner filters such as `andrewfurman` or `cover-node`. |
 | `himalaya_email_list` | `/cli/himalaya/email-list` | EC2 bridge via Himalaya CLI | Lists/searches Gmail envelopes. Paginated by default; `all_pages=true` is capped for count/complete-list questions. |
 | `himalaya_email_read` | `/cli/himalaya/email-read` | EC2 bridge via Himalaya CLI | Reads one envelope by id. Returns compact decoded headers/body excerpt; raw source is opt-in. |
+| `himalaya_email_images` | `/cli/himalaya/email-images` | EC2 bridge via Himalaya CLI | Dedicated read-only image inspector for one envelope. Returns image attachment/embedded-image metadata, HTML image references, dimensions/hashes when available, and base64 only when explicitly requested. |
 | `himalaya_email_archive` | `/cli/himalaya/email-archive` | EC2 bridge via Himalaya CLI | Moves one or more confirmed envelopes to the archive folder. Requires `confirmed=true`. |
 | `himalaya_draft_create` | `/cli/himalaya/draft-create` | EC2 bridge via Himalaya CLI | Saves a new email draft. Requires confirmation; never sends. |
 | `himalaya_draft_reply` | `/cli/himalaya/draft-reply` | EC2 bridge via Himalaya CLI | Compatibility reply-draft tool. Prefer `create_reply_all_draft` for reply-all. |
@@ -146,6 +147,7 @@ All webhook tool calls are configured on the ElevenLabs agent. Public calls hit 
 | `rss_search_entries` | `/cli/rss/search` | EC2 bridge | Searches configured feeds by keyword and optional date range. Same limits as recent entries. |
 | `rss_get_article_text` | `/cli/rss/article-text` | EC2 bridge | Returns article text from feed content fields for an exact entry id or URL. Reports `full_article_available` and `access_note` when text is only an excerpt. |
 | `rss_refresh_feeds` | `/cli/rss/refresh` | EC2 bridge | Refreshes bridge feed cache only when explicitly requested. |
+| `url_fetch` | `/cli/url-fetch` | EC2 bridge | Fetches public HTTP/HTTPS pages for exact URLs, email links, and unsubscribe verification. Blocks localhost/private-network destinations and requires confirmation for unsubscribe/preference-style links. |
 | `conversation_history_search` | `/conversation-history/search` | EC2 bridge plus Neon/Postgres | Searches archived calls by keyword/date and returns compact summaries and keywords. |
 | `conversation_history_get` | `/conversation-history/get` | EC2 bridge plus Neon/Postgres | Gets one archived conversation with capped transcript/tool excerpts when requested. |
 | `claude_code` | `/cli/claude-code` | EC2 bridge via Claude Code | Explicit escalation only. Supports `auth_status`, `start_session`, `submit_task`, `steer_session`, and `job_status`. Task submission and steering are confirmation-gated; run jobs are async. |
@@ -159,6 +161,7 @@ Email read tools are safe by default:
 
 - `himalaya_email_list` returns compact envelope metadata: id, subject, from, to, date, flags, and attachment presence.
 - `himalaya_email_read` returns decoded headers and a bounded body excerpt.
+- `himalaya_email_images` is separate from normal reading. It exports one email, parses MIME image parts and HTML `<img>` references, and returns bounded metadata. It does not return base64 image bytes unless `include_data=true`.
 - Raw email source requires `include_raw=true`.
 
 Email write tools are split by risk:
@@ -166,6 +169,18 @@ Email write tools are split by risk:
 - Draft and archive tools require exact voice confirmation.
 - Reply-all and forward drafts preserve original content inline and do not send.
 - `himalaya_email_send` is separate, emergency-only, preview-gated, confirmation-gated, and timeout-bounded so SMTP hangs do not silently look successful.
+
+## URL Fetching
+
+`url_fetch` is for exact URLs, not general search. It is useful when the agent needs to inspect a link from an email, fetch a full webpage, or verify whether an unsubscribe/preference page loaded.
+
+The tool is intentionally constrained:
+
+- Only `GET` and `HEAD` are supported.
+- Only `http` and `https` URLs are supported.
+- Localhost, private IP ranges, and private DNS results are blocked before fetch and after each redirect.
+- Response bodies, readable text, raw HTML, redirects, and extracted links are capped.
+- Unsubscribe, opt-out, preference, and subscription-management URLs require Andrew's explicit confirmation before the tool is called with `purpose="unsubscribe"` and `confirmed=true`.
 
 ## Conversation Memory
 

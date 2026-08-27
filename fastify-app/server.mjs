@@ -18,6 +18,7 @@ import {
   himalayaDraftCreate,
   himalayaDraftReply,
   himalayaEmailArchive,
+  himalayaEmailImages,
   himalayaEmailForward,
   himalayaEmailList,
   himalayaEmailRead,
@@ -25,6 +26,7 @@ import {
   otterSpeechGet,
   otterSpeechSearch,
   otterSpeechesList,
+  urlFetch,
 } from "./cli-tools.mjs";
 import {
   configuredRssFeedsConfigured,
@@ -110,6 +112,7 @@ app.get("/", async () => ({
     github_issue_update: "POST /github-issues/update",
     himalaya_email_list: "POST /cli/himalaya/email-list",
     himalaya_email_read: "POST /cli/himalaya/email-read",
+    himalaya_email_images: "POST /cli/himalaya/email-images",
     himalaya_email_archive: "POST /cli/himalaya/email-archive",
     himalaya_draft_create: "POST /cli/himalaya/draft-create",
     himalaya_draft_reply: "POST /cli/himalaya/draft-reply",
@@ -126,6 +129,7 @@ app.get("/", async () => ({
     rss_search_entries: "POST /cli/rss/search",
     rss_get_article_text: "POST /cli/rss/article-text",
     rss_refresh_feeds: "POST /cli/rss/refresh",
+    url_fetch: "POST /cli/url-fetch",
     claude_code: "POST /cli/claude-code",
     conversation_history_search: "POST /conversation-history/search",
     conversation_history_get: "POST /conversation-history/get",
@@ -201,6 +205,10 @@ app.post("/cli/himalaya/email-read", async (request, reply) =>
   handleHimalayaEmailRead(request, reply)
 );
 
+app.post("/cli/himalaya/email-images", async (request, reply) =>
+  handleHimalayaEmailImages(request, reply)
+);
+
 app.post("/cli/himalaya/email-archive", async (request, reply) =>
   handleHimalayaEmailArchive(request, reply)
 );
@@ -262,6 +270,8 @@ app.post("/cli/rss/article-text", async (request, reply) =>
 app.post("/cli/rss/refresh", async (request, reply) =>
   handleRssRefreshFeeds(request, reply)
 );
+
+app.post("/cli/url-fetch", async (request, reply) => handleUrlFetch(request, reply));
 
 app.post("/cli/claude-code", async (request, reply) =>
   handleClaudeCodeTool(request, reply)
@@ -704,6 +714,27 @@ async function handleHimalayaEmailRead(request, reply) {
   return reply.code(toolResultStatusCode(result)).send(result);
 }
 
+async function handleHimalayaEmailImages(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await himalayaEmailImages({
+    id: body.id || body.envelope_id || body.envelopeId,
+    folder: body.folder,
+    account: body.account,
+    includeEmbedded: body.include_embedded ?? body.includeEmbedded,
+    includeAttachments: body.include_attachments ?? body.includeAttachments,
+    includeData: body.include_data ?? body.includeData,
+    maxImages: body.max_images || body.maxImages || body.max_results || body.maxResults,
+    maxImageBytes: body.max_image_bytes || body.maxImageBytes,
+    maxOriginalBytes:
+      body.max_original_bytes || body.maxOriginalBytes || body.max_raw_bytes || body.maxRawBytes,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  });
+
+  return reply.code(toolResultStatusCode(result)).send(result);
+}
+
 async function handleHimalayaEmailArchive(request, reply) {
   if (!validateCliToolAuth(request, reply)) return;
 
@@ -980,6 +1011,25 @@ async function handleRssRefreshFeeds(request, reply) {
   const body = request.body || {};
   const result = await rssRefreshConfiguredFeeds({
     feedId: body.feed_id || body.feedId,
+  });
+
+  return reply.code(toolResultStatusCode(result)).send(result);
+}
+
+async function handleUrlFetch(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await urlFetch({
+    url: body.url || body.href,
+    method: body.method,
+    purpose: body.purpose,
+    confirmed: body.confirmed,
+    followRedirects: body.follow_redirects ?? body.followRedirects,
+    includeHtml: body.include_html ?? body.includeHtml,
+    maxBodyChars: body.max_body_chars || body.maxBodyChars,
+    maxResponseBytes: body.max_response_bytes || body.maxResponseBytes || body.max_raw_bytes || body.maxRawBytes,
+    timeoutMs: body.timeout_ms || body.timeoutMs,
   });
 
   return reply.code(toolResultStatusCode(result)).send(result);
