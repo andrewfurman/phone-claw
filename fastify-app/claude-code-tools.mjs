@@ -34,17 +34,31 @@ export async function claudeCodeTool({
 
   if (normalizedAction === "start_session") {
     const auth = await claudeAuthStatus();
+    if (!auth.authenticated) {
+      return {
+        ok: false,
+        status:
+          auth.status === "claude_auth_expired"
+            ? "claude_auth_expired"
+            : "claude_not_authenticated",
+        action: normalizedAction,
+        authenticated: false,
+        auth_method: auth.auth_method,
+        auth_probe: auth.auth_probe,
+        message: auth.message,
+        answer_text: auth.answer_text,
+      };
+    }
+
     const nextSessionId = normalizeUuid(sessionId) || randomUUID();
     return {
       ok: true,
       status: "session_ready",
       action: normalizedAction,
-      authenticated: auth.authenticated,
+      authenticated: true,
       auth_method: auth.auth_method,
       session_id: nextSessionId,
-      answer_text: auth.authenticated
-        ? `Claude Code session ${nextSessionId} is ready.`
-        : "Claude Code is installed, but it is not authenticated yet.",
+      answer_text: `Claude Code session ${nextSessionId} is ready.`,
     };
   }
 
@@ -86,14 +100,18 @@ export async function claudeCodeTool({
   if (!auth.authenticated) {
     return {
       ok: false,
-      status: "claude_not_authenticated",
+      status:
+        auth.status === "claude_auth_expired"
+          ? "claude_auth_expired"
+          : "claude_not_authenticated",
       action: normalizedAction,
       authenticated: false,
       auth_method: auth.auth_method,
+      auth_probe: auth.auth_probe,
       message:
+        auth.message ||
         "Claude Code is installed, but the bridge user is not authenticated yet.",
-      answer_text:
-        "Claude Code is installed on the bridge, but it is not authenticated yet.",
+      answer_text: auth.answer_text,
     };
   }
 
@@ -251,23 +269,89 @@ async function claudeAuthStatus() {
     cwd: process.cwd(),
   });
   const parsed = parseMaybeJson(result.stdout);
-  const authenticated =
+  const statusReadable = Boolean(parsed && typeof parsed === "object");
+  const auth_method =
+    parsed?.authMethod || (process.env.ANTHROPIC_API_KEY ? "api_key" : "none");
+  const reportedAuthenticated =
     parsed?.loggedIn === true ||
     Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_API_KEY);
-  const statusReadable = Boolean(parsed && typeof parsed === "object");
+  const authProbe = reportedAuthenticated
+    ? await claudeAuthProbe(command)
+    : { ok: false, status: "not_authenticated", skipped: true };
+  const authenticated = reportedAuthenticated && authProbe.ok;
+  const status = authenticated
+    ? "ok"
+    : authProbe.status === "claude_auth_expired"
+      ? "claude_auth_expired"
+      : statusReadable || result.ok
+        ? "claude_not_authenticated"
+        : "claude_auth_status_failed";
 
   return {
-    ok: statusReadable || result.ok,
-    status: statusReadable || result.ok ? "ok" : "claude_auth_status_failed",
+    ok: status === "ok" || status === "claude_not_authenticated",
+    status,
     action: "auth_status",
     authenticated,
-    auth_method: parsed?.authMethod || (process.env.ANTHROPIC_API_KEY ? "api_key" : "none"),
+    auth_method,
     api_provider: parsed?.apiProvider || "",
+    auth_probe: authProbe,
     raw_status: parsed,
-    message: result.ok ? "" : result.stderr || result.error_message,
+    message: authProbe.message || (result.ok ? "" : result.stderr || result.error_message),
     answer_text: authenticated
       ? "Claude Code is authenticated on the bridge."
-      : "Claude Code is not authenticated on the bridge yet.",
+      : status === "claude_auth_expired"
+        ? "Claude Code auth is present on the bridge, but the OAuth token has expired. Re-authenticate Claude Code before starting browser or code jobs."
+        : "Claude Code is not authenticated on the bridge yet.",
+  };
+}
+
+async function claudeAuthProbe(command) {
+  if (!toBoolean(process.env.CLAUDE_CODE_AUTH_PROBE, true)) {
+    return {
+      ok: true,
+      status: "auth_probe_skipped",
+      skipped: true,
+      message: "",
+    };
+  }
+
+  const result = await runCommand(command, [
+    "-p",
+    "Respond with exactly OK.",
+    "--output-format",
+    "json",
+    "--permission-mode",
+    "plan",
+  ], {
+    timeoutMs:
+      clampInteger(process.env.CLAUDE_CODE_AUTH_PROBE_TIMEOUT_MS, 5, 60, 30) *
+      1000,
+    cwd: process.cwd(),
+  });
+  const combined = redact(
+    [result.stdout, result.stderr, result.error_message].filter(Boolean).join("\n")
+  );
+
+  if (result.ok) {
+    return {
+      ok: true,
+      status: "ok",
+      skipped: false,
+      exit_code: result.exit_code,
+      signal: result.signal,
+      message: "",
+    };
+  }
+
+  return {
+    ok: false,
+    status: /401|expired|failed to authenticate/i.test(combined)
+      ? "claude_auth_expired"
+      : "claude_auth_probe_failed",
+    skipped: false,
+    exit_code: result.exit_code,
+    signal: result.signal,
+    message: truncateUtf8(combined, 1_000).value,
   };
 }
 
