@@ -150,7 +150,7 @@ All webhook tool calls are configured on the ElevenLabs agent. Public calls hit 
 | `url_fetch` | `/cli/url-fetch` | EC2 bridge | Fetches public HTTP/HTTPS pages for exact URLs, email links, and unsubscribe verification. Blocks localhost/private-network destinations and requires confirmation for unsubscribe/preference-style links. |
 | `conversation_history_search` | `/conversation-history/search` | EC2 bridge plus Neon/Postgres | Searches archived calls by keyword/date and returns compact summaries and keywords. |
 | `conversation_history_get` | `/conversation-history/get` | EC2 bridge plus Neon/Postgres | Gets one archived conversation with capped transcript/tool excerpts when requested. |
-| `claude_code` | `/cli/claude-code` | EC2 bridge via Claude Code | Explicit escalation only. Supports `auth_status`, `start_session`, `submit_task`, `steer_session`, and `job_status`. Task submission and steering are confirmation-gated; run jobs are async. |
+| `claude_code` | `/cli/claude-code` | EC2 bridge via Claude Code | Explicit escalation only. Supports `auth_status`, `start_session`, `submit_task`, `steer_session`, and `job_status`. Task submission and steering are confirmation-gated; run jobs are async. Confirmed unsubscribe/preference-center browser work can be delegated to Claude Code with Playwright when `url_fetch` cannot verify the page statically. |
 | `end_call` | ElevenLabs built-in | ElevenLabs | Ends the live call after a clear goodbye or "done for now" intent. |
 
 ## Himalaya CLI Behavior
@@ -181,6 +181,14 @@ The tool is intentionally constrained:
 - Localhost, private IP ranges, and private DNS results are blocked before fetch and after each redirect.
 - Response bodies, readable text, raw HTML, redirects, and extracted links are capped.
 - Unsubscribe, opt-out, preference, and subscription-management URLs require Andrew's explicit confirmation before the tool is called with `purpose="unsubscribe"` and `confirmed=true`.
+
+For interactive unsubscribe or preference-center pages, the agent uses the existing generic `claude_code` async job tool rather than a separate browser-job API:
+
+- Find the exact email and relevant unsubscribe/preference URL with Himalaya tools.
+- Repeat the sender, URL domain, and intended action, then ask Andrew to confirm.
+- Try `url_fetch` for static verification or already-complete pages.
+- If the page needs JavaScript, buttons, forms, screenshots, or multi-step interaction, start an async `claude_code` run job that tells Claude Code to use Playwright/headless browser on EC2.
+- Report the returned `job_id`; later use `claude_code` `job_status` to say whether the page showed a clear unsubscribe/preference-saved success state.
 
 ## Conversation Memory
 

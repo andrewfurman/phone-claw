@@ -153,6 +153,10 @@ Steering instructions are stored as session-scoped JSONL records under `CLAUDE_C
 
 Run-mode jobs use Claude Code `bypassPermissions` plus `--dangerously-skip-permissions` when `CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true`, so they do not stall on permission prompts.
 
+`auth_status` runs `claude auth status --json` and then a tiny non-mutating Claude prompt by default. This catches stale first-party OAuth sessions that still report `loggedIn=true` but fail real jobs with an expired access token. Set `CLAUDE_CODE_AUTH_PROBE=false` only when intentionally skipping that live probe.
+
+For confirmed interactive unsubscribe or email preference-center tasks, the ElevenLabs prompt can submit an async Claude Code run job that uses Playwright/headless browser from this EC2 host. The job should inspect DOM text and screenshots as needed, click only the confirmed unsubscribe/preference controls, record a structured outcome, and then be checked later with `claude_code` `job_status`.
+
 ## Configured RSS Feeds
 
 phone-claw can expose any public or private RSS/Atom feed to the voice agent through generic tools. Store private URLs in a host-local JSON file, not in Git:

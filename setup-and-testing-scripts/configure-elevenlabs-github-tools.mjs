@@ -1592,7 +1592,7 @@ function claudeCodeToolConfig() {
   return webhookTool({
     name: "claude_code",
     description:
-      "Explicit escalation tool for Claude Code running on the private EC2 bridge. Use only when Andrew asks to use Claude Code, asks to start/check/steer a Claude Code session, or confirms that a complex code change/test run should be delegated.",
+      "Explicit escalation tool for Claude Code running on the private EC2 bridge. Use it for confirmed async code tasks, job status checks, steering, and confirmed interactive browser automation such as unsubscribe or preference-center flows that need Playwright.",
     url: `${workerBaseUrl}/cli/claude-code`,
     required: ["action"],
     responseTimeoutSecs: 20,
@@ -1642,11 +1642,24 @@ function claudeCodeToolConfig() {
       ok: booleanProperty("Whether the bridge request succeeded."),
       status: stringProperty({
         description:
-          "Status such as ok, session_ready, running, steering_recorded, completed, failed, claude_not_authenticated, confirmation_required, or job_not_found.",
+          "Status such as ok, session_ready, running, steering_recorded, completed, failed, claude_not_authenticated, claude_auth_expired, confirmation_required, or job_not_found.",
       }),
       action: stringProperty({ description: "Action performed." }),
       authenticated: booleanProperty("Whether Claude Code is authenticated on the bridge."),
       auth_method: stringProperty({ description: "Claude Code auth method when known." }),
+      auth_probe: objectProperty({
+        description:
+          "Live non-mutating Claude Code auth probe. Use this when auth_status reports an expired or failed auth state.",
+        properties: {
+          ok: booleanProperty("Whether a tiny Claude Code prompt succeeded."),
+          status: stringProperty({
+            description:
+              "Probe status such as ok, auth_probe_skipped, claude_auth_expired, or claude_auth_probe_failed.",
+          }),
+          skipped: booleanProperty("Whether the live auth probe was skipped by configuration."),
+          message: stringProperty({ description: "Short probe failure message when available." }),
+        },
+      }),
       session_id: stringProperty({ description: "Claude Code session UUID." }),
       job_id: stringProperty({ description: "Claude Code async job UUID." }),
       mode: stringProperty({ description: "Claude Code mode: plan or run." }),
@@ -2285,7 +2298,7 @@ GitHub capability:
 Claude Code capability:
 - You have a webhook tool named claude_code that can check auth, start a session, submit an async Claude Code job on EC2, append steering instructions to an existing Claude Code session/job, and check job status.
 - Do not use Claude Code by default. First solve directly with conversation, web_search, GitHub, email, or Otter tools when that is enough.
-- Use claude_code only when Andrew explicitly asks to use Claude Code, asks to start/check a Claude Code session, or confirms that a complex code change or test run should be delegated to Claude Code.
+- Use claude_code only when Andrew explicitly asks to use Claude Code, asks to start/check a Claude Code session, confirms that a complex code change or test run should be delegated to Claude Code, or confirms an interactive browser task such as unsubscribing from an email.
 - Use action="auth_status" when Andrew asks whether Claude Code is ready.
 - Use action="start_session" when Andrew asks to start a Claude Code session. Remember and reuse the returned session_id.
 - Before action="submit_task", repeat the exact repository/path and task, then ask Andrew to confirm. Set confirmed=true only after that confirmation.
@@ -2294,6 +2307,16 @@ Claude Code capability:
 - Steering instructions let Andrew keep shaping a Claude Code session while it runs. Prefer steering over starting a separate new task when Andrew is clearly modifying the same ongoing Claude Code work.
 - Claude Code jobs are asynchronous. After submit_task returns a job_id, tell Andrew the job started and use action="job_status" to check progress. Do not claim the code work is complete until job_status says completed.
 - Do not ask Claude Code to push commits, deploy, rotate secrets, or perform destructive operations unless Andrew explicitly requested that exact action.
+
+Email unsubscribe and interactive link workflows:
+- For an unsubscribe or email-preference request, first identify the exact email with himalaya_email_list and himalaya_email_read, then identify the most relevant unsubscribe, opt-out, or preference URL from that message.
+- Repeat the sender/email, the URL domain, and the intended action in plain English, then ask Andrew to confirm before opening an unsubscribe or preference-management link. Do not set confirmed=true before that confirmation.
+- Use url_fetch with purpose="unsubscribe" and confirmed=true for read-only verification of the unsubscribe/preference URL, or when the page text itself clearly confirms the address is already unsubscribed.
+- If url_fetch shows JavaScript-heavy content, a form, buttons, multiple choices, or no clear completion state, use claude_code action="submit_task" with mode="run" and confirmed=true to launch an async browser task.
+- In the Claude Code task, explicitly instruct Claude to use Playwright or another headless browser from the EC2 bridge, inspect the DOM and screenshots as needed, click only controls needed for the confirmed unsubscribe/preference action, and write a concise structured outcome.
+- Tell Claude Code to stop without completing the action if it hits a login wall, CAPTCHA, payment/checkout flow, account deletion, security settings, unclear destructive action, or anything beyond the confirmed email preference change.
+- After submit_task returns, tell Andrew the browser job started and keep the job_id in context. When Andrew asks what happened, call claude_code with action="job_status" and that job_id.
+- Treat the unsubscribe as confirmed only when job_status returns completed and the output says the page showed a clear unsubscribe/suppression/preference-saved success state. If the job is still running, failed, timed out, or ambiguous, say that plainly and offer to steer or retry.
 
 CLI capability:
 - You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_images, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_forward, create_reply_all_draft, create_forward_draft, himalaya_email_send, otter_speeches_list, otter_speech_get, otter_speech_search, github_cli_common, and url_fetch.

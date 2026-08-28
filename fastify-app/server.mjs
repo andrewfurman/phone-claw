@@ -1121,6 +1121,8 @@ function isClaudeCodeToolResponse(result) {
     result.ok ||
     [
       "confirmation_required",
+      "claude_auth_expired",
+      "claude_auth_probe_failed",
       "claude_not_authenticated",
       "job_not_found",
       "session_ready",

@@ -84,6 +84,8 @@ There are no public inbound HTTP or HTTPS ports for the Fastify bridge.
 
 Claude Code run jobs are intentionally configured with `CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS=true` on this host so confirmed jobs do not hang on permission prompts. That setting is acceptable only because tool access is behind the Worker, Cloudflare Tunnel, bearer-token bridge auth, an allow-listed working directory, and explicit voice confirmation before task submission.
 
+Interactive unsubscribe and preference-center flows use that same `claude_code` async job path instead of a separate browser-job API. The ElevenLabs prompt requires the agent to identify the exact email/link, get Andrew's confirmation, try `url_fetch` for static verification, and only then submit a Claude Code task that uses Playwright/headless browser. Those jobs should stop on login walls, CAPTCHA, payment/checkout flows, account deletion, security settings, or ambiguous destructive actions.
+
 ## Why Not Put CLI Credentials Into A Worker?
 
 Workers are good for request routing, auth checks, and API calls. They are not a good fit for these CLI tools because they cannot spawn local processes or rely on a local keyring/home directory. Copying laptop CLI state into Worker secrets would also make credential rotation and auditing harder.

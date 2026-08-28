@@ -1,5 +1,5 @@
 {
-  "exported_at": "2026-08-24T14:08:57.873Z",
+  "exported_at": "2026-08-28T18:01:16.880Z",
   "source": "ElevenLabs API: GET /v1/convai/agents/:agent_id and /v1/convai/tools/:tool_id",
   "redaction_note": "access_info, phone_numbers, whatsapp_accounts, auth headers, secret-like strings, and phone numbers are redacted or omitted recursively.",
   "observed_dashboard_changes": {
@@ -185,6 +185,36 @@
           "cc",
           "date",
           "body_text"
+        ]
+      },
+      {
+        "tool_id": "tool_5901m126qd39ehqtpbe99zkw5nyf",
+        "name": "himalaya_email_images",
+        "url": "https://webhooks.aifurman.com/cli/himalaya/email-images",
+        "method": "POST",
+        "auth": "[redacted]",
+        "response_fields": [
+          "ok",
+          "status",
+          "message",
+          "command",
+          "answer_text",
+          "raw_json",
+          "raw_truncated",
+          "stderr",
+          "id",
+          "folder",
+          "message_size_bytes",
+          "include_embedded",
+          "include_attachments",
+          "include_data",
+          "max_images",
+          "max_image_bytes",
+          "returned_count",
+          "html_image_count",
+          "has_more",
+          "images",
+          "html_images"
         ]
       },
       {
@@ -661,6 +691,40 @@
         ]
       },
       {
+        "tool_id": "tool_2401m126qd3ae9t960fczqb32179",
+        "name": "url_fetch",
+        "url": "https://webhooks.aifurman.com/cli/url-fetch",
+        "method": "POST",
+        "auth": "[redacted]",
+        "response_fields": [
+          "ok",
+          "status",
+          "message",
+          "command",
+          "answer_text",
+          "url",
+          "final_url",
+          "method",
+          "purpose",
+          "status_code",
+          "status_text",
+          "content_type",
+          "content_length",
+          "response_bytes",
+          "response_truncated",
+          "body_text_chars",
+          "max_body_chars",
+          "body_text_truncated",
+          "body_text",
+          "html",
+          "html_truncated",
+          "title",
+          "description",
+          "links",
+          "redirects"
+        ]
+      },
+      {
         "tool_id": "tool_1001kvjadvhfenpsgavqbevp6a02",
         "name": "conversation_history_search",
         "url": "https://webhooks.aifurman.com/conversation-history/search",
@@ -702,6 +766,7 @@
           "action",
           "authenticated",
           "auth_method",
+          "auth_probe",
           "session_id",
           "job_id",
           "mode",
@@ -820,6 +885,12 @@
           "volume": 0.6,
           "crossfade_loop": false
         },
+        "compaction": {
+          "enabled": null,
+          "soft_trigger_fraction": null,
+          "tail_size": null,
+          "min_reclaimable_tokens": null
+        },
         "source_attribution": false
       },
       "language_presets": {},
@@ -838,7 +909,7 @@
         "max_conversation_duration_message": "",
         "text_behavior_overrides": null,
         "prompt": {
-          "prompt": "You are Andrew Assistant Agent, Andrew Furman's personal AI assistant on a live phone call.\n\nYour job is to help Andrew think, remember, plan, and move work forward. Keep responses short, practical, and conversational because this is a phone call. Prefer concise answers, then ask one useful follow-up when needed.\n\nCurrent capabilities:\n- You can talk with Andrew by voice.\n- You may receive extra tools later for Claude Code, GitHub, calendar, email, or webhooks.\n- If a requested action requires a tool that is not available in this conversation yet, say that you do not have that tool connected yet and offer the next best manual step.\n\nBehavior:\n- Address Andrew naturally.\n- Be direct and specific.\n- Ask clarifying questions only when they materially change the outcome.\n- Do not pretend to have completed external actions unless a tool result confirms it.\n- For coding or system actions, repeat the intended action clearly and ask for confirmation before anything destructive.\n- For private or high-stakes topics, be careful and transparent about uncertainty.\n\nStyle:\n- Warm, sharp, and calm.\n- No long monologues unless Andrew asks for detail.\n- Optimize for usefulness over sounding impressive.\n\nWeb search capability:\n- You have a webhook tool named web_search.\n- Use web_search when Andrew asks about current events, today, recent facts, schedules, sports, companies, products, documentation, or anything that may have changed.\n- Do not use web_search for configured RSS article listing, configured RSS article search, or article discussion when the RSS tools can answer. Use the RSS tools first and answer from their returned article metadata or text.\n- Use web_search after an RSS tool only when Andrew explicitly asks for outside web corroboration/comparison, or when the RSS tools return no relevant article or no usable text and you briefly say you are switching to broader web search.\n- Use concise queries.\n- For broad exploratory requests, combine the important entities and facts into one focused search instead of making many tiny search variations.\n- Default to at most one web_search call for a user turn. Use a second web_search call only if the first result is empty, clearly off topic, or Andrew explicitly asks you to verify with another search.\n- Never make more than two web_search calls for one user turn unless Andrew explicitly asks you to continue searching after hearing what you already found.\n- If one or two searches still do not answer every detail, answer from the best available snippets, state the uncertainty briefly, and ask whether Andrew wants deeper research.\n- Say at most one short natural status phrase before the first search. If you make a second web_search call, call it silently and answer after it returns. Do not narrate every retry with repeated \"I'm searching\" updates.\n- A second web_search call must have no spoken preamble. Do not say \"I will now search\", \"let me check\", \"I am looking up\", or similar before a second web_search in the same user turn.\n- If Andrew says to stop searching, immediately stop calling web_search and answer from the information already gathered.\n- Set max_results=5 by default. Use fewer only when Andrew explicitly asks for a very quick answer; use up to 8 for deeper comparisons.\n- For sports schedules, include the sport/league/date if known.\n- For sports/team/player discovery questions, use a single combined query with both teams, the competition/date if known, and the requested angle, such as key players, clubs, coaches, or injuries.\n- After using web_search, prefer the tool's answer_text field when it is present.\n- If sports_events are returned, answer directly with the teams, times, statuses, scores, and venues that matter for Andrew's question.\n- If market_data is returned, answer with that structured quote first and use web results only as backup context.\n- If market_history is returned, answer high/low/range questions from that structured history first and include the dates for the high and low.\n- If the returned results are incomplete or only show source snippets, say what the sources suggest and mention the uncertainty briefly.\n- Do not say you cannot browse when the web_search tool is available.\n\nConversation memory:\n- At the start of a call, the dynamic variable recent_conversation_context may contain compact summaries of recent archived phone-claw conversations. Use it quietly as background context; do not read it aloud unless Andrew asks what context you have.\n- You have webhook tools named conversation_history_search and conversation_history_get.\n- Use conversation_history_search when Andrew asks about prior phone calls, previous conversations, things discussed earlier, or wants to find a past call by keyword/date.\n- conversation_history_search returns compact summaries and keywords only. Use conversation_history_get only when Andrew asks for transcript excerpts, tool calls, or exact details from a specific archived conversation_id. It returns capped excerpts by default; set include_transcript=true or include_tool_details=true only when Andrew explicitly asks for those details.\n- If conversation history returns conversation_history_not_configured, say the memory tools are coded but the Neon/Postgres database URL still needs to be configured on the bridge.\n\nGitHub capability:\n- You have webhook tools named github_summary, github_cli_ls, github_cli_cat, github_issue_create, and github_issue_update.\n- Use github_summary when Andrew asks how many open GitHub issues or pull requests he has, what they are about, what needs attention, or asks for quick GitHub triage.\n- Use item_type=\"issues\" for issue questions and item_type=\"pull_requests\" for pull request questions.\n- Use scope=\"involved\" by default. Use scope=\"assigned\", \"authored\", \"mentioned\", or \"review_requested\" only when Andrew asks for that narrower view.\n- When summarizing GitHub issues or pull requests by voice, do not read issue or pull request numbers by default. Lead with each item's spoken_summary or a two-to-four-word description, then a short plain-English explanation. Read item numbers, URLs, and internal identifiers only if Andrew explicitly asks or is confirming a specific GitHub write action.\n- When Andrew names a specific repository, pass repo in owner/name format, for example repo=\"octo-org/example-repo\". When he names only an organization, pass organization, for example organization=\"octo-org\".\n- Use github_cli_ls to inspect a repository root, a folder, or a recursive folder tree. Use path=\"\" or omit path for the root. Set recursive=true when Andrew asks for the full tree of a folder.\n- Use github_cli_cat only when you know the exact file path. If the repo, path, or branch/ref is unclear, ask a short clarifying question.\n- Use github_issue_create only after Andrew explicitly confirms the exact repo, title, and body. Set confirmed=true only after that confirmation.\n- Use github_issue_update only after Andrew explicitly confirms the exact repo, issue number, and requested change. Set confirmed=true only after that confirmation.\n- After creating or updating a GitHub issue, give a brief fifteen-second summary. Do not read the full title and body unless Andrew explicitly asks for the full details.\n- The GitHub issue tools can create and update issues only. They cannot merge, approve, push code, or edit files.\n- If a private repo returns 403, 404, or a GitHub validation failure, say the bridge's gh session may not have access to that repo, SSO authorization, org approval, or Contents read permission.\n- Use github_cli_common with action=\"repo_list\" when Andrew asks what GitHub repositories he has, asks for recently worked-on or recently updated repos, asks to find a repo when he does not know the exact name, or asks about personal versus CoverNode repositories.\n- For repo_list, omit owner to list recently pushed repositories across Andrew's personal, collaborator, and organization access. Use owner=\"andrewfurman\" for personal repos and owner=\"cover-node\" for CoverNode repos when Andrew asks for one side specifically.\n- Keep repo_list spoken answers concise: request limit=10 for normal voice browsing, summarize the top five or six repositories by owner/name and purpose, and mention whether there are more. Do not read every URL or timestamp unless Andrew asks.\n- Prefer sort=\"pushed\" for \"recently worked on\" and sort=\"updated\" only when Andrew asks for recently updated metadata.\n\nClaude Code capability:\n- You have a webhook tool named claude_code that can check auth, start a session, submit an async Claude Code job on EC2, append steering instructions to an existing Claude Code session/job, and check job status.\n- Do not use Claude Code by default. First solve directly with conversation, web_search, GitHub, email, or Otter tools when that is enough.\n- Use claude_code only when Andrew explicitly asks to use Claude Code, asks to start/check a Claude Code session, or confirms that a complex code change or test run should be delegated to Claude Code.\n- Use action=\"auth_status\" when Andrew asks whether Claude Code is ready.\n- Use action=\"start_session\" when Andrew asks to start a Claude Code session. Remember and reuse the returned session_id.\n- Before action=\"submit_task\", repeat the exact repository/path and task, then ask Andrew to confirm. Set confirmed=true only after that confirmation.\n- Use mode=\"plan\" for read-only planning. Use mode=\"run\" only after Andrew confirms edits/tests should run.\n- Use action=\"steer_session\" when Andrew wants to update, redirect, clarify, or add instructions to an existing Claude Code session or running job. Pass the known session_id or job_id plus Andrew's new instructions. Repeat the exact steering instruction and ask Andrew to confirm before setting confirmed=true.\n- Steering instructions let Andrew keep shaping a Claude Code session while it runs. Prefer steering over starting a separate new task when Andrew is clearly modifying the same ongoing Claude Code work.\n- Claude Code jobs are asynchronous. After submit_task returns a job_id, tell Andrew the job started and use action=\"job_status\" to check progress. Do not claim the code work is complete until job_status says completed.\n- Do not ask Claude Code to push commits, deploy, rotate secrets, or perform destructive operations unless Andrew explicitly requested that exact action.\n\nCLI capability:\n- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_forward, create_reply_all_draft, create_forward_draft, himalaya_email_send, otter_speeches_list, otter_speech_get, otter_speech_search, and github_cli_common.\n- Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. This mode returns at most 200 envelopes by default to protect context; if capped or has_more is true, say it is a partial list and suggest narrowing the query.\n- Only treat total_count as exact when complete or exact is true.\n- Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result. himalaya_email_read returns compact headers and body_text by default; do not set include_raw=true unless Andrew explicitly asks for raw email source or debugging output.\n- Do not read internal email envelope ids, Otter otids, database ids, UUIDs, Twilio SIDs, or Claude job/session ids aloud unless Andrew explicitly asks for the id or is confirming an action that requires that exact id. Use human-readable subjects, titles, senders, dates, and summaries in normal speech.\n- Use himalaya_email_archive only after Andrew explicitly confirms the exact email or emails and source folder. For one email, pass id. For multiple emails, pass ids as an array in one tool call. Set confirmed=true only after that confirmation.\n- Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.\n- Use create_reply_all_draft when Andrew asks to reply all to an existing email. First identify the exact envelope id with himalaya_email_list or himalaya_email_read, repeat the selected email and Andrew's new message, and ask Andrew to confirm. The tool saves a reply-all draft only; it does not send email. It automatically places Andrew's new message above the quoted original thread and preserves original HTML inline when available. Do not try to recreate the original thread yourself in the body.\n- Use create_forward_draft when Andrew asks to forward an existing email. First identify the exact envelope id with himalaya_email_list or himalaya_email_read, repeat the forwarding recipient and optional message, and ask Andrew to confirm. It saves a forward draft only; it does not send email. It preserves the original HTML inline when available and does not attach the original .eml. Do not try to recreate the original email yourself in the body.\n- Keep Andrew's new draft messages readable: short paragraphs, natural line breaks, and no pasted raw HTML unless Andrew explicitly asks for raw HTML.\n- Prefer create_reply_all_draft and create_forward_draft over the older himalaya_draft_reply and himalaya_email_forward tool names. Use the older names only as compatibility fallback if a newer tool is unavailable.\n- After create_reply_all_draft or create_forward_draft returns ok=true, tell Andrew the draft was saved and clearly say it was not sent.\n- Use drafts by default for email composition. Do not send email unless Andrew explicitly asks to send an emergency email.\n- For himalaya_email_send, first read the exact recipients, subject, and body aloud and ask, \"Is this an emergency email, and do you want me to send it now?\" Call the tool with previewed=true and confirmed=true only after Andrew says yes after that preview.\n- If Andrew asks to send ordinary non-emergency email, save a draft instead and say sending is restricted to emergency sends.\n- Only claim you sent email when himalaya_email_send returns ok=true and action=\"email_sent\".\n- If himalaya_email_send returns action=\"email_send_timeout\" or action=\"email_send_failed\", say the send was not confirmed and Andrew should check Sent Mail before retrying.\n- Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.\n- Use github_cli_common for common read-only GitHub CLI actions such as repo_list, repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.\n- You also have RSS tools backed by configured public or private RSS feed URLs: rss_list_feeds, rss_recent_entries, rss_search_entries, rss_get_article_text, and rss_refresh_feeds.\n- Use rss_list_feeds when Andrew asks what feeds are configured or when you need the feed_id for a named feed.\n- Use rss_recent_entries when Andrew asks for recent or latest articles from configured RSS feeds. Pass feed_id only when Andrew asks for one named feed and you know its configured id.\n- Use rss_search_entries when Andrew asks to search configured RSS feeds by date, topic, keyword, publication, or section.\n- RSS recent/search calls default to up to 200 entries and support up to 1000 entries. Choose limits intentionally: use 10 for quick shortlists, 25 for spoken browsing, 100 for search scanning or broader topic sweeps, 200 for high-default tool-side processing, and 1000 only when Andrew explicitly asks for large retrieval, a broad export, or a comprehensive list. Pass the chosen limit explicitly for 10, 25, 100, and 1000; omit limit only when you intentionally want the 200 high default.\n- If an RSS call asks for a high limit but returns fewer entries, compare returned_count with available_count and the feed item_count. Explain that the configured upstream feed only emitted that many matching entries unless has_more=true.\n- Use rss_get_article_text only after you have an exact entry_id from rss_recent_entries or rss_search_entries. Summarize the article by voice; do not read a very long article verbatim unless Andrew explicitly asks.\n- After rss_recent_entries, rss_search_entries, or rss_get_article_text returns relevant results, answer directly from the returned RSS entries, answer_text, and article text. Do not immediately call web_search just because RSS articles are current or recent.\n- If Andrew asks to discuss, explain, summarize, compare, or reason about an article that you already retrieved from RSS, use the returned title, URL, summary, and text as your source of truth. Ask a follow-up or provide the analysis instead of searching the web again.\n- For rss_get_article_text, prefer answer_text, full_article_available, and access_note before interpreting diagnostic fields. If full_article_available=true and access_note is empty, treat the returned text as full article text.\n- If rss_get_article_text returns access_note saying the text may be an excerpt, say that plainly.\n- Do not call rss_refresh_feeds before every RSS lookup. Use it only when Andrew explicitly asks to refresh now, because the bridge caches configured feeds and some private feeds refresh upstream on their own schedule.\n- These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.\n- Before slow CLI calls, and before the first web_search call in a user turn, say a brief natural status phrase, then call the tool. Do not say another status phrase before a second web_search call in the same user turn.\n\nEnd-call behavior:\n- You have a system tool named end_call.\n- Use end_call when Andrew clearly says goodbye, says \"that's all for now\", says \"thanks, goodbye\", says he is done, or otherwise indicates the call should end.\n- Before ending the call, include a short farewell message such as \"Sounds good, goodbye.\" Do not keep asking follow-up questions after Andrew has clearly ended the call.\n- Do not use end_call merely because there is a pause, because a tool call completed, or because a task is difficult.\n",
+          "prompt": "You are Andrew Assistant Agent, Andrew Furman's personal AI assistant on a live phone call.\n\nYour job is to help Andrew think, remember, plan, and move work forward. Keep responses short, practical, and conversational because this is a phone call. Prefer concise answers, then ask one useful follow-up when needed.\n\nCurrent capabilities:\n- You can talk with Andrew by voice.\n- You may receive extra tools later for Claude Code, GitHub, calendar, email, or webhooks.\n- If a requested action requires a tool that is not available in this conversation yet, say that you do not have that tool connected yet and offer the next best manual step.\n\nBehavior:\n- Address Andrew naturally.\n- Be direct and specific.\n- Ask clarifying questions only when they materially change the outcome.\n- Do not pretend to have completed external actions unless a tool result confirms it.\n- For coding or system actions, repeat the intended action clearly and ask for confirmation before anything destructive.\n- For private or high-stakes topics, be careful and transparent about uncertainty.\n\nStyle:\n- Warm, sharp, and calm.\n- No long monologues unless Andrew asks for detail.\n- Optimize for usefulness over sounding impressive.\n\nWeb search capability:\n- You have a webhook tool named web_search.\n- Use web_search when Andrew asks about current events, today, recent facts, schedules, sports, companies, products, documentation, or anything that may have changed.\n- Do not use web_search for configured RSS article listing, configured RSS article search, or article discussion when the RSS tools can answer. Use the RSS tools first and answer from their returned article metadata or text.\n- Use web_search after an RSS tool only when Andrew explicitly asks for outside web corroboration/comparison, or when the RSS tools return no relevant article or no usable text and you briefly say you are switching to broader web search.\n- Use concise queries.\n- For broad exploratory requests, combine the important entities and facts into one focused search instead of making many tiny search variations.\n- Default to at most one web_search call for a user turn. Use a second web_search call only if the first result is empty, clearly off topic, or Andrew explicitly asks you to verify with another search.\n- Never make more than two web_search calls for one user turn unless Andrew explicitly asks you to continue searching after hearing what you already found.\n- If one or two searches still do not answer every detail, answer from the best available snippets, state the uncertainty briefly, and ask whether Andrew wants deeper research.\n- Say at most one short natural status phrase before the first search. If you make a second web_search call, call it silently and answer after it returns. Do not narrate every retry with repeated \"I'm searching\" updates.\n- A second web_search call must have no spoken preamble. Do not say \"I will now search\", \"let me check\", \"I am looking up\", or similar before a second web_search in the same user turn.\n- If Andrew says to stop searching, immediately stop calling web_search and answer from the information already gathered.\n- Set max_results=5 by default. Use fewer only when Andrew explicitly asks for a very quick answer; use up to 8 for deeper comparisons.\n- For sports schedules, include the sport/league/date if known.\n- For sports/team/player discovery questions, use a single combined query with both teams, the competition/date if known, and the requested angle, such as key players, clubs, coaches, or injuries.\n- After using web_search, prefer the tool's answer_text field when it is present.\n- If sports_events are returned, answer directly with the teams, times, statuses, scores, and venues that matter for Andrew's question.\n- If market_data is returned, answer with that structured quote first and use web results only as backup context.\n- If market_history is returned, answer high/low/range questions from that structured history first and include the dates for the high and low.\n- If the returned results are incomplete or only show source snippets, say what the sources suggest and mention the uncertainty briefly.\n- Do not say you cannot browse when the web_search tool is available.\n\nConversation memory:\n- At the start of a call, the dynamic variable recent_conversation_context may contain compact summaries of recent archived phone-claw conversations. Use it quietly as background context; do not read it aloud unless Andrew asks what context you have.\n- You have webhook tools named conversation_history_search and conversation_history_get.\n- Use conversation_history_search when Andrew asks about prior phone calls, previous conversations, things discussed earlier, or wants to find a past call by keyword/date.\n- conversation_history_search returns compact summaries and keywords only. Use conversation_history_get only when Andrew asks for transcript excerpts, tool calls, or exact details from a specific archived conversation_id. It returns capped excerpts by default; set include_transcript=true or include_tool_details=true only when Andrew explicitly asks for those details.\n- If conversation history returns conversation_history_not_configured, say the memory tools are coded but the Neon/Postgres database URL still needs to be configured on the bridge.\n\nGitHub capability:\n- You have webhook tools named github_summary, github_cli_ls, github_cli_cat, github_issue_create, and github_issue_update.\n- Use github_summary when Andrew asks how many open GitHub issues or pull requests he has, what they are about, what needs attention, or asks for quick GitHub triage.\n- Use item_type=\"issues\" for issue questions and item_type=\"pull_requests\" for pull request questions.\n- Use scope=\"involved\" by default. Use scope=\"assigned\", \"authored\", \"mentioned\", or \"review_requested\" only when Andrew asks for that narrower view.\n- When summarizing GitHub issues or pull requests by voice, do not read issue or pull request numbers by default. Lead with each item's spoken_summary or a two-to-four-word description, then a short plain-English explanation. Read item numbers, URLs, and internal identifiers only if Andrew explicitly asks or is confirming a specific GitHub write action.\n- When Andrew names a specific repository, pass repo in owner/name format, for example repo=\"octo-org/example-repo\". When he names only an organization, pass organization, for example organization=\"octo-org\".\n- Use github_cli_ls to inspect a repository root, a folder, or a recursive folder tree. Use path=\"\" or omit path for the root. Set recursive=true when Andrew asks for the full tree of a folder.\n- Use github_cli_cat only when you know the exact file path. If the repo, path, or branch/ref is unclear, ask a short clarifying question.\n- Use github_issue_create only after Andrew explicitly confirms the exact repo, title, and body. Set confirmed=true only after that confirmation.\n- Use github_issue_update only after Andrew explicitly confirms the exact repo, issue number, and requested change. Set confirmed=true only after that confirmation.\n- After creating or updating a GitHub issue, give a brief fifteen-second summary. Do not read the full title and body unless Andrew explicitly asks for the full details.\n- The GitHub issue tools can create and update issues only. They cannot merge, approve, push code, or edit files.\n- If a private repo returns 403, 404, or a GitHub validation failure, say the bridge's gh session may not have access to that repo, SSO authorization, org approval, or Contents read permission.\n- Use github_cli_common with action=\"repo_list\" when Andrew asks what GitHub repositories he has, asks for recently worked-on or recently updated repos, asks to find a repo when he does not know the exact name, or asks about personal versus CoverNode repositories.\n- For repo_list, omit owner to list recently pushed repositories across Andrew's personal, collaborator, and organization access. Use owner=\"andrewfurman\" for personal repos and owner=\"cover-node\" for CoverNode repos when Andrew asks for one side specifically.\n- Keep repo_list spoken answers concise: request limit=10 for normal voice browsing, summarize the top five or six repositories by owner/name and purpose, and mention whether there are more. Do not read every URL or timestamp unless Andrew asks.\n- Prefer sort=\"pushed\" for \"recently worked on\" and sort=\"updated\" only when Andrew asks for recently updated metadata.\n\nClaude Code capability:\n- You have a webhook tool named claude_code that can check auth, start a session, submit an async Claude Code job on EC2, append steering instructions to an existing Claude Code session/job, and check job status.\n- Do not use Claude Code by default. First solve directly with conversation, web_search, GitHub, email, or Otter tools when that is enough.\n- Use claude_code only when Andrew explicitly asks to use Claude Code, asks to start/check a Claude Code session, confirms that a complex code change or test run should be delegated to Claude Code, or confirms an interactive browser task such as unsubscribing from an email.\n- Use action=\"auth_status\" when Andrew asks whether Claude Code is ready.\n- Use action=\"start_session\" when Andrew asks to start a Claude Code session. Remember and reuse the returned session_id.\n- Before action=\"submit_task\", repeat the exact repository/path and task, then ask Andrew to confirm. Set confirmed=true only after that confirmation.\n- Use mode=\"plan\" for read-only planning. Use mode=\"run\" only after Andrew confirms edits/tests should run.\n- Use action=\"steer_session\" when Andrew wants to update, redirect, clarify, or add instructions to an existing Claude Code session or running job. Pass the known session_id or job_id plus Andrew's new instructions. Repeat the exact steering instruction and ask Andrew to confirm before setting confirmed=true.\n- Steering instructions let Andrew keep shaping a Claude Code session while it runs. Prefer steering over starting a separate new task when Andrew is clearly modifying the same ongoing Claude Code work.\n- Claude Code jobs are asynchronous. After submit_task returns a job_id, tell Andrew the job started and use action=\"job_status\" to check progress. Do not claim the code work is complete until job_status says completed.\n- Do not ask Claude Code to push commits, deploy, rotate secrets, or perform destructive operations unless Andrew explicitly requested that exact action.\n\nEmail unsubscribe and interactive link workflows:\n- For an unsubscribe or email-preference request, first identify the exact email with himalaya_email_list and himalaya_email_read, then identify the most relevant unsubscribe, opt-out, or preference URL from that message.\n- Repeat the sender/email, the URL domain, and the intended action in plain English, then ask Andrew to confirm before opening an unsubscribe or preference-management link. Do not set confirmed=true before that confirmation.\n- Use url_fetch with purpose=\"unsubscribe\" and confirmed=true for read-only verification of the unsubscribe/preference URL, or when the page text itself clearly confirms the address is already unsubscribed.\n- If url_fetch shows JavaScript-heavy content, a form, buttons, multiple choices, or no clear completion state, use claude_code action=\"submit_task\" with mode=\"run\" and confirmed=true to launch an async browser task.\n- In the Claude Code task, explicitly instruct Claude to use Playwright or another headless browser from the EC2 bridge, inspect the DOM and screenshots as needed, click only controls needed for the confirmed unsubscribe/preference action, and write a concise structured outcome.\n- Tell Claude Code to stop without completing the action if it hits a login wall, CAPTCHA, payment/checkout flow, account deletion, security settings, unclear destructive action, or anything beyond the confirmed email preference change.\n- After submit_task returns, tell Andrew the browser job started and keep the job_id in context. When Andrew asks what happened, call claude_code with action=\"job_status\" and that job_id.\n- Treat the unsubscribe as confirmed only when job_status returns completed and the output says the page showed a clear unsubscribe/suppression/preference-saved success state. If the job is still running, failed, timed out, or ambiguous, say that plainly and offer to steer or retry.\n\nCLI capability:\n- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_images, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_forward, create_reply_all_draft, create_forward_draft, himalaya_email_send, otter_speeches_list, otter_speech_get, otter_speech_search, github_cli_common, and url_fetch.\n- Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. This mode returns at most 200 envelopes by default to protect context; if capped or has_more is true, say it is a partial list and suggest narrowing the query.\n- Only treat total_count as exact when complete or exact is true.\n- Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result. himalaya_email_read returns compact headers and body_text by default; do not set include_raw=true unless Andrew explicitly asks for raw email source or debugging output.\n- Use himalaya_email_images only when Andrew specifically asks about email images, screenshots, logos, embedded images, or image attachments. It inspects an exact email envelope id and returns image metadata plus HTML img references. Leave include_data=false unless Andrew explicitly asks to extract image bytes or base64. Do not use it for ordinary email reading.\n- Do not read internal email envelope ids, Otter otids, database ids, UUIDs, Twilio SIDs, or Claude job/session ids aloud unless Andrew explicitly asks for the id or is confirming an action that requires that exact id. Use human-readable subjects, titles, senders, dates, and summaries in normal speech.\n- Use himalaya_email_archive only after Andrew explicitly confirms the exact email or emails and source folder. For one email, pass id. For multiple emails, pass ids as an array in one tool call. Set confirmed=true only after that confirmation.\n- Use himalaya_draft_create only after Andrew explicitly confirms the exact recipients, subject, and body. It saves a draft only; it does not send email.\n- Use create_reply_all_draft when Andrew asks to reply all to an existing email. First identify the exact envelope id with himalaya_email_list or himalaya_email_read, repeat the selected email and Andrew's new message, and ask Andrew to confirm. The tool saves a reply-all draft only; it does not send email. It automatically places Andrew's new message above the quoted original thread and preserves original HTML inline when available. Do not try to recreate the original thread yourself in the body.\n- Use create_forward_draft when Andrew asks to forward an existing email. First identify the exact envelope id with himalaya_email_list or himalaya_email_read, repeat the forwarding recipient and optional message, and ask Andrew to confirm. It saves a forward draft only; it does not send email. It preserves the original HTML inline when available and does not attach the original .eml. Do not try to recreate the original email yourself in the body.\n- Keep Andrew's new draft messages readable: short paragraphs, natural line breaks, and no pasted raw HTML unless Andrew explicitly asks for raw HTML.\n- Prefer create_reply_all_draft and create_forward_draft over the older himalaya_draft_reply and himalaya_email_forward tool names. Use the older names only as compatibility fallback if a newer tool is unavailable.\n- After create_reply_all_draft or create_forward_draft returns ok=true, tell Andrew the draft was saved and clearly say it was not sent.\n- Use drafts by default for email composition. Do not send email unless Andrew explicitly asks to send an emergency email.\n- For himalaya_email_send, first read the exact recipients, subject, and body aloud and ask, \"Is this an emergency email, and do you want me to send it now?\" Call the tool with previewed=true and confirmed=true only after Andrew says yes after that preview.\n- If Andrew asks to send ordinary non-emergency email, save a draft instead and say sending is restricted to emergency sends.\n- Only claim you sent email when himalaya_email_send returns ok=true and action=\"email_sent\".\n- If himalaya_email_send returns action=\"email_send_timeout\" or action=\"email_send_failed\", say the send was not confirmed and Andrew should check Sent Mail before retrying.\n- Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.\n- Use github_cli_common for common read-only GitHub CLI actions such as repo_list, repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.\n- You also have RSS tools backed by configured public or private RSS feed URLs: rss_list_feeds, rss_recent_entries, rss_search_entries, rss_get_article_text, and rss_refresh_feeds.\n- Use rss_list_feeds when Andrew asks what feeds are configured or when you need the feed_id for a named feed.\n- Use rss_recent_entries when Andrew asks for recent or latest articles from configured RSS feeds. Pass feed_id only when Andrew asks for one named feed and you know its configured id.\n- Use rss_search_entries when Andrew asks to search configured RSS feeds by date, topic, keyword, publication, or section.\n- RSS recent/search calls default to up to 200 entries and support up to 1000 entries. Choose limits intentionally: use 10 for quick shortlists, 25 for spoken browsing, 100 for search scanning or broader topic sweeps, 200 for high-default tool-side processing, and 1000 only when Andrew explicitly asks for large retrieval, a broad export, or a comprehensive list. Pass the chosen limit explicitly for 10, 25, 100, and 1000; omit limit only when you intentionally want the 200 high default.\n- If an RSS call asks for a high limit but returns fewer entries, compare returned_count with available_count and the feed item_count. Explain that the configured upstream feed only emitted that many matching entries unless has_more=true.\n- Use rss_get_article_text only after you have an exact entry_id from rss_recent_entries or rss_search_entries. Summarize the article by voice; do not read a very long article verbatim unless Andrew explicitly asks.\n- After rss_recent_entries, rss_search_entries, or rss_get_article_text returns relevant results, answer directly from the returned RSS entries, answer_text, and article text. Do not immediately call web_search just because RSS articles are current or recent.\n- If Andrew asks to discuss, explain, summarize, compare, or reason about an article that you already retrieved from RSS, use the returned title, URL, summary, and text as your source of truth. Ask a follow-up or provide the analysis instead of searching the web again.\n- For rss_get_article_text, prefer answer_text, full_article_available, and access_note before interpreting diagnostic fields. If full_article_available=true and access_note is empty, treat the returned text as full article text.\n- If rss_get_article_text returns access_note saying the text may be an excerpt, say that plainly.\n- Do not call rss_refresh_feeds before every RSS lookup. Use it only when Andrew explicitly asks to refresh now, because the bridge caches configured feeds and some private feeds refresh upstream on their own schedule.\n- These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.\n- Use url_fetch when Andrew asks to fetch a specific webpage URL, inspect a link from an email, check an unsubscribe/preference page, or verify whether a public URL loaded. It returns readable page text, title, redirects, and links. It blocks localhost and private-network URLs. For unsubscribe, opt-out, preference, or subscription-management links, first repeat the intended action briefly and ask Andrew to confirm before calling url_fetch with purpose=\"unsubscribe\" and confirmed=true.\n- Before slow CLI calls, and before the first web_search call in a user turn, say a brief natural status phrase, then call the tool. Do not say another status phrase before a second web_search call in the same user turn.\n\nEnd-call behavior:\n- You have a system tool named end_call.\n- Use end_call when Andrew clearly says goodbye, says \"that's all for now\", says \"thanks, goodbye\", says he is done, or otherwise indicates the call should end.\n- Before ending the call, include a short farewell message such as \"Sounds good, goodbye.\" Do not keep asking follow-up questions after Andrew has clearly ended the call.\n- Do not use end_call merely because there is a pause, because a tool call completed, or because a task is difficult.\n",
           "llm": "gemini-3.7-flash",
           "reasoning_effort": "medium",
           "opener": null,
@@ -855,6 +926,7 @@
             "tool_8001kvfp2jrseq58d51ytwj7f3k4",
             "tool_3701kvfqhvccfsfa5nv896qky26h",
             "tool_6201kvfqhvgdeebb28sz7nd6dwhn",
+            "tool_5901m126qd39ehqtpbe99zkw5nyf",
             "tool_8401kvfzj7pzevxbxmar7qatky8a",
             "tool_9101kvfzj7vaf10avqsvtccjjgr9",
             "tool_2901kvfzj7z4fyntag8kx0p4tpjx",
@@ -871,6 +943,7 @@
             "tool_4101kvv0p05de71tp8kx1wwfjqft",
             "tool_0001kvv0p0bvfjg976ygxj6b6gk1",
             "tool_5201kvv0p0gnewn88knvz8wrzdy0",
+            "tool_2401m126qd3ae9t960fczqb32179",
             "tool_1001kvjadvhfenpsgavqbevp6a02",
             "tool_7301kvjadvp7e8jr280x9c3hwc95",
             "tool_6601kvgky8n0e5s80t7cetgzfv40"
@@ -3931,6 +4004,570 @@
                       "allowed_values_dynamic_variable": "",
                       "constant_value": "",
                       "is_omitted": false
+                    }
+                  }
+                },
+                "response_filter": null,
+                "content_type": "application/json",
+                "auth_resolved_params": [],
+                "auth_connection": null
+              }
+            },
+            {
+              "type": "webhook",
+              "name": "himalaya_email_images",
+              "description": "Read-only Himalaya CLI email image inspector. Use only after himalaya_email_list or himalaya_email_read identifies an exact envelope id and Andrew asks about images, attachments, embedded images, logos, screenshots, or newsletter visuals. Normal email reading should continue to use himalaya_email_read.",
+              "response_timeout_secs": 45,
+              "disable_interruptions": false,
+              "interruption_mode": "allow",
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": "typing",
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "dynamic_variables": {
+                "dynamic_variable_placeholders": {}
+              },
+              "execution_mode": "immediate",
+              "api_schema": {
+                "request_headers": {
+                  "Authorization": "[redacted]"
+                },
+                "kind": "webhook",
+                "url": "https://webhooks.aifurman.com/cli/himalaya/email-images",
+                "method": "POST",
+                "path_params_schema": {},
+                "query_params_schema": null,
+                "request_body_schema": {
+                  "description": "",
+                  "dynamic_variable": "",
+                  "is_omitted": false,
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Himalaya envelope id returned by himalaya_email_list.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "folder": {
+                      "type": "string",
+                      "description": "Mailbox folder name. Use the same folder used for the list/read call.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "include_embedded": {
+                      "type": "boolean",
+                      "description": "Include inline or Content-ID images. Keep true unless Andrew asks only for attachments.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "include_attachments": {
+                      "type": "boolean",
+                      "description": "Include image attachments. Keep true unless Andrew asks only for embedded images.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "include_data": {
+                      "type": "boolean",
+                      "description": "Set true only when Andrew explicitly asks to extract image bytes/base64. Leave false for normal inspection.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "max_images": {
+                      "type": "integer",
+                      "description": "Maximum image parts to return. Use 12 by default; raise only when Andrew asks for more.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "max_image_bytes": {
+                      "type": "integer",
+                      "description": "Maximum bytes to return per image when include_data=true. Leave unset for metadata-only inspection.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    }
+                  }
+                },
+                "response_body_schema": {
+                  "description": "Himalaya email image inspection response.",
+                  "dynamic_variable": "",
+                  "is_omitted": false,
+                  "type": "object",
+                  "required": [],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "description": "Whether the CLI command succeeded.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "Status code such as ok, cli_failed, cli_timeout, or cli_bridge_not_configured.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Error or status message.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "command": {
+                      "type": "string",
+                      "description": "CLI command family that ran.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "answer_text": {
+                      "type": "string",
+                      "description": "Compact spoken summary. Prefer this before using raw JSON.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "raw_json": {
+                      "type": "string",
+                      "description": "Raw CLI stdout, usually JSON. This may be truncated according to max_raw_bytes.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "raw_truncated": {
+                      "type": "boolean",
+                      "description": "Whether raw_json was truncated.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "stderr": {
+                      "type": "string",
+                      "description": "CLI stderr, if any.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Himalaya envelope id that was inspected.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "folder": {
+                      "type": "string",
+                      "description": "Mailbox folder used for the image inspection.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "message_size_bytes": {
+                      "type": "integer",
+                      "description": "Exported email size in bytes.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "include_embedded": {
+                      "type": "boolean",
+                      "description": "Whether embedded or Content-ID images were inspected.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "include_attachments": {
+                      "type": "boolean",
+                      "description": "Whether image attachments were inspected.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "include_data": {
+                      "type": "boolean",
+                      "description": "Whether base64 image bytes were returned.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "max_images": {
+                      "type": "integer",
+                      "description": "Maximum image parts returned.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "max_image_bytes": {
+                      "type": "integer",
+                      "description": "Maximum bytes returned per image when include_data=true.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "returned_count": {
+                      "type": "integer",
+                      "description": "Number of embedded or attached image MIME parts returned.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "html_image_count": {
+                      "type": "integer",
+                      "description": "Number of image references found in the HTML body.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "has_more": {
+                      "type": "boolean",
+                      "description": "Whether more image MIME parts were omitted by max_images.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "images": {
+                      "description": "Embedded or attached image MIME parts.",
+                      "dynamic_variable": "",
+                      "constant_value": null,
+                      "is_omitted": false,
+                      "type": "array",
+                      "items": {
+                        "description": "One embedded or attached image.",
+                        "dynamic_variable": "",
+                        "is_omitted": false,
+                        "type": "object",
+                        "required": [],
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "description": "Image index in this result.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "source": {
+                            "type": "string",
+                            "description": "Image source: attachment or embedded.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "media_type": {
+                            "type": "string",
+                            "description": "Image MIME type.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "disposition": {
+                            "type": "string",
+                            "description": "Content-Disposition value when present.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "filename": {
+                            "type": "string",
+                            "description": "Image filename when present.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "content_id": {
+                            "type": "string",
+                            "description": "Content-ID for cid embedded images.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "content_location": {
+                            "type": "string",
+                            "description": "Content-Location when present.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "size_bytes": {
+                            "type": "integer",
+                            "description": "Decoded image byte size.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "returned_data_bytes": {
+                            "type": "integer",
+                            "description": "Returned base64 byte count when include_data=true.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "data_truncated": {
+                            "type": "boolean",
+                            "description": "Whether data_base64 is truncated.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "sha256": {
+                            "type": "string",
+                            "description": "SHA-256 hash of the decoded image bytes.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "width": {
+                            "type": "integer",
+                            "description": "Image width when detected.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "height": {
+                            "type": "integer",
+                            "description": "Image height when detected.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "data_base64": {
+                            "type": "string",
+                            "description": "Base64 image bytes. Present only when include_data=true; may be truncated.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          }
+                        }
+                      }
+                    },
+                    "html_images": {
+                      "description": "Image references found in the HTML email body.",
+                      "dynamic_variable": "",
+                      "constant_value": null,
+                      "is_omitted": false,
+                      "type": "array",
+                      "items": {
+                        "description": "One HTML img reference.",
+                        "dynamic_variable": "",
+                        "is_omitted": false,
+                        "type": "object",
+                        "required": [],
+                        "properties": {
+                          "index": {
+                            "type": "integer",
+                            "description": "HTML image reference index.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "src": {
+                            "type": "string",
+                            "description": "Image src URL or cid reference.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "alt": {
+                            "type": "string",
+                            "description": "Image alt text.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "title": {
+                            "type": "string",
+                            "description": "Image title text.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "width": {
+                            "type": "string",
+                            "description": "HTML width attribute.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "height": {
+                            "type": "string",
+                            "description": "HTML height attribute.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "is_cid": {
+                            "type": "boolean",
+                            "description": "Whether the src is a cid embedded image reference.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "embedded_image_index": {
+                            "type": "integer",
+                            "description": "Matching embedded image index when a cid image matched.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          }
+                        }
+                      }
                     }
                   }
                 },
@@ -10711,6 +11348,437 @@
             },
             {
               "type": "webhook",
+              "name": "url_fetch",
+              "description": "Read-only public URL fetcher for inspecting webpage contents, checking links from emails, and verifying unsubscribe/preference pages. It blocks localhost/private-network URLs. If the URL appears to unsubscribe or change preferences, ask Andrew to confirm before calling with confirmed=true.",
+              "response_timeout_secs": 30,
+              "disable_interruptions": false,
+              "interruption_mode": "allow",
+              "force_pre_tool_speech": false,
+              "pre_tool_speech": "auto",
+              "assignments": [],
+              "tool_call_sound": "typing",
+              "tool_call_sound_behavior": "auto",
+              "tool_error_handling_mode": "auto",
+              "dynamic_variables": {
+                "dynamic_variable_placeholders": {}
+              },
+              "execution_mode": "immediate",
+              "api_schema": {
+                "request_headers": {
+                  "Authorization": "[redacted]"
+                },
+                "kind": "webhook",
+                "url": "https://webhooks.aifurman.com/cli/url-fetch",
+                "method": "POST",
+                "path_params_schema": {},
+                "query_params_schema": null,
+                "request_body_schema": {
+                  "description": "",
+                  "dynamic_variable": "",
+                  "is_omitted": false,
+                  "type": "object",
+                  "required": [
+                    "url"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "HTTP or HTTPS URL to fetch. Do not read long tracking URLs aloud.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "method": {
+                      "type": "string",
+                      "description": "HTTP method. Use GET by default; use HEAD only when Andrew asks to check status.",
+                      "enum": [
+                        "GET",
+                        "HEAD"
+                      ],
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "description": "Why the URL is being fetched. Use unsubscribe for unsubscribe or preference links, verify for checking a result page, and read_page for ordinary page reading.",
+                      "enum": [
+                        "read_page",
+                        "verify",
+                        "unsubscribe"
+                      ],
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "confirmed": {
+                      "type": "boolean",
+                      "description": "Set true only after Andrew confirms opening an unsubscribe or account-preference URL.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "follow_redirects": {
+                      "type": "boolean",
+                      "description": "Follow HTTP redirects. Keep true unless debugging.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "include_html": {
+                      "type": "boolean",
+                      "description": "Set true only when Andrew explicitly asks for raw HTML. Leave false for readable text.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "max_body_chars": {
+                      "type": "integer",
+                      "description": "Maximum readable text characters to return. Use the default 12000 for phone calls; raise only when Andrew asks.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    }
+                  }
+                },
+                "response_body_schema": {
+                  "description": "Public URL fetch response.",
+                  "dynamic_variable": "",
+                  "is_omitted": false,
+                  "type": "object",
+                  "required": [],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "description": "Whether the URL fetch returned a 2xx or 3xx response.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "Status code such as ok, http_error, invalid_url, blocked_private_url, confirmation_required, or url_fetch_timeout.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Error or status message.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "command": {
+                      "type": "string",
+                      "description": "Command family, usually fetch URL.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "answer_text": {
+                      "type": "string",
+                      "description": "Compact spoken summary. Prefer this before using body_text.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "Requested URL.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "final_url": {
+                      "type": "string",
+                      "description": "Final URL after redirects.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "method": {
+                      "type": "string",
+                      "description": "HTTP method used.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "description": "Fetch purpose.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "status_code": {
+                      "type": "integer",
+                      "description": "HTTP response status code.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "status_text": {
+                      "type": "string",
+                      "description": "HTTP response status text.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "content_type": {
+                      "type": "string",
+                      "description": "HTTP Content-Type header.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "content_length": {
+                      "type": "string",
+                      "description": "HTTP Content-Length header when present.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "response_bytes": {
+                      "type": "integer",
+                      "description": "Downloaded response bytes.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "response_truncated": {
+                      "type": "boolean",
+                      "description": "Whether the downloaded response body was capped.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "body_text_chars": {
+                      "type": "integer",
+                      "description": "Readable body text length.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "max_body_chars": {
+                      "type": "integer",
+                      "description": "Maximum readable text returned.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "body_text_truncated": {
+                      "type": "boolean",
+                      "description": "Whether body_text is truncated.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "body_text": {
+                      "type": "string",
+                      "description": "Readable fetched page text excerpt.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "html": {
+                      "type": "string",
+                      "description": "Raw HTML excerpt only when include_html=true and content is HTML.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "html_truncated": {
+                      "type": "boolean",
+                      "description": "Whether html is truncated.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "HTML title when present.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "HTML meta description when present.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "links": {
+                      "description": "Links found in the fetched HTML page.",
+                      "dynamic_variable": "",
+                      "constant_value": null,
+                      "is_omitted": false,
+                      "type": "array",
+                      "items": {
+                        "description": "One HTML link.",
+                        "dynamic_variable": "",
+                        "is_omitted": false,
+                        "type": "object",
+                        "required": [],
+                        "properties": {
+                          "text": {
+                            "type": "string",
+                            "description": "Readable link text.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "href": {
+                            "type": "string",
+                            "description": "Resolved link URL.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          }
+                        }
+                      }
+                    },
+                    "redirects": {
+                      "description": "Redirect/status chain.",
+                      "dynamic_variable": "",
+                      "constant_value": null,
+                      "is_omitted": false,
+                      "type": "array",
+                      "items": {
+                        "description": "One visited URL.",
+                        "dynamic_variable": "",
+                        "is_omitted": false,
+                        "type": "object",
+                        "required": [],
+                        "properties": {
+                          "url": {
+                            "type": "string",
+                            "description": "Visited URL.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          },
+                          "status_code": {
+                            "type": "integer",
+                            "description": "HTTP status code.",
+                            "enum": null,
+                            "is_system_provided": false,
+                            "dynamic_variable": "",
+                            "allowed_values_dynamic_variable": "",
+                            "constant_value": "",
+                            "is_omitted": false
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "response_filter": null,
+                "content_type": "application/json",
+                "auth_resolved_params": [],
+                "auth_connection": null
+              }
+            },
+            {
+              "type": "webhook",
               "name": "conversation_history_search",
               "description": "Search archived phone-claw phone conversations by keyword and optional date range. Returns compact hundred-word summaries and keywords, not full transcripts.",
               "response_timeout_secs": 20,
@@ -11488,7 +12556,7 @@
             {
               "type": "webhook",
               "name": "claude_code",
-              "description": "Explicit escalation tool for Claude Code running on the private EC2 bridge. Use only when Andrew asks to use Claude Code, asks to start/check/steer a Claude Code session, or confirms that a complex code change/test run should be delegated.",
+              "description": "Explicit escalation tool for Claude Code running on the private EC2 bridge. Use it for confirmed async code tasks, job status checks, steering, and confirmed interactive browser automation such as unsubscribe or preference-center flows that need Playwright.",
               "response_timeout_secs": 20,
               "disable_interruptions": false,
               "interruption_mode": "allow",
@@ -11640,7 +12708,7 @@
                     },
                     "status": {
                       "type": "string",
-                      "description": "Status such as ok, session_ready, running, steering_recorded, completed, failed, claude_not_authenticated, confirmation_required, or job_not_found.",
+                      "description": "Status such as ok, session_ready, running, steering_recorded, completed, failed, claude_not_authenticated, claude_auth_expired, confirmation_required, or job_not_found.",
                       "enum": null,
                       "is_system_provided": false,
                       "dynamic_variable": "",
@@ -11677,6 +12745,55 @@
                       "allowed_values_dynamic_variable": "",
                       "constant_value": "",
                       "is_omitted": false
+                    },
+                    "auth_probe": {
+                      "description": "Live non-mutating Claude Code auth probe. Use this when auth_status reports an expired or failed auth state.",
+                      "dynamic_variable": "",
+                      "is_omitted": false,
+                      "type": "object",
+                      "required": [],
+                      "properties": {
+                        "ok": {
+                          "type": "boolean",
+                          "description": "Whether a tiny Claude Code prompt succeeded.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": "Probe status such as ok, auth_probe_skipped, claude_auth_expired, or claude_auth_probe_failed.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "skipped": {
+                          "type": "boolean",
+                          "description": "Whether the live auth probe was skipped by configuration.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        },
+                        "message": {
+                          "type": "string",
+                          "description": "Short probe failure message when available.",
+                          "enum": null,
+                          "is_system_provided": false,
+                          "dynamic_variable": "",
+                          "allowed_values_dynamic_variable": "",
+                          "constant_value": "",
+                          "is_omitted": false
+                        }
+                      }
                     },
                     "session_id": {
                       "type": "string",
@@ -11879,7 +12996,7 @@
     },
     "metadata": {
       "created_at_unix_secs": 1781809543,
-      "updated_at_unix_secs": 1787578518
+      "updated_at_unix_secs": 1787940057
     },
     "platform_settings": {
       "evaluation": {
@@ -12034,6 +13151,7 @@
           "tts": {
             "model_id": false,
             "voice_id": false,
+            "supported_voices": false,
             "stability": false,
             "speed": false,
             "similarity_boost": false,
@@ -12197,7 +13315,8 @@
       },
       "queueing_config": {
         "enabled": false,
-        "wait_timeout_seconds": 180
+        "wait_timeout_seconds": 180,
+        "hold_audio": null
       },
       "ban": null,
       "smb_metadata": null,
@@ -12245,20 +13364,23 @@
             "x": 0,
             "y": 0
           },
-          "edge_order": []
+          "edge_order": [],
+          "parent_subgraph_id": null
         }
       },
+      "subgraphs": {},
       "prevent_subagent_loops": false
     },
     "tags": [
       "phoneclaw",
       "personal-assistant"
     ],
-    "version_id": "agtvrsn_9201m0szq38zf4wadyf7cjt5ywt5",
+    "version_id": "agtvrsn_7901m14rgcerfsgttjvq24df2hf2",
     "branch_id": "agtbrch_2901kve1zy2de42vw26fw72reaac",
     "main_branch_id": "agtbrch_2901kve1zy2de42vw26fw72reaac",
     "procedures": {},
-    "trust_context": "unknown"
+    "trust_context": "unknown",
+    "default_hold_audio_url": "https://eleven-public-cdn-common.elevenlabs.io/convai/ambient-audio-assets/elevator1.mp3"
   },
   "tools": [
     {
@@ -12864,8 +13986,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 576,
-        "avg_latency_secs": 1.27
+        "total_calls": 590,
+        "avg_latency_secs": 1.2
       },
       "response_mocks": null
     },
@@ -14121,8 +15243,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 48,
-        "avg_latency_secs": 0.61
+        "total_calls": 52,
+        "avg_latency_secs": 0.62
       },
       "response_mocks": null
     },
@@ -14512,8 +15634,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 4,
-        "avg_latency_secs": 0.61
+        "total_calls": 6,
+        "avg_latency_secs": 0.71
       },
       "response_mocks": null
     },
@@ -14906,8 +16028,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 115,
-        "avg_latency_secs": 1.69
+        "total_calls": 126,
+        "avg_latency_secs": 2.18
       },
       "response_mocks": null
     },
@@ -15325,8 +16447,580 @@
         }
       },
       "usage_stats": {
-        "total_calls": 43,
-        "avg_latency_secs": 1.33
+        "total_calls": 53,
+        "avg_latency_secs": 1.35
+      },
+      "response_mocks": null
+    },
+    {
+      "id": "tool_5901m126qd39ehqtpbe99zkw5nyf",
+      "tool_config": {
+        "type": "webhook",
+        "name": "himalaya_email_images",
+        "description": "Read-only Himalaya CLI email image inspector. Use only after himalaya_email_list or himalaya_email_read identifies an exact envelope id and Andrew asks about images, attachments, embedded images, logos, screenshots, or newsletter visuals. Normal email reading should continue to use himalaya_email_read.",
+        "response_timeout_secs": 45,
+        "disable_interruptions": false,
+        "interruption_mode": "allow",
+        "force_pre_tool_speech": false,
+        "pre_tool_speech": "auto",
+        "assignments": [],
+        "tool_call_sound": "typing",
+        "tool_call_sound_behavior": "auto",
+        "tool_error_handling_mode": "auto",
+        "dynamic_variables": {
+          "dynamic_variable_placeholders": {}
+        },
+        "execution_mode": "immediate",
+        "api_schema": {
+          "request_headers": {
+            "Authorization": "[redacted]"
+          },
+          "kind": "webhook",
+          "url": "https://webhooks.aifurman.com/cli/himalaya/email-images",
+          "method": "POST",
+          "path_params_schema": {},
+          "query_params_schema": null,
+          "request_body_schema": {
+            "description": "",
+            "dynamic_variable": "",
+            "is_omitted": false,
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Himalaya envelope id returned by himalaya_email_list.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "folder": {
+                "type": "string",
+                "description": "Mailbox folder name. Use the same folder used for the list/read call.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "include_embedded": {
+                "type": "boolean",
+                "description": "Include inline or Content-ID images. Keep true unless Andrew asks only for attachments.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "include_attachments": {
+                "type": "boolean",
+                "description": "Include image attachments. Keep true unless Andrew asks only for embedded images.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "include_data": {
+                "type": "boolean",
+                "description": "Set true only when Andrew explicitly asks to extract image bytes/base64. Leave false for normal inspection.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "max_images": {
+                "type": "integer",
+                "description": "Maximum image parts to return. Use 12 by default; raise only when Andrew asks for more.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "max_image_bytes": {
+                "type": "integer",
+                "description": "Maximum bytes to return per image when include_data=true. Leave unset for metadata-only inspection.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              }
+            }
+          },
+          "response_body_schema": {
+            "description": "Himalaya email image inspection response.",
+            "dynamic_variable": "",
+            "is_omitted": false,
+            "type": "object",
+            "required": [],
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "description": "Whether the CLI command succeeded.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "status": {
+                "type": "string",
+                "description": "Status code such as ok, cli_failed, cli_timeout, or cli_bridge_not_configured.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "message": {
+                "type": "string",
+                "description": "Error or status message.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "command": {
+                "type": "string",
+                "description": "CLI command family that ran.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "answer_text": {
+                "type": "string",
+                "description": "Compact spoken summary. Prefer this before using raw JSON.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "raw_json": {
+                "type": "string",
+                "description": "Raw CLI stdout, usually JSON. This may be truncated according to max_raw_bytes.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "raw_truncated": {
+                "type": "boolean",
+                "description": "Whether raw_json was truncated.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "stderr": {
+                "type": "string",
+                "description": "CLI stderr, if any.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "id": {
+                "type": "string",
+                "description": "Himalaya envelope id that was inspected.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "folder": {
+                "type": "string",
+                "description": "Mailbox folder used for the image inspection.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "message_size_bytes": {
+                "type": "integer",
+                "description": "Exported email size in bytes.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "include_embedded": {
+                "type": "boolean",
+                "description": "Whether embedded or Content-ID images were inspected.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "include_attachments": {
+                "type": "boolean",
+                "description": "Whether image attachments were inspected.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "include_data": {
+                "type": "boolean",
+                "description": "Whether base64 image bytes were returned.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "max_images": {
+                "type": "integer",
+                "description": "Maximum image parts returned.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "max_image_bytes": {
+                "type": "integer",
+                "description": "Maximum bytes returned per image when include_data=true.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "returned_count": {
+                "type": "integer",
+                "description": "Number of embedded or attached image MIME parts returned.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "html_image_count": {
+                "type": "integer",
+                "description": "Number of image references found in the HTML body.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "has_more": {
+                "type": "boolean",
+                "description": "Whether more image MIME parts were omitted by max_images.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "images": {
+                "description": "Embedded or attached image MIME parts.",
+                "dynamic_variable": "",
+                "constant_value": null,
+                "is_omitted": false,
+                "type": "array",
+                "items": {
+                  "description": "One embedded or attached image.",
+                  "dynamic_variable": "",
+                  "is_omitted": false,
+                  "type": "object",
+                  "required": [],
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "description": "Image index in this result.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "source": {
+                      "type": "string",
+                      "description": "Image source: attachment or embedded.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "media_type": {
+                      "type": "string",
+                      "description": "Image MIME type.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "disposition": {
+                      "type": "string",
+                      "description": "Content-Disposition value when present.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "filename": {
+                      "type": "string",
+                      "description": "Image filename when present.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "content_id": {
+                      "type": "string",
+                      "description": "Content-ID for cid embedded images.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "content_location": {
+                      "type": "string",
+                      "description": "Content-Location when present.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "size_bytes": {
+                      "type": "integer",
+                      "description": "Decoded image byte size.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "returned_data_bytes": {
+                      "type": "integer",
+                      "description": "Returned base64 byte count when include_data=true.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "data_truncated": {
+                      "type": "boolean",
+                      "description": "Whether data_base64 is truncated.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "description": "SHA-256 hash of the decoded image bytes.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "width": {
+                      "type": "integer",
+                      "description": "Image width when detected.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "height": {
+                      "type": "integer",
+                      "description": "Image height when detected.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "data_base64": {
+                      "type": "string",
+                      "description": "Base64 image bytes. Present only when include_data=true; may be truncated.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    }
+                  }
+                }
+              },
+              "html_images": {
+                "description": "Image references found in the HTML email body.",
+                "dynamic_variable": "",
+                "constant_value": null,
+                "is_omitted": false,
+                "type": "array",
+                "items": {
+                  "description": "One HTML img reference.",
+                  "dynamic_variable": "",
+                  "is_omitted": false,
+                  "type": "object",
+                  "required": [],
+                  "properties": {
+                    "index": {
+                      "type": "integer",
+                      "description": "HTML image reference index.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "src": {
+                      "type": "string",
+                      "description": "Image src URL or cid reference.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "alt": {
+                      "type": "string",
+                      "description": "Image alt text.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Image title text.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "width": {
+                      "type": "string",
+                      "description": "HTML width attribute.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "height": {
+                      "type": "string",
+                      "description": "HTML height attribute.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "is_cid": {
+                      "type": "boolean",
+                      "description": "Whether the src is a cid embedded image reference.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "embedded_image_index": {
+                      "type": "integer",
+                      "description": "Matching embedded image index when a cid image matched.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "response_filter": null,
+          "content_type": "application/json",
+          "auth_resolved_params": [],
+          "auth_connection": null
+        }
+      },
+      "usage_stats": {
+        "total_calls": 2,
+        "avg_latency_secs": 1.35
       },
       "response_mocks": null
     },
@@ -15815,8 +17509,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 22,
-        "avg_latency_secs": 1.54
+        "total_calls": 30,
+        "avg_latency_secs": 2.61
       },
       "response_mocks": null
     },
@@ -20124,8 +21818,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 63,
-        "avg_latency_secs": 0.78
+        "total_calls": 66,
+        "avg_latency_secs": 0.82
       },
       "response_mocks": null
     },
@@ -20357,7 +22051,7 @@
         }
       },
       "usage_stats": {
-        "total_calls": 19,
+        "total_calls": 20,
         "avg_latency_secs": 0.25
       },
       "response_mocks": null
@@ -20927,8 +22621,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 23,
-        "avg_latency_secs": 0.51
+        "total_calls": 24,
+        "avg_latency_secs": 0.54
       },
       "response_mocks": null
     },
@@ -21968,7 +23662,7 @@
         }
       },
       "usage_stats": {
-        "total_calls": 24,
+        "total_calls": 25,
         "avg_latency_secs": 0.23
       },
       "response_mocks": null
@@ -22224,6 +23918,445 @@
       "usage_stats": {
         "total_calls": 0,
         "avg_latency_secs": 0
+      },
+      "response_mocks": null
+    },
+    {
+      "id": "tool_2401m126qd3ae9t960fczqb32179",
+      "tool_config": {
+        "type": "webhook",
+        "name": "url_fetch",
+        "description": "Read-only public URL fetcher for inspecting webpage contents, checking links from emails, and verifying unsubscribe/preference pages. It blocks localhost/private-network URLs. If the URL appears to unsubscribe or change preferences, ask Andrew to confirm before calling with confirmed=true.",
+        "response_timeout_secs": 30,
+        "disable_interruptions": false,
+        "interruption_mode": "allow",
+        "force_pre_tool_speech": false,
+        "pre_tool_speech": "auto",
+        "assignments": [],
+        "tool_call_sound": "typing",
+        "tool_call_sound_behavior": "auto",
+        "tool_error_handling_mode": "auto",
+        "dynamic_variables": {
+          "dynamic_variable_placeholders": {}
+        },
+        "execution_mode": "immediate",
+        "api_schema": {
+          "request_headers": {
+            "Authorization": "[redacted]"
+          },
+          "kind": "webhook",
+          "url": "https://webhooks.aifurman.com/cli/url-fetch",
+          "method": "POST",
+          "path_params_schema": {},
+          "query_params_schema": null,
+          "request_body_schema": {
+            "description": "",
+            "dynamic_variable": "",
+            "is_omitted": false,
+            "type": "object",
+            "required": [
+              "url"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "HTTP or HTTPS URL to fetch. Do not read long tracking URLs aloud.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "method": {
+                "type": "string",
+                "description": "HTTP method. Use GET by default; use HEAD only when Andrew asks to check status.",
+                "enum": [
+                  "GET",
+                  "HEAD"
+                ],
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "purpose": {
+                "type": "string",
+                "description": "Why the URL is being fetched. Use unsubscribe for unsubscribe or preference links, verify for checking a result page, and read_page for ordinary page reading.",
+                "enum": [
+                  "read_page",
+                  "verify",
+                  "unsubscribe"
+                ],
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "confirmed": {
+                "type": "boolean",
+                "description": "Set true only after Andrew confirms opening an unsubscribe or account-preference URL.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "follow_redirects": {
+                "type": "boolean",
+                "description": "Follow HTTP redirects. Keep true unless debugging.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "include_html": {
+                "type": "boolean",
+                "description": "Set true only when Andrew explicitly asks for raw HTML. Leave false for readable text.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "max_body_chars": {
+                "type": "integer",
+                "description": "Maximum readable text characters to return. Use the default 12000 for phone calls; raise only when Andrew asks.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              }
+            }
+          },
+          "response_body_schema": {
+            "description": "Public URL fetch response.",
+            "dynamic_variable": "",
+            "is_omitted": false,
+            "type": "object",
+            "required": [],
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "description": "Whether the URL fetch returned a 2xx or 3xx response.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "status": {
+                "type": "string",
+                "description": "Status code such as ok, http_error, invalid_url, blocked_private_url, confirmation_required, or url_fetch_timeout.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "message": {
+                "type": "string",
+                "description": "Error or status message.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "command": {
+                "type": "string",
+                "description": "Command family, usually fetch URL.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "answer_text": {
+                "type": "string",
+                "description": "Compact spoken summary. Prefer this before using body_text.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "url": {
+                "type": "string",
+                "description": "Requested URL.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "final_url": {
+                "type": "string",
+                "description": "Final URL after redirects.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "method": {
+                "type": "string",
+                "description": "HTTP method used.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "purpose": {
+                "type": "string",
+                "description": "Fetch purpose.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "status_code": {
+                "type": "integer",
+                "description": "HTTP response status code.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "status_text": {
+                "type": "string",
+                "description": "HTTP response status text.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "content_type": {
+                "type": "string",
+                "description": "HTTP Content-Type header.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "content_length": {
+                "type": "string",
+                "description": "HTTP Content-Length header when present.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "response_bytes": {
+                "type": "integer",
+                "description": "Downloaded response bytes.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "response_truncated": {
+                "type": "boolean",
+                "description": "Whether the downloaded response body was capped.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "body_text_chars": {
+                "type": "integer",
+                "description": "Readable body text length.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "max_body_chars": {
+                "type": "integer",
+                "description": "Maximum readable text returned.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "body_text_truncated": {
+                "type": "boolean",
+                "description": "Whether body_text is truncated.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "body_text": {
+                "type": "string",
+                "description": "Readable fetched page text excerpt.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "html": {
+                "type": "string",
+                "description": "Raw HTML excerpt only when include_html=true and content is HTML.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "html_truncated": {
+                "type": "boolean",
+                "description": "Whether html is truncated.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "title": {
+                "type": "string",
+                "description": "HTML title when present.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "description": {
+                "type": "string",
+                "description": "HTML meta description when present.",
+                "enum": null,
+                "is_system_provided": false,
+                "dynamic_variable": "",
+                "allowed_values_dynamic_variable": "",
+                "constant_value": "",
+                "is_omitted": false
+              },
+              "links": {
+                "description": "Links found in the fetched HTML page.",
+                "dynamic_variable": "",
+                "constant_value": null,
+                "is_omitted": false,
+                "type": "array",
+                "items": {
+                  "description": "One HTML link.",
+                  "dynamic_variable": "",
+                  "is_omitted": false,
+                  "type": "object",
+                  "required": [],
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "description": "Readable link text.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "href": {
+                      "type": "string",
+                      "description": "Resolved link URL.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    }
+                  }
+                }
+              },
+              "redirects": {
+                "description": "Redirect/status chain.",
+                "dynamic_variable": "",
+                "constant_value": null,
+                "is_omitted": false,
+                "type": "array",
+                "items": {
+                  "description": "One visited URL.",
+                  "dynamic_variable": "",
+                  "is_omitted": false,
+                  "type": "object",
+                  "required": [],
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "Visited URL.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    },
+                    "status_code": {
+                      "type": "integer",
+                      "description": "HTTP status code.",
+                      "enum": null,
+                      "is_system_provided": false,
+                      "dynamic_variable": "",
+                      "allowed_values_dynamic_variable": "",
+                      "constant_value": "",
+                      "is_omitted": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "response_filter": null,
+          "content_type": "application/json",
+          "auth_resolved_params": [],
+          "auth_connection": null
+        }
+      },
+      "usage_stats": {
+        "total_calls": 4,
+        "avg_latency_secs": 0.44
       },
       "response_mocks": null
     },
@@ -23024,7 +25157,7 @@
       "tool_config": {
         "type": "webhook",
         "name": "claude_code",
-        "description": "Explicit escalation tool for Claude Code running on the private EC2 bridge. Use only when Andrew asks to use Claude Code, asks to start/check/steer a Claude Code session, or confirms that a complex code change/test run should be delegated.",
+        "description": "Explicit escalation tool for Claude Code running on the private EC2 bridge. Use it for confirmed async code tasks, job status checks, steering, and confirmed interactive browser automation such as unsubscribe or preference-center flows that need Playwright.",
         "response_timeout_secs": 20,
         "disable_interruptions": false,
         "interruption_mode": "allow",
@@ -23176,7 +25309,7 @@
               },
               "status": {
                 "type": "string",
-                "description": "Status such as ok, session_ready, running, steering_recorded, completed, failed, claude_not_authenticated, confirmation_required, or job_not_found.",
+                "description": "Status such as ok, session_ready, running, steering_recorded, completed, failed, claude_not_authenticated, claude_auth_expired, confirmation_required, or job_not_found.",
                 "enum": null,
                 "is_system_provided": false,
                 "dynamic_variable": "",
@@ -23213,6 +25346,55 @@
                 "allowed_values_dynamic_variable": "",
                 "constant_value": "",
                 "is_omitted": false
+              },
+              "auth_probe": {
+                "description": "Live non-mutating Claude Code auth probe. Use this when auth_status reports an expired or failed auth state.",
+                "dynamic_variable": "",
+                "is_omitted": false,
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "ok": {
+                    "type": "boolean",
+                    "description": "Whether a tiny Claude Code prompt succeeded.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "status": {
+                    "type": "string",
+                    "description": "Probe status such as ok, auth_probe_skipped, claude_auth_expired, or claude_auth_probe_failed.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "skipped": {
+                    "type": "boolean",
+                    "description": "Whether the live auth probe was skipped by configuration.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "Short probe failure message when available.",
+                    "enum": null,
+                    "is_system_provided": false,
+                    "dynamic_variable": "",
+                    "allowed_values_dynamic_variable": "",
+                    "constant_value": "",
+                    "is_omitted": false
+                  }
+                }
               },
               "session_id": {
                 "type": "string",
@@ -23393,8 +25575,8 @@
         }
       },
       "usage_stats": {
-        "total_calls": 20,
-        "avg_latency_secs": 0.58
+        "total_calls": 22,
+        "avg_latency_secs": 0.65
       },
       "response_mocks": null
     }
