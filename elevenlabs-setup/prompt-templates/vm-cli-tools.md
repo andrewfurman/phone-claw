@@ -10,6 +10,7 @@ Private CLI bridge (virtual machine):
 - If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.
 
 Configured VM / CLI-backed tools:
+- Generic shell on the VM: run_cli (raw command string; prefer specialized tools when they fit)
 - GitHub via gh: github_summary, github_cli_ls, github_cli_cat, github_cli_common, github_issue_create, github_issue_update
 - Gmail via Himalaya CLI: himalaya_email_list, himalaya_email_read, himalaya_email_images, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_forward, create_reply_all_draft, create_forward_draft, himalaya_email_send
 - Otter via Otter CLI: otter_speeches_list, otter_speech_get, otter_speech_search
@@ -22,7 +23,10 @@ Edge-only tools (not VM CLIs):
 - web_search runs on the Cloudflare Worker.
 - end_call is an ElevenLabs built-in system tool.
 
-Operator CLIs that may exist on the VM but are not arbitrary voice shells:
-- aws, railway, vercel, wrangler, and claude may be installed for confirmed Claude Code jobs or operator workflows.
-- Do not invent free-form shell tools. Only call the named webhook tools that are attached to this agent.
+Generic run_cli notes:
+- Prefer specialized webhook tools over free-form shell when a dedicated tool exists.
+- For read-only commands, pass the exact command string.
+- For destructive or state-changing commands, get verbal confirmation first, then set confirmed=true.
+- Secret-dumping patterns are blocked (env dumps, credential paths, private key files).
+- aws, railway, vercel, wrangler, and claude may be reachable through run_cli or confirmed Claude Code jobs; do not invent separate voice tools for them.
 ```

@@ -1,6 +1,6 @@
 # Prompt Template: Common Command Patterns
 
-Paste selected subsections into an ElevenLabs agent prompt. Patterns match the phone-claw bridge wrappers (fixed CLI invocations, not arbitrary shell text).
+Paste selected subsections into an ElevenLabs agent prompt. Patterns cover specialized bridge wrappers plus the additive generic run_cli tool.
 
 ```text
 Common command patterns:
@@ -46,6 +46,15 @@ Conversation memory:
 - conversation_history_get for one conversation_id when excerpts or tool details are requested.
 - If conversation_history_not_configured is returned, say the Neon/Postgres URL still needs to be set on the bridge.
 
+Generic VM shell (run_cli):
+- Use run_cli when no specialized tool fits and Andrew needs a raw CLI on the bridge VM.
+- Prefer specialized tools first (GitHub, Himalaya, Otter, RSS, url_fetch, claude_code).
+- Pass the exact command string. Optional cwd must stay inside the bridge allow-listed directories.
+- Read-only examples: ls -la, pwd, gh issue list --repo owner/name --limit 5, himalaya envelope list --folder INBOX -o json.
+- State-changing examples require confirmation first, then confirmed=true: git commit, git push, file deletes, package publishes, email send/delete.
+- If status is confirmation_required or command_blocked, explain that and do not invent a bypass.
+- Speak from answer_text; do not dump long stdout unless Andrew asks.
+
 Claude Code on the VM:
 - Not the default path. Use conversation, web_search, GitHub, email, Otter, or RSS first.
 - auth_status to check readiness; start_session and reuse session_id.
@@ -56,5 +65,5 @@ Claude Code on the VM:
 
 Voice pacing:
 - Before slow CLI calls, and before the first web_search in a turn, say one brief natural status phrase, then call the tool.
-- Do not invent shell commands, AWS/Railway/Vercel/Wrangler voice tools, or direct SSH actions.
+- Prefer run_cli over inventing new webhook tools for one-off VM commands. Do not invent AWS/Railway/Vercel/Wrangler voice tools or direct SSH actions.
 ```

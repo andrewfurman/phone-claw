@@ -28,6 +28,7 @@ import {
   otterSpeechesList,
   urlFetch,
 } from "./cli-tools.mjs";
+import { runGenericCli } from "./generic-cli.mjs";
 import {
   configuredRssFeedsConfigured,
   rssConfiguredEntryFullText,
@@ -130,6 +131,7 @@ app.get("/", async () => ({
     rss_get_article_text: "POST /cli/rss/article-text",
     rss_refresh_feeds: "POST /cli/rss/refresh",
     url_fetch: "POST /cli/url-fetch",
+    run_cli: "POST /cli/run",
     claude_code: "POST /cli/claude-code",
     conversation_history_search: "POST /conversation-history/search",
     conversation_history_get: "POST /conversation-history/get",
@@ -272,6 +274,8 @@ app.post("/cli/rss/refresh", async (request, reply) =>
 );
 
 app.post("/cli/url-fetch", async (request, reply) => handleUrlFetch(request, reply));
+
+app.post("/cli/run", async (request, reply) => handleRunCli(request, reply));
 
 app.post("/cli/claude-code", async (request, reply) =>
   handleClaudeCodeTool(request, reply)
@@ -1016,6 +1020,23 @@ async function handleRssRefreshFeeds(request, reply) {
   return reply.code(toolResultStatusCode(result)).send(result);
 }
 
+
+async function handleRunCli(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await runGenericCli({
+    command: body.command || body.cmd || body.shell_command || body.shellCommand,
+    cwd: body.cwd || body.working_directory || body.workingDirectory,
+    timeoutMs: body.timeout_ms || body.timeoutMs,
+    confirmed: body.confirmed,
+    env: body.env || body.environment,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  });
+
+  return reply.code(toolResultStatusCode(result)).send(result);
+}
+
 async function handleUrlFetch(request, reply) {
   if (!validateCliToolAuth(request, reply)) return;
 
@@ -1150,6 +1171,8 @@ function toolResultStatusCode(result) {
       "cli_bridge_not_configured",
       "rss_feeds_not_configured",
       "tool_auth_not_configured",
+      "command_blocked",
+      "working_directory_not_allowed",
     ].includes(result.status)
   ) {
     return 200;
