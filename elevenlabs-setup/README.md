@@ -48,6 +48,17 @@ If the agent drifts, patch both ASR and TTS formats back to `ulaw_8000`:
 npm run elevenlabs:audio:fix
 ```
 
+## Prompt Templates And VM Bridge Guide
+
+Sample markdown prompt templates for describing configured VM CLI tools and common command patterns:
+
+- [prompt-templates/](prompt-templates/) — index plus paste-ready snippets
+- [prompt-templates/vm-cli-tools.md](prompt-templates/vm-cli-tools.md) — which tools run on the private bridge
+- [prompt-templates/common-command-patterns.md](prompt-templates/common-command-patterns.md) — GitHub, email, Otter, RSS, URL fetch, memory, Claude Code patterns
+- [prompt-templates/confirmation-and-safety.md](prompt-templates/confirmation-and-safety.md) — confirmation gates and voice-safe id rules
+
+For standing up the private VM / Cloudflare Tunnel bridge that those tools depend on, see [../docs/VM_BRIDGE_SETUP_GUIDE.md](../docs/VM_BRIDGE_SETUP_GUIDE.md).
+
 ## Tool Call Starter
 
 `send_claude_command.json` is a starter ElevenLabs webhook tool config for the future Claude Code bridge.
