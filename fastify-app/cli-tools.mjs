@@ -316,6 +316,15 @@ export async function urlFetch({
   maxBodyChars = DEFAULT_URL_FETCH_BODY_CHARS,
   maxResponseBytes = DEFAULT_URL_FETCH_BYTES,
   timeoutMs = DEFAULT_URL_FETCH_TIMEOUT_MS,
+  form,
+  formData,
+  body,
+  contentType,
+  headers,
+  cookies,
+  csrfToken,
+  csrfField = "_csrf",
+  extractCsrf = false,
 } = {}) {
   const requestedUrl = normalizeString(url);
   if (!requestedUrl) {
@@ -323,27 +332,34 @@ export async function urlFetch({
   }
 
   const normalizedMethod = normalizeString(method, "GET").toUpperCase();
-  if (!["GET", "HEAD"].includes(normalizedMethod)) {
+  if (!["GET", "HEAD", "POST"].includes(normalizedMethod)) {
     return {
       ok: false,
       status: "unsupported_method",
       method: normalizedMethod,
-      message: "Only GET and HEAD URL fetches are supported.",
-      answer_text: "Only GET and HEAD URL fetches are supported.",
+      message: "Only GET, HEAD, and POST URL fetches are supported.",
+      answer_text: "Only GET, HEAD, and POST URL fetches are supported.",
     };
   }
 
   const normalizedPurpose = normalizeEnum(
     purpose,
-    ["read_page", "verify", "unsubscribe"],
-    "read_page"
+    ["read_page", "verify", "unsubscribe", "submit_form"],
+    normalizedMethod === "POST" ? "submit_form" : "read_page"
   );
   const parsedSafety = await validatePublicHttpUrl(requestedUrl);
   if (!parsedSafety.ok) return parsedSafety;
 
-  if (urlFetchNeedsConfirmation(parsedSafety.url, normalizedPurpose) && !toBoolean(confirmed)) {
+  const needsConfirmation = urlFetchNeedsConfirmation(
+    parsedSafety.url,
+    normalizedPurpose,
+    normalizedMethod
+  );
+  if (needsConfirmation && !toBoolean(confirmed)) {
     return confirmationRequired(
-      "Confirm that Andrew wants to open this URL. It looks like it may trigger an unsubscribe or account-preference action."
+      normalizedMethod === "POST"
+        ? "Confirm that Andrew wants to submit this HTTP POST. It may change account preferences, unsubscribe, or submit a form."
+        : "Confirm that Andrew wants to open this URL. It looks like it may trigger an unsubscribe or account-preference action."
     );
   }
 
@@ -366,6 +382,23 @@ export async function urlFetch({
     DEFAULT_URL_FETCH_TIMEOUT_MS
   );
 
+  const preparedBody = prepareUrlFetchBody({
+    method: normalizedMethod,
+    form: form ?? formData,
+    body,
+    contentType,
+    csrfToken,
+    csrfField,
+  });
+  if (!preparedBody.ok) return preparedBody;
+
+  const preparedHeaders = prepareUrlFetchHeaders({
+    headers,
+    cookies,
+    contentType: preparedBody.contentType,
+  });
+  if (!preparedHeaders.ok) return preparedHeaders;
+
   return fetchPublicUrl({
     url: parsedSafety.url,
     method: normalizedMethod,
@@ -375,6 +408,11 @@ export async function urlFetch({
     maxBodyChars: maxChars,
     maxResponseBytes: maxBytes,
     timeoutMs: timeout,
+    requestBody: preparedBody.body,
+    requestHeaders: preparedHeaders.headers,
+    extractCsrf: toBoolean(extractCsrf) && normalizedMethod === "POST",
+    csrfField: normalizeString(csrfField, "_csrf"),
+    csrfToken: normalizeString(csrfToken),
   });
 }
 
@@ -2468,9 +2506,40 @@ async function fetchPublicUrl({
   maxBodyChars,
   maxResponseBytes,
   timeoutMs,
+  requestBody = "",
+  requestHeaders = {},
+  extractCsrf = false,
+  csrfField = "_csrf",
+  csrfToken = "",
 }) {
+  const cookieJar = createCookieJar(requestHeaders.cookie || requestHeaders.Cookie || "");
+  let effectiveHeaders = { ...requestHeaders };
+  let effectiveBody = requestBody;
+  let csrfExtraction = null;
+
+  if (extractCsrf) {
+    const prepared = await preparePostWithSimpleCsrf({
+      url,
+      followRedirects,
+      maxBodyChars,
+      maxResponseBytes,
+      timeoutMs,
+      requestHeaders: effectiveHeaders,
+      requestBody: effectiveBody,
+      cookieJar,
+      csrfField,
+      csrfToken,
+    });
+    if (!prepared.ok) return prepared;
+    effectiveHeaders = prepared.requestHeaders;
+    effectiveBody = prepared.requestBody;
+    csrfExtraction = prepared.csrfExtraction;
+  }
+
   const visited = [];
   let currentUrl = url;
+  let currentMethod = method;
+  let currentBody = currentMethod === "POST" ? effectiveBody : undefined;
   let response = null;
   let responseBuffer = Buffer.alloc(0);
   let responseTruncated = false;
@@ -2481,15 +2550,25 @@ async function fetchPublicUrl({
 
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+    const cookieHeader = serializeCookieJar(cookieJar);
+    const headers = {
+      accept: "text/html,application/xhtml+xml,text/plain,application/json;q=0.8,*/*;q=0.3",
+      "user-agent": "phone-claw-url-fetch/1.0",
+      ...effectiveHeaders,
+    };
+    if (cookieHeader) headers.cookie = cookieHeader;
+    if (currentMethod !== "POST") {
+      delete headers["content-type"];
+      delete headers["Content-Type"];
+    }
+
     try {
       response = await fetch(safety.url, {
-        method,
+        method: currentMethod,
         redirect: "manual",
         signal: abortController.signal,
-        headers: {
-          "accept": "text/html,application/xhtml+xml,text/plain,application/json;q=0.8,*/*;q=0.3",
-          "user-agent": "phone-claw-url-fetch/1.0",
-        },
+        headers,
+        body: currentMethod === "POST" ? currentBody || "" : undefined,
       });
     } catch (error) {
       return {
@@ -2504,14 +2583,17 @@ async function fetchPublicUrl({
           error?.name === "AbortError"
             ? "The URL fetch timed out."
             : "The URL fetch failed.",
+        csrf_extraction: csrfExtraction,
       };
     } finally {
       clearTimeout(timeout);
     }
 
+    mergeSetCookieHeaders(cookieJar, response.headers);
     visited.push({
       url: currentUrl,
       status_code: response.status,
+      method: currentMethod,
     });
 
     if (isRedirectStatus(response.status)) {
@@ -2528,13 +2610,19 @@ async function fetchPublicUrl({
           purpose,
           redirects: visited,
           answer_text: "The URL fetch stopped after too many redirects.",
+          csrf_extraction: csrfExtraction,
         };
+      }
+      const redirectAsGet = [301, 302, 303].includes(response.status);
+      if (redirectAsGet) {
+        currentMethod = "GET";
+        currentBody = undefined;
       }
       currentUrl = nextUrl;
       continue;
     }
 
-    if (method !== "HEAD") {
+    if (currentMethod !== "HEAD") {
       const body = await readResponseBuffer(response, maxResponseBytes);
       responseBuffer = body.buffer;
       responseTruncated = body.truncated;
@@ -2550,6 +2638,7 @@ async function fetchPublicUrl({
       method,
       purpose,
       answer_text: "The URL fetch failed.",
+      csrf_extraction: csrfExtraction,
     };
   }
 
@@ -2575,6 +2664,22 @@ async function fetchPublicUrl({
   const excerpt = truncateUtf8(normalizeEmailBody(readableText), maxBodyChars);
   const htmlExcerpt = includeHtml && isHtml ? truncateUtf8(decodedBody, maxBodyChars) : null;
   const links = isHtml ? extractHtmlLinks(decodedBody, currentUrl) : [];
+  const pageTitle = isHtml ? htmlTitle(decodedBody) : "";
+  const needsBrowser = urlFetchNeedsBrowserFallback({
+    html: isHtml ? decodedBody : "",
+    bodyText: excerpt.value,
+    contentType: contentTypeHeader,
+    statusCode: response.status,
+  });
+  const answerText = formatUrlFetchAnswer({
+    statusCode: response.status,
+    title: pageTitle,
+    bodyText: excerpt.value,
+    linkCount: links.length,
+    finalUrl: currentUrl,
+    method,
+    needsBrowser,
+  });
 
   return {
     ok: response.status >= 200 && response.status < 400,
@@ -2596,17 +2701,17 @@ async function fetchPublicUrl({
     body_text: excerpt.value,
     html: htmlExcerpt ? htmlExcerpt.value : "",
     html_truncated: htmlExcerpt ? htmlExcerpt.truncated || responseTruncated : false,
-    title: isHtml ? htmlTitle(decodedBody) : "",
+    title: pageTitle,
     description: isHtml ? htmlMetaDescription(decodedBody) : "",
     links,
     redirects: visited,
-    answer_text: formatUrlFetchAnswer({
-      statusCode: response.status,
-      title: isHtml ? htmlTitle(decodedBody) : "",
-      bodyText: excerpt.value,
-      linkCount: links.length,
-      finalUrl: currentUrl,
-    }),
+    request_content_type: effectiveHeaders["content-type"] || "",
+    request_body_chars: currentMethod === "POST" || method === "POST" ? String(effectiveBody || "").length : 0,
+    cookies_sent: Boolean(serializeCookieJar(cookieJar)),
+    csrf_extraction: csrfExtraction,
+    needs_browser: needsBrowser,
+    browser_fallback: needsBrowser ? "claude_code_playwright" : "",
+    answer_text: answerText,
   };
 }
 
@@ -2724,8 +2829,614 @@ function isPrivateIp(address) {
   return true;
 }
 
-function urlFetchNeedsConfirmation(url, purpose) {
-  if (purpose === "unsubscribe") return true;
+function prepareUrlFetchBody({
+  method,
+  form,
+  body,
+  contentType,
+  csrfToken,
+  csrfField,
+}) {
+  if (method !== "POST") {
+    if (form != null || body != null) {
+      return {
+        ok: false,
+        status: "unsupported_method",
+        message: "Form or body payloads are only supported with POST.",
+        answer_text: "Form or body payloads are only supported with POST.",
+      };
+    }
+    return { ok: true, body: "", contentType: "" };
+  }
+
+  const explicitContentType = normalizeString(contentType).toLowerCase();
+  const formObject = normalizeFormObject(form);
+  if (!formObject.ok) return formObject;
+
+  let payloadObject = formObject.value ? { ...formObject.value } : null;
+  const token = normalizeString(csrfToken);
+  const field = normalizeString(csrfField, "_csrf");
+  if (payloadObject && token) {
+    payloadObject[field] = token;
+  }
+
+  if (payloadObject) {
+    if (explicitContentType.includes("application/json")) {
+      return {
+        ok: true,
+        body: JSON.stringify(payloadObject),
+        contentType: "application/json",
+      };
+    }
+    return {
+      ok: true,
+      body: encodeFormUrlEncoded(payloadObject),
+      contentType: "application/x-www-form-urlencoded",
+    };
+  }
+
+  if (body == null || body === "") {
+    return {
+      ok: true,
+      body: token ? encodeFormUrlEncoded({ [field]: token }) : "",
+      contentType: token
+        ? "application/x-www-form-urlencoded"
+        : explicitContentType || "application/x-www-form-urlencoded",
+    };
+  }
+
+  if (typeof body === "object" && !Buffer.isBuffer(body)) {
+    if (explicitContentType.includes("application/json") || explicitContentType === "") {
+      const merged = token ? { ...body, [field]: token } : body;
+      return {
+        ok: true,
+        body: JSON.stringify(merged),
+        contentType: explicitContentType || "application/json",
+      };
+    }
+    const merged = token ? { ...body, [field]: token } : body;
+    return {
+      ok: true,
+      body: encodeFormUrlEncoded(merged),
+      contentType: explicitContentType || "application/x-www-form-urlencoded",
+    };
+  }
+
+  let bodyText = String(body);
+  if (token && !explicitContentType.includes("application/json")) {
+    const params = new URLSearchParams(bodyText);
+    params.set(field, token);
+    bodyText = params.toString();
+    return {
+      ok: true,
+      body: bodyText,
+      contentType: explicitContentType || "application/x-www-form-urlencoded",
+    };
+  }
+
+  return {
+    ok: true,
+    body: bodyText,
+    contentType: explicitContentType || "text/plain;charset=UTF-8",
+  };
+}
+
+function prepareUrlFetchHeaders({ headers, cookies, contentType }) {
+  const normalized = normalizeHeaderMap(headers);
+  if (!normalized.ok) return normalized;
+
+  const result = { ...normalized.value };
+  if (contentType) result["content-type"] = contentType;
+
+  const cookieHeader = normalizeCookieHeader(cookies);
+  if (!cookieHeader.ok) return cookieHeader;
+  if (cookieHeader.value) result.cookie = cookieHeader.value;
+
+  return { ok: true, headers: result };
+}
+
+function normalizeFormObject(form) {
+  if (form == null || form === "") return { ok: true, value: null };
+  if (typeof form === "object" && !Array.isArray(form)) {
+    return { ok: true, value: sanitizeFormEntries(form) };
+  }
+
+  const text = normalizeString(form);
+  if (!text) return { ok: true, value: null };
+
+  if (text.startsWith("{")) {
+    const parsed = parseMaybeJson(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {
+        ok: false,
+        status: "invalid_form_payload",
+        message: "form must be an object or URL-encoded string.",
+        answer_text: "The form payload was invalid.",
+      };
+    }
+    return { ok: true, value: sanitizeFormEntries(parsed) };
+  }
+
+  try {
+    const params = new URLSearchParams(text);
+    const value = {};
+    for (const [key, entry] of params.entries()) {
+      if (!normalizeString(key)) continue;
+      value[key] = entry;
+    }
+    return { ok: true, value: sanitizeFormEntries(value) };
+  } catch {
+    return {
+      ok: false,
+      status: "invalid_form_payload",
+      message: "form must be an object or URL-encoded string.",
+      answer_text: "The form payload was invalid.",
+    };
+  }
+}
+
+function sanitizeFormEntries(form) {
+  const result = {};
+  for (const [key, value] of Object.entries(form || {})) {
+    const normalizedKey = normalizeString(key);
+    if (!normalizedKey) continue;
+    if (value == null) {
+      result[normalizedKey] = "";
+      continue;
+    }
+    if (typeof value === "object") {
+      result[normalizedKey] = JSON.stringify(value);
+      continue;
+    }
+    result[normalizedKey] = String(value);
+  }
+  return result;
+}
+
+function encodeFormUrlEncoded(form) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(form || {})) {
+    params.append(key, value == null ? "" : String(value));
+  }
+  return params.toString();
+}
+
+const BLOCKED_URL_FETCH_HEADERS = new Set([
+  "host",
+  "content-length",
+  "transfer-encoding",
+  "connection",
+  "keep-alive",
+  "upgrade",
+  "te",
+  "trailer",
+  "proxy-authorization",
+  "proxy-connection",
+]);
+
+function normalizeHeaderMap(headers) {
+  if (headers == null || headers === "") return { ok: true, value: {} };
+
+  let source = headers;
+  if (typeof headers === "string") {
+    const parsed = parseMaybeJson(headers);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {
+        ok: false,
+        status: "invalid_headers",
+        message: "headers must be an object or JSON object string.",
+        answer_text: "The custom headers were invalid.",
+      };
+    }
+    source = parsed;
+  }
+
+  if (typeof source !== "object" || Array.isArray(source)) {
+    return {
+      ok: false,
+      status: "invalid_headers",
+      message: "headers must be an object or JSON object string.",
+      answer_text: "The custom headers were invalid.",
+    };
+  }
+
+  const result = {};
+  let count = 0;
+  for (const [key, value] of Object.entries(source)) {
+    const name = normalizeString(key).toLowerCase();
+    if (!name) continue;
+    if (BLOCKED_URL_FETCH_HEADERS.has(name)) continue;
+    if (name === "user-agent") continue;
+    const headerValue = normalizeHeaderValue(value);
+    if (!headerValue) continue;
+    if (headerValue.length > 4_000) {
+      return {
+        ok: false,
+        status: "invalid_headers",
+        message: "A custom header value is too long.",
+        answer_text: "A custom header value is too long.",
+      };
+    }
+    result[name] = headerValue;
+    count += 1;
+    if (count > 20) {
+      return {
+        ok: false,
+        status: "invalid_headers",
+        message: "Too many custom headers were provided.",
+        answer_text: "Too many custom headers were provided.",
+      };
+    }
+  }
+
+  return { ok: true, value: result };
+}
+
+function normalizeCookieHeader(cookies) {
+  if (cookies == null || cookies === "") return { ok: true, value: "" };
+  if (typeof cookies === "string") {
+    const value = normalizeHeaderValue(cookies);
+    if (value.length > 4_000) {
+      return {
+        ok: false,
+        status: "invalid_cookies",
+        message: "The cookie header is too long.",
+        answer_text: "The cookie header is too long.",
+      };
+    }
+    return { ok: true, value };
+  }
+  if (typeof cookies !== "object" || Array.isArray(cookies)) {
+    return {
+      ok: false,
+      status: "invalid_cookies",
+      message: "cookies must be a string or object.",
+      answer_text: "The cookies value was invalid.",
+    };
+  }
+
+  const parts = [];
+  for (const [key, value] of Object.entries(cookies)) {
+    const name = normalizeString(key);
+    if (!name) continue;
+    parts.push(`${name}=${normalizeHeaderValue(value)}`);
+  }
+  const value = parts.join("; ");
+  if (value.length > 4_000) {
+    return {
+      ok: false,
+      status: "invalid_cookies",
+      message: "The cookie header is too long.",
+      answer_text: "The cookie header is too long.",
+    };
+  }
+  return { ok: true, value };
+}
+
+function createCookieJar(cookieHeader = "") {
+  const jar = new Map();
+  const text = normalizeString(cookieHeader);
+  if (!text) return jar;
+  for (const part of text.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const equalIndex = trimmed.indexOf("=");
+    if (equalIndex <= 0) continue;
+    const name = trimmed.slice(0, equalIndex).trim();
+    const value = trimmed.slice(equalIndex + 1).trim();
+    if (name) jar.set(name, value);
+  }
+  return jar;
+}
+
+function mergeSetCookieHeaders(jar, headers) {
+  if (!jar || !headers || typeof headers.getSetCookie !== "function") {
+    const single = headers?.get?.("set-cookie");
+    if (!single) return;
+    const equalIndex = single.indexOf("=");
+    if (equalIndex <= 0) return;
+    const name = single.slice(0, equalIndex).trim();
+    const rest = single.slice(equalIndex + 1);
+    const value = rest.split(";")[0].trim();
+    if (name) jar.set(name, value);
+    return;
+  }
+
+  for (const entry of headers.getSetCookie()) {
+    const equalIndex = entry.indexOf("=");
+    if (equalIndex <= 0) continue;
+    const name = entry.slice(0, equalIndex).trim();
+    const rest = entry.slice(equalIndex + 1);
+    const value = rest.split(";")[0].trim();
+    if (name) jar.set(name, value);
+  }
+}
+
+function serializeCookieJar(jar) {
+  if (!jar || jar.size === 0) return "";
+  return Array.from(jar.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+}
+
+async function preparePostWithSimpleCsrf({
+  url,
+  followRedirects,
+  maxResponseBytes,
+  timeoutMs,
+  requestHeaders,
+  requestBody,
+  cookieJar,
+  csrfField,
+  csrfToken,
+}) {
+  mergeCookieStringIntoJar(cookieJar, requestHeaders.cookie || "");
+
+  const preview = await loadHtmlAndCookiesForPost({
+    url,
+    followRedirects,
+    timeoutMs,
+    maxResponseBytes,
+    cookieJar,
+    requestHeaders,
+  });
+  if (!preview.ok) return preview;
+
+  const extraction = extractSimpleCsrfFromHtml(preview.html || "", csrfField);
+  const token = normalizeString(csrfToken) || extraction.token;
+  const field = normalizeString(extraction.field, csrfField || "_csrf");
+  let nextBody = requestBody || "";
+  let nextHeaders = { ...requestHeaders };
+  delete nextHeaders.cookie;
+  delete nextHeaders.Cookie;
+  const contentType = normalizeString(nextHeaders["content-type"]).toLowerCase();
+
+  if (token) {
+    if (contentType.includes("application/json")) {
+      const parsed = parseMaybeJson(nextBody) || {};
+      parsed[field] = token;
+      nextBody = JSON.stringify(parsed);
+    } else {
+      const params = new URLSearchParams(nextBody || "");
+      params.set(field, token);
+      nextBody = params.toString();
+      nextHeaders["content-type"] = contentType || "application/x-www-form-urlencoded";
+    }
+
+    if (extraction.header_name && !nextHeaders[extraction.header_name.toLowerCase()]) {
+      nextHeaders[extraction.header_name.toLowerCase()] = token;
+    } else if (!nextHeaders["x-csrf-token"] && !nextHeaders["x-xsrf-token"]) {
+      nextHeaders["x-csrf-token"] = token;
+    }
+  }
+
+  const xsrfCookie = cookieJar.get("XSRF-TOKEN") || cookieJar.get("xsrf-token");
+  if (xsrfCookie && !nextHeaders["x-xsrf-token"]) {
+    try {
+      nextHeaders["x-xsrf-token"] = decodeURIComponent(xsrfCookie);
+    } catch {
+      nextHeaders["x-xsrf-token"] = xsrfCookie;
+    }
+  }
+
+  return {
+    ok: true,
+    requestBody: nextBody,
+    requestHeaders: nextHeaders,
+    csrfExtraction: {
+      found: Boolean(token),
+      field,
+      header_name: extraction.header_name || (token ? "x-csrf-token" : ""),
+      source: normalizeString(csrfToken) ? "request" : extraction.source,
+      cookies_captured: cookieJar.size,
+    },
+  };
+}
+
+async function loadHtmlAndCookiesForPost({
+  url,
+  followRedirects,
+  timeoutMs,
+  maxResponseBytes,
+  cookieJar,
+  requestHeaders,
+}) {
+  let currentUrl = url;
+  for (let redirectCount = 0; redirectCount <= MAX_URL_REDIRECTS; redirectCount += 1) {
+    const safety = await validatePublicHttpUrl(currentUrl);
+    if (!safety.ok) {
+      return {
+        ...safety,
+        message: safety.message || "Could not prepare CSRF/cookies for the POST.",
+        answer_text:
+          safety.answer_text ||
+          "I could not load the form page to collect a CSRF token or cookies before posting.",
+      };
+    }
+
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+    let response;
+    try {
+      response = await fetch(safety.url, {
+        method: "GET",
+        redirect: "manual",
+        signal: abortController.signal,
+        headers: {
+          accept: "text/html,application/xhtml+xml,text/plain,application/json;q=0.8,*/*;q=0.3",
+          "user-agent": "phone-claw-url-fetch/1.0",
+          ...requestHeaders,
+          cookie: serializeCookieJar(cookieJar),
+        },
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        status: error?.name === "AbortError" ? "url_fetch_timeout" : "url_fetch_failed",
+        message: error?.message || "Could not prepare CSRF/cookies for the POST.",
+        answer_text:
+          error?.name === "AbortError"
+            ? "The CSRF preparation GET timed out."
+            : "I could not load the form page to collect a CSRF token or cookies before posting.",
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    mergeSetCookieHeaders(cookieJar, response.headers);
+
+    if (isRedirectStatus(response.status) && followRedirects) {
+      const location = response.headers.get("location") || "";
+      if (!location) {
+        return {
+          ok: false,
+          status: "url_fetch_failed",
+          message: "CSRF preparation redirect was missing a Location header.",
+          answer_text: "I could not follow redirects while preparing the form POST.",
+        };
+      }
+      if (redirectCount >= MAX_URL_REDIRECTS) {
+        return {
+          ok: false,
+          status: "too_many_redirects",
+          message: "Too many redirects while preparing CSRF/cookies.",
+          answer_text: "The form page redirected too many times before I could POST.",
+        };
+      }
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+
+    const body = await readResponseBuffer(response, maxResponseBytes);
+    const contentTypeHeader = response.headers.get("content-type") || "";
+    const contentType = parseContentType(contentTypeHeader);
+    const decodedBody = body.buffer.length
+      ? decodeTextBuffer(body.buffer, contentType.params.charset || "utf-8")
+      : "";
+    return {
+      ok: true,
+      html: contentType.value.includes("html") ? decodedBody : "",
+      status_code: response.status,
+    };
+  }
+
+  return {
+    ok: false,
+    status: "too_many_redirects",
+    message: "Too many redirects while preparing CSRF/cookies.",
+    answer_text: "The form page redirected too many times before I could POST.",
+  };
+}
+
+function mergeCookieStringIntoJar(jar, cookieHeader) {
+  const extra = createCookieJar(cookieHeader);
+  for (const [name, value] of extra.entries()) jar.set(name, value);
+}
+
+export function extractSimpleCsrfFromHtml(html, preferredField = "_csrf") {
+  const text = String(html || "");
+  const metaPatterns = [
+    /<meta\b[^>]*\bname\s*=\s*["']?csrf-token["']?[^>]*\bcontent\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i,
+    /<meta\b[^>]*\bname\s*=\s*["']?csrf_token["']?[^>]*\bcontent\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i,
+    /<meta\b[^>]*\bname\s*=\s*["']?xsrf-token["']?[^>]*\bcontent\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i,
+  ];
+  for (const pattern of metaPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return {
+        token: htmlDecode((match[1] || "").replace(/^["']|["']$/g, "")),
+        field: preferredField || "_csrf",
+        header_name: "x-csrf-token",
+        source: "meta",
+        cookies_hint: "",
+      };
+    }
+  }
+
+  const fieldNames = [
+    preferredField,
+    "_csrf",
+    "csrf_token",
+    "csrfToken",
+    "csrfmiddlewaretoken",
+    "authenticity_token",
+    "__RequestVerificationToken",
+  ].filter(Boolean);
+
+  for (const fieldName of fieldNames) {
+    const pattern = new RegExp(
+      `<input\\b[^>]*\\bname\\s*=\\s*["']?${escapeRegExp(fieldName)}["']?[^>]*>`,
+      "i"
+    );
+    const match = text.match(pattern);
+    if (!match) continue;
+    const valueMatch = match[0].match(/\bvalue\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i);
+    if (!valueMatch) continue;
+    return {
+      token: htmlDecode((valueMatch[1] || "").replace(/^["']|["']$/g, "")),
+      field: fieldName,
+      header_name: "",
+      source: "hidden_input",
+      cookies_hint: "",
+    };
+  }
+
+  return {
+    token: "",
+    field: preferredField || "_csrf",
+    header_name: "",
+    source: "",
+    cookies_hint: "",
+  };
+}
+
+export function urlFetchNeedsBrowserFallback({
+  html = "",
+  bodyText = "",
+  contentType = "",
+  statusCode = 200,
+} = {}) {
+  const normalizedHtml = String(html || "");
+  const normalizedText = normalizeEmailBody(bodyText || "");
+  const lowerHtml = normalizedHtml.toLowerCase();
+  const lowerText = normalizedText.toLowerCase();
+
+  if (/enable javascript|javascript is required|requires javascript|turn on javascript|noscript/i.test(lowerText)) {
+    return true;
+  }
+  if (/enable javascript|javascript is required|requires javascript|turn on javascript/i.test(lowerHtml)) {
+    return true;
+  }
+
+  const scriptCount = (normalizedHtml.match(/<script\b/gi) || []).length;
+  const hasSpaRoot =
+    /<div[^>]+id=["']?(root|app|__next|__nuxt)["']?[^>]*>\s*<\/div>/i.test(normalizedHtml) ||
+    /data-reactroot|ng-version=|id="__next"/i.test(normalizedHtml);
+  if (scriptCount >= 3 && normalizedText.length < 180) return true;
+  if (hasSpaRoot && normalizedText.length < 240) return true;
+
+  const hasForm = /<form\b/i.test(normalizedHtml);
+  const hasButton = /<button\b/i.test(normalizedHtml);
+  if (
+    (hasForm || hasButton) &&
+    scriptCount >= 2 &&
+    normalizedText.length < 120 &&
+    String(contentType || "").includes("html")
+  ) {
+    return true;
+  }
+
+  if (statusCode === 200 && !normalizedText && scriptCount >= 2) return true;
+  return false;
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function urlFetchNeedsConfirmation(url, purpose, method = "GET") {
+  if (String(method || "GET").toUpperCase() === "POST") return true;
+  if (purpose === "unsubscribe" || purpose === "submit_form") return true;
   return /unsubscribe|opt[-_]?out|email-preference|preferences|subscription/i.test(url);
 }
 
@@ -2798,11 +3509,23 @@ function htmlMetaDescription(html) {
   return match ? htmlDecode((match[1] || "").replace(/^["']|["']$/g, "")).slice(0, 500) : "";
 }
 
-function formatUrlFetchAnswer({ statusCode, title, bodyText, linkCount, finalUrl }) {
+function formatUrlFetchAnswer({
+  statusCode,
+  title,
+  bodyText,
+  linkCount,
+  finalUrl,
+  method = "GET",
+  needsBrowser = false,
+}) {
+  const verb = String(method || "GET").toUpperCase() === "POST" ? "Posted to" : "Fetched";
   const page = title ? ` "${title}"` : "";
   const content = bodyText ? " I returned a readable body excerpt." : "";
   const links = linkCount ? ` I also returned ${linkCount} page links.` : "";
-  return `Fetched${page} with HTTP ${statusCode}.${content}${links} Final URL: ${finalUrl}`;
+  const fallback = needsBrowser
+    ? " The page looks JavaScript-heavy, so fall back to claude_code with Playwright/headless browser automation if a simple HTTP request is not enough."
+    : "";
+  return `${verb}${page} with HTTP ${statusCode}.${content}${links}${fallback} Final URL: ${finalUrl}`;
 }
 
 function splitMimeHeadersAndBody(value) {
