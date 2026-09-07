@@ -16,13 +16,26 @@ const MAX_TOOL_RESULT_PREVIEW_WORDS = 50;
 
 let pool;
 let schemaReady;
+let testClient;
 
 export function conversationHistoryConfigured() {
   return Boolean(databaseUrl());
 }
 
+/** Test-only: inject a fake `{ query }` client (e.g. in-memory). Pass null to clear. */
+export function setConversationHistoryClientForTests(client) {
+  testClient = client || null;
+  schemaReady = Boolean(client?.schemaReady);
+  if (!client) schemaReady = false;
+}
+
+export function resetConversationHistoryStateForTests() {
+  testClient = null;
+  schemaReady = false;
+}
+
 export async function ensureConversationHistorySchema() {
-  if (!conversationHistoryConfigured()) return false;
+  if (!conversationHistoryConfigured() && !testClient) return false;
   if (schemaReady) return true;
 
   await db().query(`
@@ -62,7 +75,7 @@ export async function archiveElevenLabsConversation({
   conversationId,
   fetchImpl = fetch,
 } = {}) {
-  if (!conversationHistoryConfigured()) return notConfiguredResponse();
+  if (!conversationHistoryConfigured() && !testClient) return notConfiguredResponse();
   if (!apiKey) return missingField("elevenlabs_api_key", "ELEVENLABS_API_KEY is not configured.");
 
   const id = normalizeString(conversationId);
@@ -106,7 +119,7 @@ export async function archiveLatestElevenLabsConversations({
   limit = DEFAULT_LIMIT,
   fetchImpl = fetch,
 } = {}) {
-  if (!conversationHistoryConfigured()) return notConfiguredResponse();
+  if (!conversationHistoryConfigured() && !testClient) return notConfiguredResponse();
   if (!apiKey) return missingField("elevenlabs_api_key", "ELEVENLABS_API_KEY is not configured.");
   if (!agentId) return missingField("elevenlabs_agent_id", "ELEVENLABS_AGENT_ID is not configured.");
 
@@ -149,7 +162,7 @@ export async function archiveLatestElevenLabsConversations({
 }
 
 export async function conversationRecentContext({ limit = MAX_CONTEXT_CONVERSATIONS } = {}) {
-  if (!conversationHistoryConfigured()) return notConfiguredResponse();
+  if (!conversationHistoryConfigured() && !testClient) return notConfiguredResponse();
   await ensureConversationHistorySchema();
 
   const boundedLimit = clampInteger(limit, 1, MAX_CONTEXT_CONVERSATIONS, MAX_CONTEXT_CONVERSATIONS);
@@ -180,7 +193,7 @@ export async function conversationHistorySearch({
   endDate,
   limit = DEFAULT_LIMIT,
 } = {}) {
-  if (!conversationHistoryConfigured()) return notConfiguredResponse();
+  if (!conversationHistoryConfigured() && !testClient) return notConfiguredResponse();
   await ensureConversationHistorySchema();
 
   const boundedLimit = clampInteger(limit, 1, MAX_LIMIT, DEFAULT_LIMIT);
@@ -248,7 +261,7 @@ export async function conversationHistoryGet({
   maxTranscriptTurns = DEFAULT_TRANSCRIPT_EXCERPT_TURNS,
   maxToolItems = DEFAULT_TOOL_DETAIL_ITEMS,
 } = {}) {
-  if (!conversationHistoryConfigured()) return notConfiguredResponse();
+  if (!conversationHistoryConfigured() && !testClient) return notConfiguredResponse();
   await ensureConversationHistorySchema();
 
   const id = normalizeString(conversationId);
@@ -293,7 +306,10 @@ export async function conversationHistoryGet({
   const transcriptExcerpt = compactTranscriptTurns(transcript, transcriptLimit);
 
   const conversation = {
-    ...compactConversationRow(row),
+    ...compactConversationRow({
+      ...row,
+      tool_call_count: toolCalls.length,
+    }),
     transcript_turn_count: transcript.length,
     transcript_excerpt: transcriptExcerpt,
     transcript_truncated: transcript.length > transcriptExcerpt.length,
@@ -320,6 +336,7 @@ export async function conversationHistoryGet({
 }
 
 function db() {
+  if (testClient) return testClient;
   if (!pool) {
     pool = new Pool({
       connectionString: databaseUrl(),
