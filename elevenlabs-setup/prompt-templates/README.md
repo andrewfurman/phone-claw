@@ -1,6 +1,6 @@
 # ElevenLabs Prompt Templates
 
-Sample markdown snippets you can paste into an ElevenLabs Conversational AI agent prompt. They describe the configured virtual-machine CLI tools behind phone-claw and the common command patterns the voice agent should follow.
+Sample markdown snippets you can paste into an ElevenLabs Conversational AI agent prompt. They describe the configured virtual-machine CLI tools behind phone-claw (including the additive generic run_cli tool) and the common command patterns the voice agent should follow.
 
 These templates are grounded in the live public-safe agent snapshot (`andrew-assistant-agent.config.json`), the Fastify bridge tools, and the docs under `docs/`. They are not a full replacement for the exported agent prompt; use them when bootstrapping a new agent or refreshing one capability section.
 
