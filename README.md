@@ -11,8 +11,8 @@ This repo is public-safe. Real API keys, account IDs, phone numbers, webhook tok
 - `shared/` - code shared by the Worker and Fastify bridge, including web search.
 - `visualizer-app/` - React Router source for the password-protected live conversation dashboard.
 - `setup-and-testing-scripts/` - ElevenLabs configuration, export, and live smoke-test scripts.
-- `docs/` - architecture, EC2, and bridge-security notes.
-- `elevenlabs-setup/` and `twilio-setup/` - provider setup notes and public-safe config snapshots.
+- `docs/` - architecture, EC2, bridge-security notes, and the easy VM/bridge setup guide.
+- `elevenlabs-setup/` and `twilio-setup/` - provider setup notes, public-safe config snapshots, and sample ElevenLabs prompt templates.
 - `.env.example` - local environment template.
 
 ## Runtime Architecture
@@ -93,7 +93,7 @@ Security baseline:
 - CLI tools run as a non-admin `phoneclaw` service user.
 - Write tools are confirmation-gated in both the prompt and backend.
 
-See [docs/EC2_BARE_METAL_BRIDGE.md](docs/EC2_BARE_METAL_BRIDGE.md) and [docs/CLI_BRIDGE_SECURITY.md](docs/CLI_BRIDGE_SECURITY.md).
+See [docs/VM_BRIDGE_SETUP_GUIDE.md](docs/VM_BRIDGE_SETUP_GUIDE.md) for the short how-to, plus [docs/EC2_BARE_METAL_BRIDGE.md](docs/EC2_BARE_METAL_BRIDGE.md) and [docs/CLI_BRIDGE_SECURITY.md](docs/CLI_BRIDGE_SECURITY.md).
 
 ## ElevenLabs Setup
 
@@ -115,6 +115,8 @@ npm run elevenlabs:audio:check
 npm run elevenlabs:tools:configure
 npm run elevenlabs:agent:export
 ```
+
+Sample prompt snippets for VM CLI tools and common command patterns live in [elevenlabs-setup/prompt-templates/](elevenlabs-setup/prompt-templates/). They are meant to be pasted into an ElevenLabs agent prompt when bootstrapping or refreshing capability sections. See also [elevenlabs-setup/README.md](elevenlabs-setup/README.md).
 
 ## Tool Call Reference
 

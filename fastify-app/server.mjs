@@ -1096,7 +1096,7 @@ async function handleConversationHistoryGet(request, reply) {
     maxToolItems: body.max_tool_items || body.maxToolItems,
   });
 
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 async function handleConversationRecentContext(request, reply) {
@@ -1107,7 +1107,7 @@ async function handleConversationRecentContext(request, reply) {
     limit: body.limit || body.max_results || body.maxResults,
   });
 
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 async function handleConversationArchiveElevenLabs(request, reply) {
@@ -1122,7 +1122,7 @@ async function handleConversationArchiveElevenLabs(request, reply) {
         conversationId: body.conversation_id || body.conversationId || body.id,
       });
 
-  return reply.code(result.ok ? 200 : 400).send(result);
+  return reply.code(toolResultStatusCode(result)).send(result);
 }
 
 function isClaudeCodeToolResponse(result) {
