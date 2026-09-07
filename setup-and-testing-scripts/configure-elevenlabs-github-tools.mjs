@@ -1426,7 +1426,7 @@ function urlFetchToolConfig() {
   return webhookTool({
     name: "url_fetch",
     description:
-      "Read-only public URL fetcher for inspecting webpage contents, checking links from emails, and verifying unsubscribe/preference pages. It blocks localhost/private-network URLs. If the URL appears to unsubscribe or change preferences, ask Andrew to confirm before calling with confirmed=true.",
+      "Public URL fetcher for inspecting webpage contents, checking links from emails, verifying unsubscribe/preference pages, and submitting simple confirmed HTTP POST forms. It blocks localhost/private-network URLs. For unsubscribe/preference links and every POST, ask Andrew to confirm before calling with confirmed=true. If needs_browser=true, fall back to claude_code with Playwright.",
     url: `${workerBaseUrl}/cli/url-fetch`,
     required: ["url"],
     responseTimeoutSecs: 30,
@@ -1437,16 +1437,17 @@ function urlFetchToolConfig() {
         description: "HTTP or HTTPS URL to fetch. Do not read long tracking URLs aloud.",
       }),
       method: stringProperty({
-        description: "HTTP method. Use GET by default; use HEAD only when Andrew asks to check status.",
-        values: ["GET", "HEAD"],
+        description:
+          "HTTP method. Use GET by default; use HEAD to check status; use POST only for simple confirmed form/unsubscribe submissions.",
+        values: ["GET", "HEAD", "POST"],
       }),
       purpose: stringProperty({
         description:
-          "Why the URL is being fetched. Use unsubscribe for unsubscribe or preference links, verify for checking a result page, and read_page for ordinary page reading.",
-        values: ["read_page", "verify", "unsubscribe"],
+          "Why the URL is being fetched. Use unsubscribe for unsubscribe or preference links, submit_form for POST form submissions, verify for checking a result page, and read_page for ordinary page reading.",
+        values: ["read_page", "verify", "unsubscribe", "submit_form"],
       }),
       confirmed: booleanProperty(
-        "Set true only after Andrew confirms opening an unsubscribe or account-preference URL."
+        "Set true only after Andrew confirms an unsubscribe/preference URL or any state-changing POST."
       ),
       follow_redirects: booleanProperty("Follow HTTP redirects. Keep true unless debugging."),
       include_html: booleanProperty(
@@ -1456,6 +1457,33 @@ function urlFetchToolConfig() {
         description:
           "Maximum readable text characters to return. Use the default 12000 for phone calls; raise only when Andrew asks.",
       }),
+      form: stringProperty({
+        description:
+          "Optional form payload for POST. Prefer URL-encoded text such as email=a%40b.com&list=weekly, or a JSON object string.",
+      }),
+      body: stringProperty({
+        description: "Optional raw POST body when form is not used. Keep short.",
+      }),
+      content_type: stringProperty({
+        description:
+          "Optional Content-Type for POST. Defaults to application/x-www-form-urlencoded for form payloads.",
+      }),
+      headers: stringProperty({
+        description:
+          'Optional custom headers as a JSON object string, for example {"x-csrf-token":"..."}.',
+      }),
+      cookies: stringProperty({
+        description: "Optional Cookie header value or JSON object string of cookies for the request.",
+      }),
+      csrf_token: stringProperty({
+        description: "Optional CSRF token to include in the POST form/body and x-csrf-token header.",
+      }),
+      csrf_field: stringProperty({
+        description: "Optional CSRF form field name. Defaults to _csrf.",
+      }),
+      extract_csrf: booleanProperty(
+        "For POST only: first GET the page to collect a simple CSRF token and cookies when available."
+      ),
     },
     responseDescription: "Public URL fetch response.",
     responseProperties: urlFetchResponseProperties(),
@@ -2048,7 +2076,7 @@ function urlFetchResponseProperties() {
     ok: booleanProperty("Whether the URL fetch returned a 2xx or 3xx response."),
     status: stringProperty({
       description:
-        "Status code such as ok, http_error, invalid_url, blocked_private_url, confirmation_required, or url_fetch_timeout.",
+        "Status code such as ok, http_error, invalid_url, blocked_private_url, confirmation_required, unsupported_method, or url_fetch_timeout.",
     }),
     message: stringProperty({ description: "Error or status message." }),
     command: stringProperty({ description: "Command family, usually fetch URL." }),
@@ -2089,8 +2117,18 @@ function urlFetchResponseProperties() {
       properties: {
         url: stringProperty({ description: "Visited URL." }),
         status_code: integerProperty({ description: "HTTP status code." }),
+        method: stringProperty({ description: "HTTP method used for that hop." }),
       },
     }),
+    needs_browser: booleanProperty(
+      "True when the page looks JavaScript-heavy and a headless browser fallback is recommended."
+    ),
+    browser_fallback: stringProperty({
+      description: "Suggested fallback tool/path when needs_browser is true, usually claude_code_playwright.",
+    }),
+    request_content_type: stringProperty({ description: "Content-Type used for a POST body when present." }),
+    request_body_chars: integerProperty({ description: "POST body character count when a body was sent." }),
+    cookies_sent: booleanProperty("Whether cookies were included on the request."),
   };
 }
 
@@ -2312,7 +2350,8 @@ Email unsubscribe and interactive link workflows:
 - For an unsubscribe or email-preference request, first identify the exact email with himalaya_email_list and himalaya_email_read, then identify the most relevant unsubscribe, opt-out, or preference URL from that message.
 - Repeat the sender/email, the URL domain, and the intended action in plain English, then ask Andrew to confirm before opening an unsubscribe or preference-management link. Do not set confirmed=true before that confirmation.
 - Use url_fetch with purpose="unsubscribe" and confirmed=true for read-only verification of the unsubscribe/preference URL, or when the page text itself clearly confirms the address is already unsubscribed.
-- If url_fetch shows JavaScript-heavy content, a form, buttons, multiple choices, or no clear completion state, use claude_code action="submit_task" with mode="run" and confirmed=true to launch an async browser task.
+- For simple one-step unsubscribe or preference form submissions that do not need JavaScript, use url_fetch method="POST" with purpose="submit_form" or purpose="unsubscribe", optional form/headers/cookies/csrf fields, and confirmed=true only after Andrew confirms.
+- If url_fetch returns needs_browser=true, or shows JavaScript-heavy content, a complex form, buttons, multiple choices, or no clear completion state, use claude_code action="submit_task" with mode="run" and confirmed=true to launch an async browser task.
 - In the Claude Code task, explicitly instruct Claude to use Playwright or another headless browser from the EC2 bridge, inspect the DOM and screenshots as needed, click only controls needed for the confirmed unsubscribe/preference action, and write a concise structured outcome.
 - Tell Claude Code to stop without completing the action if it hits a login wall, CAPTCHA, payment/checkout flow, account deletion, security settings, unclear destructive action, or anything beyond the confirmed email preference change.
 - After submit_task returns, tell Andrew the browser job started and keep the job_id in context. When Andrew asks what happened, call claude_code with action="job_status" and that job_id.
@@ -2352,7 +2391,7 @@ CLI capability:
 - If rss_get_article_text returns access_note saying the text may be an excerpt, say that plainly.
 - Do not call rss_refresh_feeds before every RSS lookup. Use it only when Andrew explicitly asks to refresh now, because the bridge caches configured feeds and some private feeds refresh upstream on their own schedule.
 - These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.
-- Use url_fetch when Andrew asks to fetch a specific webpage URL, inspect a link from an email, check an unsubscribe/preference page, or verify whether a public URL loaded. It returns readable page text, title, redirects, and links. It blocks localhost and private-network URLs. For unsubscribe, opt-out, preference, or subscription-management links, first repeat the intended action briefly and ask Andrew to confirm before calling url_fetch with purpose="unsubscribe" and confirmed=true.
+- Use url_fetch when Andrew asks to fetch a specific webpage URL, inspect a link from an email, check an unsubscribe/preference page, verify whether a public URL loaded, or submit a simple confirmed form POST. It returns readable page text, title, redirects, links, and needs_browser when a headless browser is required. It blocks localhost and private-network URLs. For unsubscribe, opt-out, preference, subscription-management links, and every POST, first repeat the intended action briefly and ask Andrew to confirm before calling url_fetch with confirmed=true.
 - Before slow CLI calls, and before the first web_search call in a user turn, say a brief natural status phrase, then call the tool. Do not say another status phrase before a second web_search call in the same user turn.
 
 End-call behavior:

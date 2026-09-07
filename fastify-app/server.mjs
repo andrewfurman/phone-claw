@@ -1030,6 +1030,15 @@ async function handleUrlFetch(request, reply) {
     maxBodyChars: body.max_body_chars || body.maxBodyChars,
     maxResponseBytes: body.max_response_bytes || body.maxResponseBytes || body.max_raw_bytes || body.maxRawBytes,
     timeoutMs: body.timeout_ms || body.timeoutMs,
+    form: body.form ?? body.form_data ?? body.formData,
+    formData: body.form_data ?? body.formData,
+    body: body.body ?? body.payload ?? body.data,
+    contentType: body.content_type || body.contentType,
+    headers: body.headers,
+    cookies: body.cookies || body.cookie,
+    csrfToken: body.csrf_token || body.csrfToken,
+    csrfField: body.csrf_field || body.csrfField,
+    extractCsrf: body.extract_csrf ?? body.extractCsrf,
   });
 
   return reply.code(toolResultStatusCode(result)).send(result);

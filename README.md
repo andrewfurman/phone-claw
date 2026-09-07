@@ -149,7 +149,7 @@ All webhook tool calls are configured on the ElevenLabs agent. Public calls hit 
 | `rss_search_entries` | `/cli/rss/search` | EC2 bridge | Searches configured feeds by keyword and optional date range. Same limits as recent entries. |
 | `rss_get_article_text` | `/cli/rss/article-text` | EC2 bridge | Returns article text from feed content fields for an exact entry id or URL. Reports `full_article_available` and `access_note` when text is only an excerpt. |
 | `rss_refresh_feeds` | `/cli/rss/refresh` | EC2 bridge | Refreshes bridge feed cache only when explicitly requested. |
-| `url_fetch` | `/cli/url-fetch` | EC2 bridge | Fetches public HTTP/HTTPS pages for exact URLs, email links, and unsubscribe verification. Blocks localhost/private-network destinations and requires confirmation for unsubscribe/preference-style links. |
+| `url_fetch` | `/cli/url-fetch` | EC2 bridge | Fetches public HTTP/HTTPS pages and can submit simple confirmed HTTP POST form/unsubscribe requests with optional URL-encoded payloads, custom headers, cookies, and basic CSRF handling. Blocks localhost/private-network destinations and requires confirmation for unsubscribe/preference-style links and all POSTs. |
 | `conversation_history_search` | `/conversation-history/search` | EC2 bridge plus Neon/Postgres | Searches archived calls by keyword/date and returns compact summaries and keywords. |
 | `conversation_history_get` | `/conversation-history/get` | EC2 bridge plus Neon/Postgres | Gets one archived conversation with capped transcript/tool excerpts when requested. |
 | `claude_code` | `/cli/claude-code` | EC2 bridge via Claude Code | Explicit escalation only. Supports `auth_status`, `start_session`, `submit_task`, `steer_session`, and `job_status`. Task submission and steering are confirmation-gated; run jobs are async. Confirmed unsubscribe/preference-center browser work can be delegated to Claude Code with Playwright when `url_fetch` cannot verify the page statically. |
@@ -174,22 +174,25 @@ Email write tools are split by risk:
 
 ## URL Fetching
 
-`url_fetch` is for exact URLs, not general search. It is useful when the agent needs to inspect a link from an email, fetch a full webpage, or verify whether an unsubscribe/preference page loaded.
+`url_fetch` is for exact URLs, not general search. It is useful when the agent needs to inspect a link from an email, fetch a full webpage, verify whether an unsubscribe/preference page loaded, or submit a simple confirmed form POST without a browser.
 
 The tool is intentionally constrained:
 
-- Only `GET` and `HEAD` are supported.
+- `GET`, `HEAD`, and `POST` are supported.
+- POST can include URL-encoded form fields, a raw/JSON body, custom headers, cookies, an explicit CSRF token, or `extract_csrf=true` to collect a simple CSRF token/cookies from a prior GET.
+- Every POST is treated as state-changing and requires Andrew's explicit verbal confirmation plus `confirmed=true`.
 - Only `http` and `https` URLs are supported.
 - Localhost, private IP ranges, and private DNS results are blocked before fetch and after each redirect.
 - Response bodies, readable text, raw HTML, redirects, and extracted links are capped.
 - Unsubscribe, opt-out, preference, and subscription-management URLs require Andrew's explicit confirmation before the tool is called with `purpose="unsubscribe"` and `confirmed=true`.
+- When the response looks JavaScript-heavy, `needs_browser=true` and `answer_text` tell the agent to fall back to `claude_code` with Playwright/headless browser automation.
 
 For interactive unsubscribe or preference-center pages, the agent uses the existing generic `claude_code` async job tool rather than a separate browser-job API:
 
 - Find the exact email and relevant unsubscribe/preference URL with Himalaya tools.
 - Repeat the sender, URL domain, and intended action, then ask Andrew to confirm.
-- Try `url_fetch` for static verification or already-complete pages.
-- If the page needs JavaScript, buttons, forms, screenshots, or multi-step interaction, start an async `claude_code` run job that tells Claude Code to use Playwright/headless browser on EC2.
+- Try `url_fetch` for static verification, already-complete pages, or simple confirmed POST form submissions.
+- If the page needs JavaScript, complex buttons/forms, screenshots, or multi-step interaction, start an async `claude_code` run job that tells Claude Code to use Playwright/headless browser on EC2.
 - Report the returned `job_id`; later use `claude_code` `job_status` to say whether the page showed a clear unsubscribe/preference-saved success state.
 
 ## Conversation Memory
