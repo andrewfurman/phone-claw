@@ -1,7 +1,10 @@
+import { loadPhoneclawEnv } from "../shared/load-env-file.mjs";
 import {
   archiveElevenLabsConversation,
   archiveLatestElevenLabsConversations,
 } from "../fastify-app/conversation-history.mjs";
+
+loadPhoneclawEnv();
 
 const conversationId = process.argv.find((arg) => arg.startsWith("--conversation-id="))?.split("=")[1];
 const latestArg = process.argv.find((arg) => arg.startsWith("--latest="))?.split("=")[1];

@@ -1,9 +1,14 @@
+import { loadPhoneclawEnv } from "../shared/load-env-file.mjs";
 import {
   conversationHistoryConfigured,
   conversationHistoryGet,
   conversationHistorySearch,
   conversationRecentContext,
 } from "../fastify-app/conversation-history.mjs";
+
+// Load .env /etc/phoneclaw/bridge.env in-process. Do not shell-source bridge.env:
+// unquoted & in CONVERSATION_DATABASE_URL query strings backgrounds the assignment.
+loadPhoneclawEnv();
 
 const args = process.argv.slice(2);
 const action =
@@ -92,5 +97,6 @@ function printUsage() {
   node setup-and-testing-scripts/query-conversation-history.mjs recent [--limit=10]
 
 Requires CONVERSATION_DATABASE_URL (or NEON_DATABASE_URL / DATABASE_URL).
+Loads ./.env and /etc/phoneclaw/bridge.env in-process (no shell source).
 `);
 }
