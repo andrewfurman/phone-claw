@@ -10,6 +10,7 @@ const endpoint = process.env.PHONECLAW_TEST_TOOL_URL;
 const token = process.env.PHONECLAW_TEST_TOOL_TOKEN;
 const cwd = process.env.PHONECLAW_TEST_CWD;
 const revision = process.env.PHONECLAW_TEST_REVISION;
+const audioMode = process.argv.includes("--audio");
 if (!apiKey || !sourceAgentId || !endpoint || !token || !cwd || !revision) {
   throw new Error("Missing ElevenLabs credentials or PHONECLAW_TEST_TOOL_URL/TOKEN/CWD/REVISION; see docs/AUTOMATED_CALL_TESTING.md");
 }
@@ -39,6 +40,16 @@ assert.equal(filtered.ok, true);
 assert.equal(filtered.stdout, "");
 
 const source = await api(`/agents/${sourceAgentId}`);
+let inputAudio;
+if (audioMode) {
+  const speech = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${source.conversation_config.tts.voice_id}?output_format=pcm_16000`, {
+    method: "POST", headers: { "xi-api-key": apiKey, "content-type": "application/json" },
+    body: JSON.stringify({ text: "Please use run CLI to execute P W D in the test directory specified in your instructions. Tell me the exact working directory returned by the tool.", model_id: "eleven_flash_v2_5" }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!speech.ok) throw new Error(`Test speech synthesis returned HTTP ${speech.status}`);
+  inputAudio = Buffer.from(await speech.arrayBuffer());
+}
 const snapshot = JSON.parse(await readFile(new URL("../elevenlabs-setup/andrew-assistant-agent.config.json", import.meta.url), "utf8"));
 const configTool = structuredClone(snapshot.agent.conversation_config.agent.prompt.tools.find(t => t.name === "run_cli"));
 configTool.api_schema.url = endpoint;
@@ -50,15 +61,16 @@ configTool.api_schema.request_body_schema.properties.confirmed.description = "Tr
 const created = await api("/agents/create", "POST", {
   name: `PhoneClaw PR CLI test ${revision.slice(0, 8)}`,
   conversation_config: {
-    tts: { voice_id: source.conversation_config.tts.voice_id, model_id: source.conversation_config.tts.model_id },
+    asr: { user_input_audio_format: "pcm_16000" },
+    tts: { voice_id: source.conversation_config.tts.voice_id, model_id: source.conversation_config.tts.model_id, agent_output_audio_format: "pcm_16000" },
     agent: {
       first_message: "Ready for the command tool test.", language: "en",
       prompt: {
-        prompt: `You are Andrew's command test assistant. Use run_cli when asked; use cwd exactly as supplied. Only pwd and ls with simple flags run without confirmation. All other commands require confirmation of the exact command. Never invent execution results or bypass a rejection. Report the result briefly.`,
+        prompt: `You are Andrew's command test assistant. The test directory is ${cwd}. Use run_cli when asked; use cwd exactly as supplied. Only pwd and ls with simple flags run without confirmation. All other commands require confirmation of the exact command. Never invent execution results or bypass a rejection. Report the exact returned working directory verbatim.`,
         llm: source.conversation_config.agent.prompt.llm, tools: [configTool],
       },
     },
-    conversation: { max_duration_seconds: 120, client_events: ["audio", "agent_response", "user_transcript", "agent_tool_response"] },
+    conversation: { text_only: !audioMode, max_duration_seconds: 120, client_events: ["audio", "agent_response", "user_transcript", "agent_tool_response"] },
   },
 });
 const testAgentId = created.agent_id;
@@ -72,7 +84,9 @@ try {
   const done = new Promise((resolve, reject) => { finished = resolve; failed = reject; });
   const timer = setTimeout(() => failed(new Error("Live test timed out")), 90000);
   let settle;
+  let inputTimer;
   let toolSeen = false;
+  let audioReceived = false;
   ws.addEventListener("open", () => ws.send(JSON.stringify({ type: "conversation_initiation_client_data" })));
   ws.addEventListener("message", event => {
     let message;
@@ -82,18 +96,34 @@ try {
       conversationId = message.conversation_initiation_metadata_event?.conversation_id;
       if (!sent) {
         sent = true;
-        ws.send(JSON.stringify({ type: "user_message", text: `Please use run_cli with command pwd and cwd ${cwd}. Report the working directory returned by the tool.` }));
+        if (audioMode) {
+          inputTimer = setTimeout(async () => {
+            try {
+              // Raw PCM16 mono at 16 kHz: 3200 bytes per 100 ms, then silence for VAD.
+              const padded = Buffer.concat([inputAudio, Buffer.alloc(32000)]);
+              for (let offset = 0; offset < padded.length; offset += 3200) {
+                if (ws.readyState !== WebSocket.OPEN) throw new Error("Socket closed during input audio");
+                ws.send(JSON.stringify({ user_audio_chunk: padded.subarray(offset, offset + 3200).toString("base64") }));
+                await wait(100);
+              }
+            } catch (error) { failed(error); }
+          }, 3000);
+        } else {
+          ws.send(JSON.stringify({ type: "user_message", text: `Please use run_cli with command pwd and cwd ${cwd}. Report the exact working directory returned by the tool.` }));
+        }
       }
     }
     if (message.type === "agent_tool_response") toolSeen = true;
+    if (toolSeen && message.type === "audio") audioReceived = true;
     if (toolSeen && message.type === "agent_response") {
       clearTimeout(settle);
-      settle = setTimeout(finished, 2000);
+      // Closing during TTS playback truncates the archived assistant transcript.
+      settle = setTimeout(finished, audioMode ? 18000 : 3000);
     }
   });
   ws.addEventListener("error", () => failed(new Error("Live test WebSocket failed")));
   ws.addEventListener("close", () => { if (toolSeen) finished(); else failed(new Error("Conversation closed before tool result")); });
-  try { await done; } finally { clearTimeout(timer); clearTimeout(settle); ws.close(); }
+  try { await done; } finally { clearTimeout(timer); clearTimeout(settle); clearTimeout(inputTimer); ws.close(); }
   assert.ok(conversationId);
   let details;
   let matched;
@@ -115,8 +145,9 @@ try {
     deployed_revision: result?.revision === revision, policy_version: result?.policy_version === GENERIC_CLI_POLICY_VERSION,
     nested_directory: result?.working_directory === cwd, confirmation_preflight: denied.status === "confirmation_required", environment_preflight: filtered.stdout === "",
     agent_answered: agentAnswer.includes(cwd),
+    ...(audioMode ? { user_audio_transcribed: details.transcript?.some(t => t.role === "user" && /directory/i.test(t.message || "")), agent_audio_received: audioReceived } : {}),
   };
-  console.log(JSON.stringify({ ok: Object.values(checks).every(Boolean), transport: "elevenlabs_websocket_text", revision, conversation_id: conversationId, agent_answer: agentAnswer, checks }, null, 2));
+  console.log(JSON.stringify({ ok: Object.values(checks).every(Boolean), transport: audioMode ? "elevenlabs_websocket_audio" : "elevenlabs_websocket_text", revision, conversation_id: conversationId, agent_answer: agentAnswer, checks }, null, 2));
   assert.ok(Object.values(checks).every(Boolean), "Live CLI test failed");
 } finally {
   await api(`/agents/${testAgentId}`, "DELETE");

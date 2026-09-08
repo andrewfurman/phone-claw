@@ -74,5 +74,5 @@ try {
   console.log(JSON.stringify({ ok: Object.values(checks).every(Boolean), transport: "twilio_pstn", revision: env.PHONECLAW_TEST_REVISION, call_sid: call.sid, incoming_call_sid: sid, conversation_id: matched.conversation_id, checks }, null, 2));
   assert.ok(Object.values(checks).every(Boolean), "Twilio functionality test failed");
 } finally {
-  if (call && !terminal.has(call.status)) await client.calls(call.sid).update({ status: "completed" });
+  if (call && !terminal.has(call.status)) await client.calls(call.sid).update({ status: ["queued", "ringing"].includes(call.status) ? "canceled" : "completed" });
 }
