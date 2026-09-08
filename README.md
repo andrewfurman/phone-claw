@@ -248,6 +248,8 @@ npm run elevenlabs:end-call:test
 npm run elevenlabs:claude-steering:test
 ```
 
+See [Automated call and functionality testing](docs/AUTOMATED_CALL_TESTING.md) for PR validation, isolated live previews, and real Twilio calls.
+
 ## PR And Merge Policy
 
 All non-trivial changes should go through a pull request before merging to `main`.

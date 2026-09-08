@@ -1471,7 +1471,7 @@ function runCliToolConfig() {
   return webhookTool({
     name: "run_cli",
     description:
-      "Generic VM CLI executor. Pass a raw shell command string to run on the private bridge as the phoneclaw service user. Prefer specialized tools (GitHub, Himalaya, Otter, RSS, url_fetch, claude_code) when they fit. Destructive or state-changing commands require confirmed=true after Andrew verbally confirms the exact command. Secret-dumping commands are blocked.",
+      "Generic VM CLI executor. Prefer specialized tools (GitHub, Himalaya, Otter, RSS, url_fetch, claude_code). Only pwd and ls with supported flags run without confirmation. Every other shell command requires confirmed=true after Andrew confirms the exact command, including read-only commands outside this small allowlist. Secret-dumping commands are blocked. Commands run without shell startup files and with a filtered environment.",
     url: `${workerBaseUrl}/cli/run`,
     required: ["command"],
     responseTimeoutSecs: 35,
@@ -1480,7 +1480,7 @@ function runCliToolConfig() {
     requestProperties: {
       command: stringProperty({
         description:
-          "Exact shell command to run on the VM bridge, for example: gh repo list --limit 5, or ls -la.",
+          "Exact command, for example pwd or ls -la. Other commands require explicit confirmation; use specialized tools for normal GitHub/email reads.",
       }),
       cwd: stringProperty({
         description:
@@ -1490,7 +1490,7 @@ function runCliToolConfig() {
         description: "Optional timeout in milliseconds. Default 25000, max 60000.",
       }),
       confirmed: booleanProperty(
-        "Set true only after Andrew confirms an exact state-changing or destructive command."
+        "Set true only after Andrew confirms the exact shell command. Required for every command except supported pwd/ls forms."
       ),
       max_raw_bytes: integerProperty({
         description: "Optional max stdout bytes to return. Default 200000.",
@@ -1510,6 +1510,7 @@ function runCliToolConfig() {
       stderr: stringProperty({ description: "Command stderr, redacted and truncated." }),
       stdout_truncated: booleanProperty("Whether stdout was truncated."),
       classification: stringProperty({ description: "safe, dangerous, or blocked classification." }),
+      policy_version: stringProperty({ description: "Generic CLI policy version reported by the running bridge." }),
       answer_text: stringProperty({
         description: "Compact spoken summary. Prefer this before reading raw stdout.",
       }),
@@ -2488,7 +2489,7 @@ CLI capability:
 - If rss_get_article_text returns access_note saying the text may be an excerpt, say that plainly.
 - Do not call rss_refresh_feeds before every RSS lookup. Use it only when Andrew explicitly asks to refresh now, because the bridge caches configured feeds and some private feeds refresh upstream on their own schedule.
 - These CLI tools depend on a private CLI bridge. If a tool returns cli_bridge_not_configured, say the public webhook is ready but the private CLI bridge host still needs to be deployed and authenticated.
-- You also have a generic webhook tool named run_cli for raw shell commands on the VM when no specialized tool fits. Prefer specialized tools first. For read-only commands such as ls, pwd, gh issue list, or himalaya envelope list, call run_cli with the exact command. For destructive or state-changing commands, repeat the exact command and get Andrew's confirmation before calling with confirmed=true. If run_cli returns confirmation_required or command_blocked, explain that plainly and do not invent a workaround.
+- You also have a generic webhook tool named run_cli for raw shell commands on the VM when no specialized tool fits. Only pwd (optionally -L or -P) and ls with simple flags (a, A, l, h, 1, d) run without confirmation. Use cwd to choose a directory; do not add path arguments. Every other command requires Andrew to confirm the exact command before confirmed=true, including read-only commands outside that small allowlist. Prefer specialized tools for GitHub/email reads. Commands run without shell startup files and with a filtered environment. If run_cli returns confirmation_required or command_blocked, explain that plainly and do not invent a workaround.
 - Use url_fetch when Andrew asks to fetch a specific webpage URL, inspect a link from an email, check an unsubscribe/preference page, verify whether a public URL loaded, or submit a simple confirmed form POST. It returns readable page text, title, redirects, links, and needs_browser when a headless browser is required. It blocks localhost and private-network URLs. For unsubscribe, opt-out, preference, subscription-management links, and every POST, first repeat the intended action briefly and ask Andrew to confirm before calling url_fetch with confirmed=true.
 - Before slow CLI calls, and before the first web_search call in a user turn, say a brief natural status phrase, then call the tool. Do not say another status phrase before a second web_search call in the same user turn.
 
