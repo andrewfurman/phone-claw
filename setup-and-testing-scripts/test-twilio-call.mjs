@@ -30,7 +30,9 @@ assert.equal(preflight.policy_version, GENERIC_CLI_POLICY_VERSION, "Deploy the P
 const head = await tool({ command: "git rev-parse HEAD", cwd: env.PHONECLAW_TEST_PROJECT_ROOT, confirmed: true });
 assert.equal(head.ok, true);
 assert.equal(head.stdout.trim(), env.PHONECLAW_TEST_REVISION, "Deployed checkout differs from expected revision");
-const phrase = `Please use run CLI with command P W D and working directory ${env.PHONECLAW_TEST_CWD}. Tell me the working directory returned by the tool.`;
+// Spell the commonly misheard /opt component and speak separators explicitly.
+const spokenPath = env.PHONECLAW_TEST_CWD.replaceAll("/", " slash ").replace(/\bopt\b/g, "O P T");
+const phrase = `Please use run CLI with command P W D and working directory ${spokenPath}, all lowercase. Tell me the working directory returned by the tool.`;
 const twiml = new twilio.twiml.VoiceResponse();
 twiml.pause({ length: 6 });
 twiml.say({ voice: "alice", language: "en-US" }, phrase);
@@ -56,21 +58,27 @@ try {
   assert.equal(inbound.length, 1, "Cannot uniquely correlate the incoming test call");
   const sid = inbound[0].sid;
   let matched;
+  let correlatedId;
   for (let i = 0; i < 30 && !matched; i++) {
-    const recent = await eleven(`/conversations?agent_id=${encodeURIComponent(env.ELEVENLABS_AGENT_ID)}&page_size=20`);
+    const recent = correlatedId ? { conversations: [{ conversation_id: correlatedId }] } : await eleven(`/conversations?agent_id=${encodeURIComponent(env.ELEVENLABS_AGENT_ID)}&page_size=20`);
     for (const item of recent.conversations || []) {
       if (item.start_time_unix_secs < started - 2) continue;
       const detail = await eleven(`/conversations/${item.conversation_id}`);
       const actualSid = detail.metadata?.phone_call?.call_sid || detail.metadata?.twilio_call_sid || detail.conversation_initiation_client_data?.dynamic_variables?.twilio_call_sid;
-      if (actualSid === sid) { matched = detail; break; }
+      if (actualSid === sid) {
+        correlatedId = item.conversation_id;
+        // Twilio completion can precede finalized ElevenLabs transcripts/results.
+        if (["done", "failed"].includes(detail.status) && Array.isArray(detail.transcript)) matched = detail;
+        break;
+      }
     }
     if (!matched) await wait(2000);
   }
-  assert.ok(matched, "No ElevenLabs transcript correlated to the Twilio Call SID");
+  assert.ok(matched, "No finalized ElevenLabs transcript correlated to the Twilio Call SID");
   const results = matched.transcript?.flatMap(t => t.tool_results || []) || [];
   const cliResult = results.find(r => r.tool_name === "run_cli");
   const value = typeof cliResult?.result_value === "string" ? JSON.parse(cliResult.result_value) : cliResult?.result_value;
-  const checks = { twilio_completed: call.status === "completed", conversation_correlated: true, run_cli_ok: cliResult?.is_error === false && value?.ok === true, expected_policy: value?.policy_version === GENERIC_CLI_POLICY_VERSION, expected_directory: value?.working_directory === env.PHONECLAW_TEST_CWD, user_audio_transcribed: matched.transcript?.some(t => t.role === "user" && t.message?.length > 0) };
+  const checks = { twilio_completed: call.status === "completed", conversation_correlated: true, conversation_finalized: matched.status === "done", run_cli_ok: cliResult?.is_error === false && value?.ok === true, expected_policy: value?.policy_version === GENERIC_CLI_POLICY_VERSION, expected_directory: value?.working_directory === env.PHONECLAW_TEST_CWD, user_audio_transcribed: matched.transcript?.some(t => t.role === "user" && /\b(run|command|directory|pwd)\b/i.test(t.message || "")) };
   console.log(JSON.stringify({ ok: Object.values(checks).every(Boolean), transport: "twilio_pstn", revision: env.PHONECLAW_TEST_REVISION, call_sid: call.sid, incoming_call_sid: sid, conversation_id: matched.conversation_id, checks }, null, 2));
   assert.ok(Object.values(checks).every(Boolean), "Twilio functionality test failed");
 } finally {

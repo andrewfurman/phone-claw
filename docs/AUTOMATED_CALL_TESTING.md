@@ -40,7 +40,9 @@ Runtime credentials are in `/etc/phoneclaw/bridge.env`. The file can be readable
 
 The JavaScript loader in `shared/load-env-file.mjs` can load authorized files without shell-sourcing them. Do not `source bridge.env`: unquoted database URLs containing `&` are valid in this file and have previously broken shell-sourcing workflows. For local tests, use an ignored `.env` with mode `0600`; never commit it.
 
-As inspected on September 8, 2026, the personal bridge had ElevenLabs and Worker tool credentials, but **no Twilio Account SID/Auth Token/API-key pair**. The ElevenLabs account had no imported phone number; the application uses the [register-call integration](https://elevenlabs.io/docs/eleven-agents/phone-numbers/twilio-integration/register-call). Do not assume an ElevenLabs API key can originate Twilio calls in this configuration.
+Twilio REST API credentials and the automated caller/target configuration are stored separately in `/etc/phoneclaw/twilio-test.env`, owned by root with mode `0600`. The file contains `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY`, `TWILIO_API_SECRET`, `TWILIO_TEST_FROM`, and `TWILIO_TEST_TO`. Load it only into the dedicated test runner, together with the required ElevenLabs/Worker settings from `bridge.env`; the normal bridge service does not need these Twilio API credentials. Account recovery codes are not runtime credentials and are not stored there.
+
+API access and the existing PhoneClaw number/verified caller were checked on September 8, 2026. The ElevenLabs account has no imported phone number; the application uses the [register-call integration](https://elevenlabs.io/docs/eleven-agents/phone-numbers/twilio-integration/register-call). An ElevenLabs API key alone cannot originate the Twilio test in this configuration.
 
 ## Isolated generic CLI preview
 
@@ -92,6 +94,8 @@ PHONECLAW_TEST_CWD=/opt/phoneclaw/docs
 PHONECLAW_TEST_REVISION=<deployed full commit SHA>
 ```
 
+If validating an unmerged candidate through the existing bridge service, first check that no PhoneClaw calls are active. Keep the candidate in a separate `/opt/` checkout: the production service uses `PrivateTmp=true`, so it cannot use a checkout under the host's `/var/tmp/`. Use a temporary systemd override with an automatic rollback, wait for `/health`, and restore the original service afterward. Keep Twilio credentials in the dedicated test runner environment.
+
 Run:
 
 ```bash
@@ -100,7 +104,7 @@ npm run twilio:call:test -- --place-call
 
 The script verifies account ownership and the destination's voice webhook, checks the live CLI policy and deployed Git revision, then places one call. Inline TwiML pauses for the greeting, speaks a `pwd` request, waits for the answer, and hangs up. The call has a 90-second limit; the script also attempts to end a still-active call during cleanup. Automatic create retries are disabled because a lost response may still mean a call was placed.
 
-Success requires a completed Twilio call, an unambiguously matched inbound call, an ElevenLabs transcript correlated by Call SID, a transcribed user turn, and a successful `run_cli` result for the expected directory and policy. Missing or ambiguous evidence fails the test. Inspect speech recognition and timing if a spoken path is misunderstood; do not weaken assertions just to obtain a pass. The initial scenario covers `run_cli`; extend its prompt and result assertions together for new functionalities.
+Success requires a completed Twilio call, an unambiguously matched inbound call, a finalized ElevenLabs transcript correlated by Call SID, a transcribed user turn, and a successful `run_cli` result for the expected directory and policy. The driver waits for ElevenLabs finalization after Twilio completes; an early empty transcript is not a test result. Missing or ambiguous evidence fails the test. Inspect speech recognition and timing if a spoken path is misunderstood; do not weaken assertions just to obtain a pass. The initial scenario covers `run_cli`; extend its prompt and result assertions together for new functionalities.
 
 This driver must be live-validated with the deployment's actual Twilio configuration before relying on it as a release gate. If credentials are missing, report “Twilio test not run” separately from any passing direct ElevenLabs test.
 
