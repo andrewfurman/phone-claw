@@ -98,6 +98,19 @@ test("blocked secret commands stay blocked even when confirmed", async () => {
   }
 });
 
+test("unconfirmed commands bypass PATH and the configured shell", async () => {
+  const savedPath = process.env.PATH;
+  process.env.PATH = outside;
+  process.env.GENERIC_CLI_SHELL = "/does/not/exist";
+  try {
+    assert.equal((await runGenericCli({ command: "ls -la", cwd: child })).status, "ok");
+    assert.equal((await runGenericCli({ command: "pwd", cwd: child })).status, "ok");
+  } finally {
+    process.env.PATH = savedPath;
+    delete process.env.GENERIC_CLI_SHELL;
+  }
+});
+
 test("success, errors, limits and redaction keep the tool response contract", async () => {
   assert.equal((await runGenericCli({ command: " ", cwd: root })).status, "missing_field");
   assert.equal((await runGenericCli({ command: "x".repeat(8001), cwd: root })).status, "command_too_long");

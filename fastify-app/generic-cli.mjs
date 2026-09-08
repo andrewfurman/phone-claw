@@ -130,6 +130,7 @@ export async function runGenericCli({
   const childEnv = buildChildEnv(env);
 
   const result = await execShellCommand(normalizedCommand, {
+    readOnly: classification.kind === "safe",
     cwd: cwdResult.cwd,
     timeoutMs: timeout,
     env: childEnv,
@@ -277,14 +278,18 @@ function buildChildEnv(requestedEnv) {
   return childEnv;
 }
 
-function execShellCommand(command, { cwd, timeoutMs, env, maxRawBytes }) {
+function execShellCommand(command, { cwd, timeoutMs, env, maxRawBytes, readOnly }) {
   const shell = process.env.GENERIC_CLI_SHELL || "/bin/bash";
+  // Bypass shell and PATH lookup for the tiny unconfirmed command allowlist.
+  const [program, ...args] = command.split(" ");
+  const executable = readOnly ? `/bin/${program}` : shell;
+  const executableArgs = readOnly ? args : ["--noprofile", "--norc", "-c", command];
 
   return new Promise((resolveResult) => {
     try {
       execFile(
-        shell,
-        ["--noprofile", "--norc", "-c", command],
+        executable,
+        executableArgs,
         {
           cwd,
           env,

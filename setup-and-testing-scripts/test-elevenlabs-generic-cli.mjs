@@ -97,10 +97,13 @@ try {
   assert.ok(conversationId);
   let details;
   let matched;
+  let agentAnswer = "";
   for (let attempt = 0; attempt < 30; attempt++) {
     details = await api(`/conversations/${conversationId}`);
     matched = details.transcript?.flatMap(turn => turn.tool_results || []).find(r => r.tool_name === "run_cli");
-    if (matched) break;
+    const toolIndex = details.transcript?.findIndex(turn => turn.tool_results?.some(r => r.tool_name === "run_cli")) ?? -1;
+    agentAnswer = toolIndex < 0 ? "" : (details.transcript.slice(toolIndex + 1).filter(turn => turn.role === "agent" && turn.message?.trim()).at(-1)?.message || "");
+    if (matched && agentAnswer) break;
     await wait(2000);
   }
   const result = typeof matched?.result_value === "string" ? JSON.parse(matched.result_value) : matched?.result_value;
@@ -111,9 +114,9 @@ try {
     result_ok: matched?.is_error === false && result?.ok === true,
     deployed_revision: result?.revision === revision, policy_version: result?.policy_version === GENERIC_CLI_POLICY_VERSION,
     nested_directory: result?.working_directory === cwd, confirmation_preflight: denied.status === "confirmation_required", environment_preflight: filtered.stdout === "",
-    agent_answered: details.transcript?.some(turn => turn.role === "agent" && String(turn.message || "").includes(cwd)),
+    agent_answered: agentAnswer.includes(cwd),
   };
-  console.log(JSON.stringify({ ok: Object.values(checks).every(Boolean), transport: "elevenlabs_websocket_text", revision, conversation_id: conversationId, checks }, null, 2));
+  console.log(JSON.stringify({ ok: Object.values(checks).every(Boolean), transport: "elevenlabs_websocket_text", revision, conversation_id: conversationId, agent_answer: agentAnswer, checks }, null, 2));
   assert.ok(Object.values(checks).every(Boolean), "Live CLI test failed");
 } finally {
   await api(`/agents/${testAgentId}`, "DELETE");

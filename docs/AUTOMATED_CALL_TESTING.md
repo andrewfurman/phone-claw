@@ -67,7 +67,7 @@ PHONECLAW_TEST_CWD=/path/to/pr-checkout/docs
 PHONECLAW_TEST_REVISION=<same full git commit SHA>
 ```
 
-Run `npm run elevenlabs:generic-cli:test`. It first checks the preview's revision/policy, rejects a harmless unconfirmed write, and verifies the synthetic environment marker is excluded. It then creates a temporary agent with only `run_cli`, opens a direct text WebSocket conversation, asks it to execute `pwd` in the child directory, and verifies the actual tool arguments/result. It deletes the temporary agent in `finally`; stop the preview and tunnel afterward. If interrupted forcibly, inspect and remove the temporary agent named `PhoneClaw PR CLI test <SHA>` and stop the transient services.
+Run `npm run elevenlabs:generic-cli:test`. It first checks the preview's revision/policy, rejects a harmless unconfirmed write, and verifies the synthetic environment marker is excluded. It then creates a temporary agent with only `run_cli`, opens a direct text WebSocket conversation, asks it to execute `pwd` in the child directory, and verifies the actual tool arguments/result. It prints a sanitized result and answer before deleting the temporary agent in `finally` (deleting the agent can also remove its conversation, so retain that output as evidence); stop the preview and tunnel afterward. If interrupted forcibly, inspect and remove the temporary agent named `PhoneClaw PR CLI test <SHA>` and stop the transient services.
 
 This checks live ElevenLabs tool execution with the PR code. It does not validate the production agent's full prompt/tool combination, ASR, or Twilio. Run the relevant production smoke test after the approved deployment and agent update.
 
