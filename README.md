@@ -141,6 +141,7 @@ All webhook tool calls are configured on the ElevenLabs agent. Public calls hit 
 | `create_reply_all_draft` | `/cli/himalaya/create-reply-all-draft` | EC2 bridge via Himalaya CLI | Saves a reply-all draft with Andrew's message above the quoted original thread; preserves original HTML when available. Requires confirmation; never sends. |
 | `create_forward_draft` | `/cli/himalaya/create-forward-draft` | EC2 bridge via Himalaya CLI | Saves a forward draft with Andrew's message above the original email; preserves original HTML inline and does not attach `.eml`. Requires confirmation; never sends. |
 | `himalaya_email_send` | `/cli/himalaya/email-send` | EC2 bridge via Himalaya CLI | Emergency-only send. Requires exact verbal preview plus `emergency=true`, `previewed=true`, and `confirmed=true`. |
+| `sendgrid_email_send` | `/cli/sendgrid/email-send` | EC2 bridge via SendGrid API | Normal assistant outbound from `@aifurman.com` (for example `info@`, `reminders@`, `research@`). Defaults To to `aifurman@gmail.com`, always keeps owner in To or CC, and requires `previewed=true` plus `confirmed=true`. Does not use Gmail SMTP, so sends stay out of personal Gmail Sent. |
 | `otter_speeches_list` | `/cli/otter/speeches-list` | EC2 bridge via Otter CLI | Lists recent Otter speeches/transcripts. |
 | `otter_speech_get` | `/cli/otter/speech-get` | EC2 bridge via Otter CLI | Fetches raw transcript JSON for a speech id/otid, capped for voice use. |
 | `otter_speech_search` | `/cli/otter/speech-search` | EC2 bridge via Otter CLI | Searches transcript segments by query and optional speaker. |
@@ -171,6 +172,16 @@ Email write tools are split by risk:
 - Draft and archive tools require exact voice confirmation.
 - Reply-all and forward drafts preserve original content inline and do not send.
 - `himalaya_email_send` is separate, emergency-only, preview-gated, confirmation-gated, and timeout-bounded so SMTP hangs do not silently look successful.
+
+## SendGrid Assistant Outbound
+
+Use SendGrid for dedicated assistant emails from `aifurman.com`. Himalaya remains for Gmail inbox, drafts, archive, and emergency Gmail SMTP sends.
+
+- `sendgrid_email_send` posts to the SendGrid Mail Send API on the EC2 bridge using `SENDGRID_API_KEY` from `/etc/phoneclaw/bridge.env`.
+- Default from is `SENDGRID_DEFAULT_FROM` (`info@aifurman.com`); from-addresses must stay on `@aifurman.com`.
+- Default recipient is `SENDGRID_DEFAULT_TO` (`aifurman@gmail.com`).
+- Safety: `SENDGRID_OWNER_EMAIL` (`aifurman@gmail.com`) must appear in To or CC on every send; if missing, the bridge auto-adds it to CC and notes that in the response.
+- Requires verbal preview plus `previewed=true` and `confirmed=true` before the API call (not emergency-only).
 
 ## URL Fetching
 

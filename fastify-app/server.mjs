@@ -29,6 +29,7 @@ import {
   urlFetch,
 } from "./cli-tools.mjs";
 import { runGenericCli } from "./generic-cli.mjs";
+import { sendgridConfigured, sendgridEmailSend } from "./sendgrid-tools.mjs";
 import {
   configuredRssFeedsConfigured,
   rssConfiguredEntryFullText,
@@ -121,6 +122,7 @@ app.get("/", async () => ({
     create_reply_all_draft: "POST /cli/himalaya/create-reply-all-draft",
     create_forward_draft: "POST /cli/himalaya/create-forward-draft",
     himalaya_email_send: "POST /cli/himalaya/email-send",
+    sendgrid_email_send: "POST /cli/sendgrid/email-send",
     otter_speeches_list: "POST /cli/otter/speeches-list",
     otter_speech_get: "POST /cli/otter/speech-get",
     otter_speech_search: "POST /cli/otter/speech-search",
@@ -151,6 +153,7 @@ app.get("/health", async () => ({
   github_cli_bridge_configured: Boolean(cliBridgeToken || webSearchToken),
   claude_code_bridge_configured: true,
   configured_rss_feeds_configured: configuredRssFeedsConfigured(),
+  sendgrid_configured: sendgridConfigured(),
   conversation_history_configured: conversationHistoryConfigured(),
   expected_elevenlabs_audio_format: ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
   allowed_caller_numbers_configured:
@@ -237,6 +240,10 @@ app.post("/cli/himalaya/create-forward-draft", async (request, reply) =>
 
 app.post("/cli/himalaya/email-send", async (request, reply) =>
   handleHimalayaEmailSend(request, reply)
+);
+
+app.post("/cli/sendgrid/email-send", async (request, reply) =>
+  handleSendgridEmailSend(request, reply)
 );
 
 app.post("/cli/otter/speeches-list", async (request, reply) =>
@@ -863,6 +870,29 @@ async function handleCreateForwardDraft(request, reply) {
     maxOriginalBytes:
       body.max_original_bytes || body.maxOriginalBytes || body.max_raw_bytes || body.maxRawBytes,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  });
+
+  return reply
+    .code(result.ok || result.status === "confirmation_required" ? 200 : 400)
+    .send(result);
+}
+
+
+async function handleSendgridEmailSend(request, reply) {
+  if (!validateCliToolAuth(request, reply)) return;
+
+  const body = request.body || {};
+  const result = await sendgridEmailSend({
+    from: body.from,
+    to: body.to,
+    cc: body.cc,
+    bcc: body.bcc,
+    subject: body.subject,
+    body: body.body || body.message || body.text,
+    html: body.html,
+    previewed: body.previewed,
+    confirmed: body.confirmed,
+    timeoutMs: body.timeout_ms || body.timeoutMs,
   });
 
   return reply

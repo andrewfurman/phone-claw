@@ -40,6 +40,7 @@ const configs = [
   createReplyAllDraftToolConfig(),
   createForwardDraftToolConfig(),
   himalayaEmailSendToolConfig(),
+  sendgridEmailSendToolConfig(),
   otterSpeechesListToolConfig(),
   otterSpeechGetToolConfig(),
   otterSpeechSearchToolConfig(),
@@ -992,6 +993,49 @@ function createForwardDraftToolConfig() {
       ),
     },
     responseDescription: "Gmail/Himalaya forward draft response.",
+    responseProperties: emailWriteResponseProperties(),
+  });
+}
+
+
+function sendgridEmailSendToolConfig() {
+  return webhookTool({
+    name: "sendgrid_email_send",
+    description:
+      "Send an assistant outbound email via SendGrid from an @aifurman.com address (for example info@, reminders@, or research@). Use this for normal assistant mail so sends stay out of personal Gmail Sent. Defaults To to aifurman@gmail.com. Always keeps aifurman@gmail.com in To or CC (auto-adds to CC if missing). Requires an exact verbal preview plus previewed=true and confirmed=true before sending. Prefer this over himalaya_email_send for non-emergency assistant outbound; keep Himalaya for Gmail inbox/drafts/emergency SMTP.",
+    url: `${workerBaseUrl}/cli/sendgrid/email-send`,
+    required: ["subject", "body", "previewed", "confirmed"],
+    responseTimeoutSecs: 45,
+    forcePreToolSpeech: true,
+    toolCallSound: "typing",
+    requestProperties: {
+      from: stringProperty({
+        description:
+          "Optional from address on @aifurman.com. Defaults to info@aifurman.com or SENDGRID_DEFAULT_FROM.",
+      }),
+      to: stringProperty({
+        description:
+          "Recipient email address or comma-separated recipients. Defaults to aifurman@gmail.com.",
+      }),
+      cc: stringProperty({ description: "Optional CC recipients." }),
+      bcc: stringProperty({ description: "Optional BCC recipients." }),
+      subject: stringProperty({
+        description: "Email subject. Must be previewed exactly before sending.",
+      }),
+      body: stringProperty({
+        description: "Plain-text email body. Must be previewed exactly before sending.",
+      }),
+      html: stringProperty({
+        description: "Optional HTML body in addition to plain text.",
+      }),
+      previewed: booleanProperty(
+        "Must be true only after the agent has verbally previewed the exact from, recipients, subject, and body to Andrew."
+      ),
+      confirmed: booleanProperty(
+        "Must be true only after Andrew gives an explicit confirmation to send now after hearing the preview."
+      ),
+    },
+    responseDescription: "SendGrid assistant email send response.",
     responseProperties: emailWriteResponseProperties(),
   });
 }
@@ -2410,7 +2454,7 @@ Email unsubscribe and interactive link workflows:
 - Treat the unsubscribe as confirmed only when job_status returns completed and the output says the page showed a clear unsubscribe/suppression/preference-saved success state. If the job is still running, failed, timed out, or ambiguous, say that plainly and offer to steer or retry.
 
 CLI capability:
-- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_images, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_forward, create_reply_all_draft, create_forward_draft, himalaya_email_send, otter_speeches_list, otter_speech_get, otter_speech_search, github_cli_common, and url_fetch.
+- You also have focused CLI wrapper tools named himalaya_email_list, himalaya_email_read, himalaya_email_images, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_forward, create_reply_all_draft, create_forward_draft, himalaya_email_send, sendgrid_email_send, otter_speeches_list, otter_speech_get, otter_speech_search, github_cli_common, and url_fetch.
 - Use himalaya_email_list with all_pages=true when Andrew asks how many emails are in a mailbox folder, asks for all emails, or asks for a complete folder list. This mode returns at most 200 envelopes by default to protect context; if capped or has_more is true, say it is a partial list and suggest narrowing the query.
 - Only treat total_count as exact when complete or exact is true.
 - Use himalaya_email_list without all_pages to search or list recent/matching email envelopes. Use himalaya_email_read only after you have an exact envelope id from the list result. himalaya_email_read returns compact headers and body_text by default; do not set include_raw=true unless Andrew explicitly asks for raw email source or debugging output.
@@ -2423,11 +2467,12 @@ CLI capability:
 - Keep Andrew's new draft messages readable: short paragraphs, natural line breaks, and no pasted raw HTML unless Andrew explicitly asks for raw HTML.
 - Prefer create_reply_all_draft and create_forward_draft over the older himalaya_draft_reply and himalaya_email_forward tool names. Use the older names only as compatibility fallback if a newer tool is unavailable.
 - After create_reply_all_draft or create_forward_draft returns ok=true, tell Andrew the draft was saved and clearly say it was not sent.
-- Use drafts by default for email composition. Do not send email unless Andrew explicitly asks to send an emergency email.
-- For himalaya_email_send, first read the exact recipients, subject, and body aloud and ask, "Is this an emergency email, and do you want me to send it now?" Call the tool with previewed=true and confirmed=true only after Andrew says yes after that preview.
-- If Andrew asks to send ordinary non-emergency email, save a draft instead and say sending is restricted to emergency sends.
-- Only claim you sent email when himalaya_email_send returns ok=true and action="email_sent".
-- If himalaya_email_send returns action="email_send_timeout" or action="email_send_failed", say the send was not confirmed and Andrew should check Sent Mail before retrying.
+- Use drafts by default for Gmail-thread composition. For ordinary assistant outbound from aifurman.com, use sendgrid_email_send instead of Gmail SMTP.
+- Use sendgrid_email_send for dedicated assistant emails from @aifurman.com (info@, reminders@, research@, etc.). Defaults To to aifurman@gmail.com. Always keep aifurman@gmail.com in To or CC; the bridge auto-adds owner to CC if missing.
+- For sendgrid_email_send, first read the exact from, recipients, subject, and body aloud and ask, "Do you want me to send this assistant email now?" Call with previewed=true and confirmed=true only after Andrew says yes.
+- Keep himalaya_email_send emergency-only for Gmail SMTP. For himalaya_email_send, first read the exact recipients, subject, and body aloud and ask, "Is this an emergency email, and do you want me to send it now?" Call with emergency=true, previewed=true, and confirmed=true only after Andrew says yes after that preview.
+- Only claim Gmail emergency email was sent when himalaya_email_send returns ok=true and action="email_sent". Only claim assistant SendGrid email was sent when sendgrid_email_send returns ok=true and action="sendgrid_email_sent".
+- If a send tool returns a timeout or failed action, say the send was not confirmed and Andrew should check before retrying.
 - Use otter_speeches_list to find Otter transcripts. Use the returned otid as speech_id for otter_speech_get and otter_speech_search. Use otter_speech_get when Andrew asks for the raw transcript JSON. Use otter_speech_search with speaker when Andrew asks what a specific person said or asks to search by speaker name.
 - Use github_cli_common for common read-only GitHub CLI actions such as repo_list, repo_view, issue_list, issue_view, pr_list, pr_view, search_issues, and search_prs. Continue using github_cli_ls and github_cli_cat for repository file trees and file contents.
 - You also have RSS tools backed by configured public or private RSS feed URLs: rss_list_feeds, rss_recent_entries, rss_search_entries, rss_get_article_text, and rss_refresh_feeds.

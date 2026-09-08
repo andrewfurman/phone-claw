@@ -13,6 +13,7 @@ Configured VM / CLI-backed tools:
 - Generic shell on the VM: run_cli (raw command string; prefer specialized tools when they fit)
 - GitHub via gh: github_summary, github_cli_ls, github_cli_cat, github_cli_common, github_issue_create, github_issue_update
 - Gmail via Himalaya CLI: himalaya_email_list, himalaya_email_read, himalaya_email_images, himalaya_email_archive, himalaya_draft_create, himalaya_draft_reply, himalaya_email_forward, create_reply_all_draft, create_forward_draft, himalaya_email_send
+- Assistant outbound via SendGrid API: sendgrid_email_send (from @aifurman.com; keeps personal Gmail Sent isolated)
 - Otter via Otter CLI: otter_speeches_list, otter_speech_get, otter_speech_search
 - Configured RSS/Atom feeds on the bridge host: rss_list_feeds, rss_recent_entries, rss_search_entries, rss_get_article_text, rss_refresh_feeds
 - Public URL inspection on the bridge: url_fetch
