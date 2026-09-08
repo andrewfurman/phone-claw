@@ -106,7 +106,7 @@ The script verifies account ownership and the destination's voice webhook, check
 
 Success requires a completed Twilio call, an unambiguously matched inbound call, a finalized ElevenLabs transcript correlated by Call SID, a transcribed user turn, and a successful `run_cli` result for the expected directory and policy. The driver waits for ElevenLabs finalization after Twilio completes; an early empty transcript is not a test result. Missing or ambiguous evidence fails the test. Inspect speech recognition and timing if a spoken path is misunderstood; do not weaken assertions just to obtain a pass. The initial scenario covers `run_cli`; extend its prompt and result assertions together for new functionalities.
 
-This driver must be live-validated with the deployment's actual Twilio configuration before relying on it as a release gate. If credentials are missing, report “Twilio test not run” separately from any passing direct ElevenLabs test.
+The driver was validated through the real Twilio phone network on September 8, 2026 against revision `28d68bf7166f5b8a902cd1a8ddb38f7441ac27f3`: all seven checks passed. Evidence is recorded in [PR #101](https://github.com/andrewfurman/phone-claw/pull/101). The original bridge service was restored after candidate validation. Rerun against each intended deployed revision; if credentials are missing, report “Twilio test not run” separately from any passing direct ElevenLabs test.
 
 ## Troubleshooting
 
