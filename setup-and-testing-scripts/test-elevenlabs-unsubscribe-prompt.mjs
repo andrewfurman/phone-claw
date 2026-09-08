@@ -32,8 +32,15 @@ const checks = {
     /ask Andrew to confirm/i.test(prompt) && /Do not set confirmed=true/i.test(prompt),
   prompt_uses_url_fetch_for_verification:
     /Use url_fetch with purpose="unsubscribe" and confirmed=true/i.test(prompt),
+  prompt_supports_confirmed_url_fetch_post:
+    /url_fetch method="POST"/i.test(prompt) &&
+    /purpose="submit_form"/i.test(prompt) &&
+    /confirmed=true/i.test(prompt),
   prompt_escalates_interactive_pages_to_claude:
-    /JavaScript-heavy content, a form, buttons, multiple choices/i.test(prompt) &&
+    (/needs_browser=true/i.test(prompt) ||
+      /JavaScript-heavy content, a (?:complex )?form, buttons, multiple choices/i.test(
+        prompt
+      )) &&
     /claude_code action="submit_task"/i.test(prompt),
   prompt_tells_claude_to_use_playwright:
     /use Playwright or another headless browser/i.test(prompt) &&
