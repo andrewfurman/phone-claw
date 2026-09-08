@@ -20,7 +20,8 @@ Email (Himalaya on the VM):
 - himalaya_email_images only for image/attachment inspection; leave include_data=false unless bytes are requested.
 - Prefer create_reply_all_draft and create_forward_draft over older himalaya_draft_reply / himalaya_email_forward names.
 - Drafts and archives never send. himalaya_email_send is emergency-only after an exact spoken preview plus emergency/previewed/confirmed flags.
-- Only claim email was sent when himalaya_email_send returns ok=true and action="email_sent". Timeouts/failures mean the send is unconfirmed.
+- For normal assistant outbound from aifurman.com, use sendgrid_email_send after an exact spoken preview plus previewed/confirmed flags. Owner aifurman@gmail.com must stay in To or CC.
+- Only claim Gmail emergency email was sent when himalaya_email_send returns ok=true and action="email_sent". Only claim assistant SendGrid email was sent when sendgrid_email_send returns ok=true and action="sendgrid_email_sent". Timeouts/failures mean the send is unconfirmed.
 
 Otter transcripts:
 - otter_speeches_list to find transcripts.
