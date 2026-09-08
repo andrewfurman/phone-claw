@@ -1,9 +1,8 @@
 import { execFile } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { homedir } from "node:os";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path, { relative, resolve } from "node:path";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 const DEFAULT_TIMEOUT_MS = 25_000;
 const MAX_TIMEOUT_MS = 60_000;
@@ -21,7 +20,6 @@ const DEFAULT_ENV_ALLOWLIST = [
   "HOME",
   "USER",
   "LOGNAME",
-  "SHELL",
   "TMPDIR",
   "AWS_PROFILE",
   "AWS_REGION",
@@ -55,15 +53,19 @@ const BLOCKED_PATH_FRAGMENTS = [
   "/.claude",
 ];
 
-const __genericCliDir = path.dirname(fileURLToPath(import.meta.url));
-const DANGEROUS_TOKENS = JSON.parse(
-  readFileSync(path.join(__genericCliDir, "generic-cli-dangerous.json"), "utf8")
-);
+// These commands have no caller-controlled paths, expansions, or shell syntax.
+// Everything else needs confirmation, including otherwise read-only CLI commands.
+const READ_ONLY_COMMAND = /^(?:pwd(?: -[LP])?|ls(?: -[aAlh1d]+)*)$/;
+const FORBIDDEN_ENV_KEY = /TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|API_KEY|DATABASE_URL|PRIVATE_KEY|^BASH_FUNC_|^BASH_ENV$|^ENV$|^SHELLOPTS$|^BASHOPTS$|^LD_|^DYLD_|^NODE_OPTIONS$|^PYTHONPATH$|^PYTHONSTARTUP$|^PERL5OPT$|^RUBYOPT$/i;
+// PATH/HOME and CLI config locations are operator settings, never tool overrides.
+const REQUEST_ENV_KEYS = new Set(["NO_COLOR", "TERM", "LANG", "LC_ALL"]);
+export const GENERIC_CLI_POLICY_VERSION = "2026-09-08.1";
 
 /**
  * Generic VM CLI executor for ElevenLabs / bridge tools.
  * Runs a raw shell command as the bridge process user (phoneclaw on the VM),
- * with dangerous-command gates, secret-path blocks, cwd allowlisting, and redaction.
+ * with confirmation by default, filtered environment, real-path cwd checks,
+ * and best-effort secret redaction. Confirmed shell execution is not a sandbox.
  */
 export async function runGenericCli({
   command,
@@ -106,7 +108,7 @@ export async function runGenericCli({
   }
 
   const classification = classifyGenericCliCommand(normalizedCommand);
-  if (classification.needs_confirmation && !toBoolean(confirmed)) {
+  if (classification.needs_confirmation && !isConfirmed(confirmed)) {
     return {
       ok: false,
       status: "confirmation_required",
@@ -128,6 +130,7 @@ export async function runGenericCli({
   const childEnv = buildChildEnv(env);
 
   const result = await execShellCommand(normalizedCommand, {
+    readOnly: classification.kind === "safe",
     cwd: cwdResult.cwd,
     timeoutMs: timeout,
     env: childEnv,
@@ -136,9 +139,10 @@ export async function runGenericCli({
 
   return {
     ...result,
+    policy_version: GENERIC_CLI_POLICY_VERSION,
     command: summarizeCommand(normalizedCommand),
     working_directory: cwdResult.cwd,
-    confirmation_bypassed: classification.needs_confirmation && toBoolean(confirmed),
+    confirmation_bypassed: classification.needs_confirmation && isConfirmed(confirmed),
     classification: classification.kind,
   };
 }
@@ -162,33 +166,13 @@ export function classifyGenericCliCommand(command) {
     };
   }
 
-  const lowered = text.toLowerCase();
-  for (const token of DANGEROUS_TOKENS) {
-    if (lowered.includes(token.toLowerCase())) {
-      return {
+  return READ_ONLY_COMMAND.test(text)
+    ? { kind: "safe", needs_confirmation: false, reason: "" }
+    : {
         kind: "dangerous",
         needs_confirmation: true,
-        reason:
-          "Confirm the exact state-changing command with Andrew before calling run_cli with confirmed=true.",
+        reason: "Confirm the exact shell command with Andrew before calling run_cli with confirmed=true. Only pwd and ls with supported flags run without confirmation; prefer specialized tools for other read-only actions.",
       };
-    }
-  }
-
-  // Standalone env / bare "env" dump
-  if (/^(env|export)\s*$/i.test(text) || /[;&|]\s*(env|export)\s*$/i.test(text)) {
-    return {
-      kind: "blocked",
-      needs_confirmation: false,
-      reason:
-        "That command is blocked because it may dump secrets or credentials into tool output.",
-    };
-  }
-
-  return {
-    kind: "safe",
-    needs_confirmation: false,
-    reason: "",
-  };
 }
 
 export function findBlockedReason(command) {
@@ -220,7 +204,18 @@ export function findBlockedReason(command) {
 
 function resolveAllowedWorkingDirectory(cwd) {
   const requested = normalizeString(cwd, process.cwd());
-  const resolved = resolve(requested);
+  let resolved;
+  try {
+    resolved = realpathSync(resolve(requested));
+    if (!statSync(resolved).isDirectory()) throw new Error("Not a directory");
+  } catch {
+    return {
+      ok: false, status: "working_directory_not_allowed",
+      message: "The working directory must exist and be an allowed directory.",
+      answer_text: "The working directory must exist and be an allowed directory.",
+      stdout: "", stderr: "", exit_code: null,
+    };
+  }
   const allowedDirs = (
     process.env.GENERIC_CLI_ALLOWED_DIRS ||
     process.env.CLAUDE_CODE_ALLOWED_DIRS ||
@@ -229,11 +224,13 @@ function resolveAllowedWorkingDirectory(cwd) {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean)
-    .map((value) => resolve(value));
+    .flatMap((value) => {
+      try { return [realpathSync(resolve(value))]; } catch { return []; }
+    });
 
   for (const allowedDir of allowedDirs) {
     const rel = relative(allowedDir, resolved);
-    if (rel === "" || (!rel.startsWith("..") && !resolve(rel).startsWith("/"))) {
+    if (rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))) {
       return { ok: true, cwd: resolved };
     }
   }
@@ -259,14 +256,21 @@ function buildChildEnv(requestedEnv) {
       .filter(Boolean)
   );
 
-  const childEnv = { ...process.env, NO_COLOR: "1" };
+  const childEnv = {};
+  for (const key of allowlist) {
+    if (!FORBIDDEN_ENV_KEY.test(key) && process.env[key] !== undefined) {
+      childEnv[key] = process.env[key];
+    }
+  }
+  childEnv.NO_COLOR = "1";
+  childEnv.PATH ||= "/usr/local/bin:/usr/bin:/bin";
   const source =
     requestedEnv && typeof requestedEnv === "object" && !Array.isArray(requestedEnv)
       ? requestedEnv
       : {};
 
   for (const [key, value] of Object.entries(source)) {
-    if (!allowlist.has(key)) continue;
+    if (!allowlist.has(key) || !REQUEST_ENV_KEYS.has(key)) continue;
     if (value == null) continue;
     childEnv[key] = String(value);
   }
@@ -274,14 +278,18 @@ function buildChildEnv(requestedEnv) {
   return childEnv;
 }
 
-function execShellCommand(command, { cwd, timeoutMs, env, maxRawBytes }) {
+function execShellCommand(command, { cwd, timeoutMs, env, maxRawBytes, readOnly }) {
   const shell = process.env.GENERIC_CLI_SHELL || "/bin/bash";
+  // Bypass shell and PATH lookup for the tiny unconfirmed command allowlist.
+  const [program, ...args] = command.split(" ");
+  const executable = readOnly ? `/bin/${program}` : shell;
+  const executableArgs = readOnly ? args : ["--noprofile", "--norc", "-c", command];
 
   return new Promise((resolveResult) => {
     try {
       execFile(
-        shell,
-        ["-lc", command],
+        executable,
+        executableArgs,
         {
           cwd,
           env,
@@ -303,14 +311,14 @@ function execShellCommand(command, { cwd, timeoutMs, env, maxRawBytes }) {
               timeout_ms: timeoutMs,
               exit_code: typeof error.code === "number" ? error.code : null,
               signal: error.signal || null,
-              message: truncatedStderr.value.trim() || error.message || "CLI command failed.",
+              message: truncatedStderr.value.trim() || redact(error.message) || "CLI command failed.",
               stdout: truncatedStdout.value,
               stdout_truncated: truncatedStdout.truncated,
               stderr: truncatedStderr.value,
               answer_text: timedOut
                 ? `The command timed out after ${timeoutMs}ms.`
                 : truncatedStderr.value.trim() ||
-                  error.message ||
+                  redact(error.message) ||
                   "The CLI command failed.",
             });
             return;
@@ -406,11 +414,8 @@ function normalizeString(value, fallback = "") {
   return normalized || fallback;
 }
 
-function toBoolean(value, fallback = false) {
-  if (value === undefined || value === null || value === "") return fallback;
-  if (value === true || value === "true") return true;
-  if (value === false || value === "false") return false;
-  return Boolean(value);
+function isConfirmed(value) {
+  return value === true || value === "true";
 }
 
 function clampInteger(value, min, max, fallback = min) {

@@ -1,5 +1,7 @@
 # Twilio Setup
 
+For automated functionality calls and PR validation, see [Automated call testing](../docs/AUTOMATED_CALL_TESTING.md). Direct ElevenLabs tests do not dial Twilio.
+
 ## CLI
 
 Install and authenticate the Twilio CLI outside the repository:

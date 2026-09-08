@@ -8,6 +8,8 @@ dist/
 .env
 .env.*
 !.env.example
+*.env
+!sample.env
 .dev.vars
 .dev.vars.*
 
