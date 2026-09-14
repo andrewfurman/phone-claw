@@ -7,6 +7,7 @@ import { runUniversalCli, UNIVERSAL_CLI_VERSION } from "../fastify-app/universal
 import { CLI_COMMAND_CATALOG } from "../shared/cli-command-catalog.mjs";
 import { commandAdapters } from "../fastify-app/cli-adapters.mjs";
 import { universalCliTool, universalPrompt } from "../shared/universal-cli-agent.mjs";
+import { UNIVERSAL_SMOKE_SCENARIOS, smokeRequest, matchesSmokeCall, validateSmokeResult } from "../shared/universal-cli-smoke-scenarios.mjs";
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -153,4 +154,19 @@ test("agent provisioning exposes one schema and replaces obsolete tool instructi
   const tool = universalCliTool({ url: "https://example.com/cli/run", token: "synthetic" });
   assert.equal(tool.name, "run_cli");assert.equal(tool.api_schema.request_body_schema.properties.args.type, "array");
   assert.equal(tool.api_schema.response_body_schema, null);
+});
+test("live call assertions require the requested operation and successful structured data", () => {
+  for (const scenario of UNIVERSAL_SMOKE_SCENARIOS) {
+    const request = smokeRequest(scenario);
+    assert.equal(matchesSmokeCall(scenario, request), true);
+    assert.equal(matchesSmokeCall(scenario, { ...request, confirmed: true }), false);
+    assert.equal(matchesSmokeCall(scenario, { command: "pwd" }), false);
+    assert.equal(validateSmokeResult(scenario, { ok: true, answer_text: "It worked" }), false);
+    assert.equal(validateSmokeResult(scenario, { ok: false, data: { ok: true } }), false);
+  }
+  const github = UNIVERSAL_SMOKE_SCENARIOS.find(s => s.id === "github");
+  const result = { ok: true, data: { ok: true, action: "issue_list", parsed_json: [] } };
+  assert.equal(validateSmokeResult(github, result), true);
+  assert.equal(validateSmokeResult(github, { ...result, data_truncated: true }), false);
+  assert.equal(matchesSmokeCall(github, { command: "phoneclaw", args: ["github", "common", "--json", '{"action":"issue_list","repo":"someone/else"}'] }), false);
 });

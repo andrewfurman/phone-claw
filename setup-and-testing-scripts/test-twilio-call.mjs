@@ -120,7 +120,7 @@ try {
         try { return c.tool_name === "run_cli" && matchesSmokeCall(scenario, typeof c.params_as_json === "string" ? JSON.parse(c.params_as_json) : c.params_as_json); } catch { return false; }
       });
       // Bind the result to this invocation, not another successful command.
-      const result = invocation && results.find(r => r.request_id === invocation.request_id && r.tool_name === "run_cli");
+      const result = invocation?.request_id && results.find(r => r.request_id === invocation.request_id && r.tool_name === "run_cli");
       let payload;
       try { payload = typeof result?.result_value === "string" ? JSON.parse(result.result_value) : result?.result_value; } catch {}
       checks[scenario.id] = Boolean(invocation && result?.is_error === false && payload?.runner_version === UNIVERSAL_CLI_VERSION && validateSmokeResult(scenario, payload));
