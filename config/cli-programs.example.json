@@ -1,0 +1,27 @@
+{
+  "examplecli": {
+    "executable": "/usr/local/bin/examplecli",
+    "env": [
+      "EXAMPLECLI_API_KEY"
+    ],
+    "readOnlyArgs": [
+      [
+        "--version"
+      ],
+      [
+        "items",
+        "list",
+        "--limit",
+        "5",
+        "--output",
+        "json"
+      ]
+    ],
+    "blockedArgs": [
+      [
+        "auth",
+        "export"
+      ]
+    ]
+  }
+}

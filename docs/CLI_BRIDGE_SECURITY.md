@@ -89,3 +89,21 @@ Interactive unsubscribe and preference-center flows use that same `claude_code` 
 ## Why Not Put CLI Credentials Into A Worker?
 
 Workers are good for request routing, auth checks, and API calls. They are not a good fit for these CLI tools because they cannot spawn local processes or rely on a local keyring/home directory. Copying laptop CLI state into Worker secrets would also make credential rotation and auditing harder.
+
+
+## Universal runner migration
+
+`run_cli` is now the only application tool. Existing protected workflows are
+`phoneclaw` CLI commands over the same adapter registry; legacy URLs are temporary
+compatibility aliases. Literal native `args` never enter a shell. Exact approved
+argument lists may run unconfirmed; every other native invocation requires exact
+confirmation. Per-program credential names are operator configuration, with
+bridge control credentials and runtime injection keys forbidden. Unknown programs
+and raw shell invocations retain the filtered generic environment. Embedded JSON
+cannot supply confirmation. The universal layer also gates email mark-seen.
+
+Native process groups are killed on timeout/output overflow. Domain workflows
+retain provider-specific timeouts and persistent async jobs; an outer deadline
+cannot establish whether a remote write occurred. Redaction covers known provider
+secret values as well as token patterns. See [UNIVERSAL_CLI.md](UNIVERSAL_CLI.md)
+for output budgets, credential configuration, migration and rollback details.

@@ -1,3 +1,4 @@
+import { LEGACY_TOOL_PATHS } from "../shared/cli-command-catalog.mjs";
 import {
   ELEVENLABS_TELEPHONY_AUDIO_FORMAT,
 } from "../shared/telephony-audio-format.mjs";
@@ -80,37 +81,7 @@ export default {
           twilio_stream_status: "POST /twilio/stream-status",
           twilio_call_status: "POST /twilio/call-status",
           twilio_events: "GET /twilio/events",
-          web_search: "POST /web-search",
-          github_summary: "POST /github-summary",
-          github_cli_ls: "POST /github-cli/ls",
-          github_cli_cat: "POST /github-cli/cat",
-          github_issue_create: "POST /github-issues/create",
-          github_issue_update: "POST /github-issues/update",
-          himalaya_email_list: "POST /cli/himalaya/email-list",
-          himalaya_email_read: "POST /cli/himalaya/email-read",
-          himalaya_email_images: "POST /cli/himalaya/email-images",
-          himalaya_email_archive: "POST /cli/himalaya/email-archive",
-          himalaya_draft_create: "POST /cli/himalaya/draft-create",
-          himalaya_draft_reply: "POST /cli/himalaya/draft-reply",
-          himalaya_email_forward: "POST /cli/himalaya/email-forward",
-          create_reply_all_draft: "POST /cli/himalaya/create-reply-all-draft",
-          create_forward_draft: "POST /cli/himalaya/create-forward-draft",
-          himalaya_email_send: "POST /cli/himalaya/email-send",
-          sendgrid_email_send: "POST /cli/sendgrid/email-send",
-          otter_speeches_list: "POST /cli/otter/speeches-list",
-          otter_speech_get: "POST /cli/otter/speech-get",
-          otter_speech_search: "POST /cli/otter/speech-search",
-          github_cli_common: "POST /cli/github/common",
-          rss_list_feeds: "POST /cli/rss/feeds",
-          rss_recent_entries: "POST /cli/rss/recent",
-          rss_search_entries: "POST /cli/rss/search",
-          rss_get_article_text: "POST /cli/rss/article-text",
-          rss_refresh_feeds: "POST /cli/rss/refresh",
-          url_fetch: "POST /cli/url-fetch",
           run_cli: "POST /cli/run",
-          claude_code: "POST /cli/claude-code",
-          conversation_history_search: "POST /conversation-history/search",
-          conversation_history_get: "POST /conversation-history/get",
           conversation_history_recent_context: "POST /conversation-history/recent-context",
           conversation_history_archive: "POST /conversation-history/archive-elevenlabs",
           visualizer: "GET /visualizer",
@@ -159,43 +130,22 @@ export default {
       return handleAgentCommand(request, env);
     }
 
+    if (request.method === "POST" && LEGACY_TOOL_PATHS.includes(url.pathname) && env.PHONECLAW_ENABLE_LEGACY_TOOL_ROUTES === "false") {
+      return json({ ok: false, status: "legacy_tool_route_disabled", successor: "/cli/run" }, 404);
+    }
+
     if (request.method === "POST" && url.pathname === "/web-search") {
-      return handleWebSearch(request, env);
+      const response = await handleWebSearch(request, env);
+      response.headers.set("Deprecation", "@1789387200");
+      response.headers.set("Link", '</cli/run>; rel="successor-version"');
+      return response;
     }
 
     if (
       request.method === "POST" &&
       [
-        "/github-summary",
-        "/github-cli/ls",
-        "/github-cli/cat",
-        "/github-issues/create",
-        "/github-issues/update",
-        "/cli/himalaya/email-list",
-        "/cli/himalaya/email-read",
-        "/cli/himalaya/email-images",
-        "/cli/himalaya/email-archive",
-        "/cli/himalaya/draft-create",
-        "/cli/himalaya/draft-reply",
-        "/cli/himalaya/email-forward",
-        "/cli/himalaya/create-reply-all-draft",
-        "/cli/himalaya/create-forward-draft",
-        "/cli/himalaya/email-send",
-        "/cli/sendgrid/email-send",
-        "/cli/otter/speeches-list",
-        "/cli/otter/speech-get",
-        "/cli/otter/speech-search",
-        "/cli/github/common",
-        "/cli/rss/feeds",
-        "/cli/rss/recent",
-        "/cli/rss/search",
-        "/cli/rss/article-text",
-        "/cli/rss/refresh",
-        "/cli/url-fetch",
+        ...LEGACY_TOOL_PATHS,
         "/cli/run",
-        "/cli/claude-code",
-        "/conversation-history/search",
-        "/conversation-history/get",
         "/conversation-history/recent-context",
         "/conversation-history/archive-elevenlabs",
       ].includes(url.pathname)
@@ -1072,19 +1022,19 @@ async function handleCliBridgeProxy(request, env, pathname) {
   const upstreamUrl = new URL(pathname.replace(/^\//, ""), baseUrl);
   const bodyText = await request.text();
 
-  const upstreamResponse = await fetch(upstreamUrl.toString(), {
+  const upstreamResponse = await fetchWithTimeout(upstreamUrl.toString(), {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${env.CLI_BRIDGE_TOKEN}`,
     },
     body: bodyText || "{}",
-  });
+  }, 65_000);
   const responseText = await upstreamResponse.text();
 
   return new Response(responseText, {
     status: upstreamResponse.status,
-    headers: JSON_HEADERS,
+    headers: { ...JSON_HEADERS, ...(LEGACY_TOOL_PATHS.includes(pathname) ? { Deprecation: "@1789387200", Link: '</cli/run>; rel="successor-version"' } : {}) },
   });
 }
 
@@ -1165,11 +1115,11 @@ async function triggerConversationArchive(env, event) {
   }
 }
 
-function fetchWithTimeout(url, options, timeoutMs) {
-  const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("request_timeout")), timeoutMs)
-  );
-  return Promise.race([fetch(url, options), timeout]);
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await fetch(url, { ...options, signal: controller.signal }); }
+  finally { clearTimeout(timer); }
 }
 
 function validateToolAuth(request, env) {

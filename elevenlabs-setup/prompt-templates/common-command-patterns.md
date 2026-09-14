@@ -1,3 +1,5 @@
+> For the universal runner, use [universal-cli.md](universal-cli.md). This file documents the older specialized-tool configuration and should not be pasted over the new command guide.
+
 # Prompt Template: Common Command Patterns
 
 Paste selected subsections into an ElevenLabs agent prompt. Patterns cover specialized bridge wrappers plus the additive generic run_cli tool.

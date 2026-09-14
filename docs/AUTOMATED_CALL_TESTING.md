@@ -116,3 +116,41 @@ The driver was validated through the real Twilio phone network on September 8, 2
 - **A CLI no longer sees a key:** generic subprocesses intentionally exclude server credentials and shell startup files. Use the specialized integration or service-user CLI login; do not restore full environment inheritance.
 - **Phone answers with outside-coverage message:** test caller is not allowlisted. Fix the explicit test configuration; do not disable access control.
 - **Busy/no-answer/failed or no transcript:** inspect Twilio status/errors, inbound webhook, and Worker stream events. A direct WebSocket pass cannot diagnose the phone network.
+
+
+## Universal CLI refactor tests (#106)
+
+`npm run test:offline` includes the universal runner tests: adding an unknown
+executable without code changes, literal argument handling, exact confirmation,
+scoped credentials, redaction, process-group timeout, output limits, legacy route
+compatibility, command discovery, and preserved SendGrid preview/CC rules.
+
+For the actual phone path, deploy the candidate bridge and apply the single-tool
+agent configuration described in [UNIVERSAL_CLI.md](UNIVERSAL_CLI.md), then run:
+
+```bash
+npm run twilio:call:test -- --place-call --universal
+```
+
+This places one multi-turn call. It preflights every selected integration first,
+then speaks requests for native GitHub CLI version, GitHub issues, RSS feeds,
+email listing, conversation history, Otter, public URL fetching, web search, and
+Claude authentication. It matches each transcript tool invocation to its own
+result by request ID, verifies the universal runner version and returned data,
+and rejects use of obsolete application tools or tool errors. No email or GitHub
+write is requested. Confirmation and write semantics are exercised by fixtures
+and an unconfirmed synthetic write preflight.
+
+The call limit is bounded to at most 600 seconds with no automatic create retries.
+`PHONECLAW_TEST_SCENARIOS` can explicitly select comma-separated IDs from
+`native_cli,github,rss,email,history,otter,web_fetch,web_search,claude`. Report any
+unselected or unavailable integration separately; never describe a selected
+subset as full coverage. Google Workspace/Mac integrations still require their
+separate setup issues. A preflight failure prevents placing the call.
+
+For a PR preview through existing Twilio routing, use a separate candidate
+checkout and temporary bridge override plus an agent configuration backup. Apply
+both for the test and restore both afterward, with an automatic rollback timer.
+Keep the tested revision, scenario outcomes and sanitized Call/conversation SIDs
+in the PR. Keep private transcripts, email subjects and credential-bearing agent
+backups out of Git and public logs.
