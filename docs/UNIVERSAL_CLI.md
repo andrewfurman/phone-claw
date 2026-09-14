@@ -95,6 +95,9 @@ reads `data` for existing issue, draft, and article links.
   timeouts also kill descendants on the POSIX bridge. Default timeout is 25
   seconds, maximum 60 seconds. Missing binaries and output-limit failures have
   explicit statuses.
+- Compatibility endpoints keep their domain output limits and use the 750,000-byte
+  outer cap and 60-second response deadline, so ordinary Otter raw/parsed JSON
+  responses are not reduced to the smaller default voice budget.
 - Existing in-process workflows retain their own cancellation/timeout behavior.
   The outer response deadline does not cancel an already-running provider write.
   A timeout is an unknown outcome; do not retry writes automatically.

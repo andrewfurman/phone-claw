@@ -35,8 +35,8 @@ New CLIs need installation/authentication and a command-guide entry. They do not
 | `phoneclaw github summary` | `item_type`, `max_results`, `repo`, `max_raw_bytes` |
 | `phoneclaw github ls` | `repo`, `max_entries`, `max_raw_bytes` |
 | `phoneclaw github cat` | `repo`, `max_bytes`, `max_raw_bytes` |
-| `phoneclaw github issue-create` | `repo`, `body`, `max_raw_bytes` |
-| `phoneclaw github issue-update` | `repo`, `issue_number`, `body`, `state_reason`, `max_raw_bytes` |
+| `phoneclaw github issue-create` | `repo`, `title`, `body`, `labels`, `assignees` |
+| `phoneclaw github issue-update` | `repo`, `issue_number`, `title`, `body`, `state`, `state_reason`, `labels`, `assignees` |
 | `phoneclaw himalaya email-list` | `query`, `search_query`, `folder`, `page_size`, `max_results`, `all_pages`, `max_pages`, `max_items`, `max_raw_bytes` |
 | `phoneclaw himalaya email-read` | `id`, `envelope_id`, `folder`, `include_headers`, `mark_seen`, `include_raw`, `max_body_chars`, `max_raw_bytes` |
 | `phoneclaw himalaya email-images` | `id`, `envelope_id`, `folder`, `include_embedded`, `include_attachments`, `include_data`, `max_images`, `max_results`, `max_image_bytes`, `max_original_bytes`, `max_raw_bytes` |

@@ -112,8 +112,8 @@ The driver was validated through the real Twilio phone network on September 8, 2
 
 - **401:** wrong Worker/bridge/preview token; these tokens serve different boundaries.
 - **`working_directory_not_allowed`:** directory missing, outside the configured root, or a symlink leading outside. Legitimate child directories now work.
-- **`confirmation_required`:** generic CLI only permits `pwd` and limited `ls` forms without confirmation. Use specialized tools for other reads, or confirm the exact command.
-- **A CLI no longer sees a key:** generic subprocesses intentionally exclude server credentials and shell startup files. Use the specialized integration or service-user CLI login; do not restore full environment inheritance.
+- **`confirmation_required`:** generic CLI only permits `pwd` and limited `ls` forms without confirmation. Use protected `phoneclaw` commands for other reads, or confirm the exact command.
+- **A CLI no longer sees a key:** generic subprocesses intentionally exclude server credentials and shell startup files. Use the protected `phoneclaw` command, scoped program configuration, or service-user CLI login; do not restore full environment inheritance.
 - **Phone answers with outside-coverage message:** test caller is not allowlisted. Fix the explicit test configuration; do not disable access control.
 - **Busy/no-answer/failed or no transcript:** inspect Twilio status/errors, inbound webhook, and Worker stream events. A direct WebSocket pass cannot diagnose the phone network.
 
@@ -146,7 +146,9 @@ The call limit is bounded to at most 600 seconds with no automatic create retrie
 `native_cli,github,rss,email,history,otter,web_fetch,web_search,claude`. Report any
 unselected or unavailable integration separately; never describe a selected
 subset as full coverage. Google Workspace/Mac integrations still require their
-separate setup issues. A preflight failure prevents placing the call.
+separate setup issues. A preflight failure prevents placing the call. The Otter scenario uses a bounded
+200,000-byte outer budget because its small pages include both raw and parsed
+metadata; the command guide instructs the agent to use the same budget.
 
 For a PR preview through existing Twilio routing, use a separate candidate
 checkout and temporary bridge override plus an agent configuration backup. Apply
