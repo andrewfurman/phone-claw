@@ -132,10 +132,13 @@ if (process.env.PHONECLAW_ENABLE_LEGACY_TOOL_ROUTES !== "false") {
       const body = request.body || {};
       const result = await runUniversalCli({
         command: "phoneclaw", args: [...command.split(" "), "--json", JSON.stringify(body)],
-        confirmed: body.confirmed, maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+        // Legacy payload limits belong to the domain command. Do not also apply
+        // the smaller default voice envelope to its raw + parsed JSON copies.
+        confirmed: body.confirmed, maxRawBytes: 750_000, timeoutMs: 60_000,
       });
       const legacy = result.data || result;
-      return reply.code(toolResultStatusCode(legacy)).send(legacy);
+      const claudeOutcome = command === "claude code" && ["claude_auth_expired", "claude_auth_probe_failed", "claude_not_authenticated", "job_not_found", "session_ready", "steering_recorded"].includes(legacy.status);
+      return reply.code(claudeOutcome ? 200 : toolResultStatusCode(legacy)).send(legacy);
     });
   }
 }
