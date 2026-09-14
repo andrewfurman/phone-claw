@@ -3,8 +3,14 @@ import assert from "node:assert/strict";
 import twilio from "twilio";
 import { loadPhoneclawEnv } from "../shared/load-env-file.mjs";
 import { GENERIC_CLI_POLICY_VERSION } from "../fastify-app/generic-cli.mjs";
+import { UNIVERSAL_CLI_VERSION } from "../fastify-app/universal-cli.mjs";
+import { UNIVERSAL_SMOKE_SCENARIOS, smokeRequest, matchesSmokeCall, validateSmokeResult } from "../shared/universal-cli-smoke-scenarios.mjs";
 if (!process.env.ELEVENLABS_API_KEY) loadPhoneclawEnv();
 const env = process.env;
+const universalMode = process.argv.includes("--universal");
+const requestedScenarios = env.PHONECLAW_TEST_SCENARIOS?.split(",").map(x => x.trim()).filter(Boolean);
+if (requestedScenarios?.some(id => !UNIVERSAL_SMOKE_SCENARIOS.some(s => s.id === id))) throw new Error("Unknown PHONECLAW_TEST_SCENARIOS entry");
+const scenarios = universalMode ? UNIVERSAL_SMOKE_SCENARIOS.filter(s => !requestedScenarios || requestedScenarios.includes(s.id)) : [];
 const required = ["TWILIO_ACCOUNT_SID", "TWILIO_TEST_FROM", "TWILIO_TEST_TO", "ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID", "PHONECLAW_TEST_CWD", "PHONECLAW_TEST_PROJECT_ROOT", "PHONECLAW_TEST_REVISION", "WEB_SEARCH_TOKEN", "PHONECLAW_WORKER_BASE_URL"];
 const missing = required.filter(key => !env[key]);
 if (!env.TWILIO_AUTH_TOKEN && !(env.TWILIO_API_KEY && env.TWILIO_API_SECRET)) missing.push("TWILIO_AUTH_TOKEN or TWILIO_API_KEY + TWILIO_API_SECRET");
@@ -20,7 +26,7 @@ const voiceUrl = new URL(owned[0].voiceUrl);
 assert.equal(voiceUrl.origin, worker.origin, "Target must point at the intended PhoneClaw Worker");
 assert.equal(voiceUrl.pathname, "/twilio/inbound", "Target must use the real inbound route");
 async function tool(body) {
-  const response = await fetch(new URL("/cli/run", worker), { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${env.WEB_SEARCH_TOKEN}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+  const response = await fetch(new URL("/cli/run", worker), { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${env.WEB_SEARCH_TOKEN}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(universalMode ? 65000 : 15000) });
   assert.equal(response.status, 200);
   return response.json();
 }
@@ -30,13 +36,38 @@ assert.equal(preflight.policy_version, GENERIC_CLI_POLICY_VERSION, "Deploy the P
 const head = await tool({ command: "git rev-parse HEAD", cwd: env.PHONECLAW_TEST_PROJECT_ROOT, confirmed: true });
 assert.equal(head.ok, true);
 assert.equal(head.stdout.trim(), env.PHONECLAW_TEST_REVISION, "Deployed checkout differs from expected revision");
+if (universalMode) {
+  assert.equal(preflight.runner_version, UNIVERSAL_CLI_VERSION);
+  const catalog = await tool({ command: "phoneclaw", args: ["help"], cwd: env.PHONECLAW_TEST_CWD });
+  assert.equal(catalog.ok, true);assert.equal(catalog.data?.length, 30);
+  const rejected = await tool({ command: "phoneclaw", args: ["github", "issue-create", "--json", JSON.stringify({ repo: "owner/repo", title: "Synthetic confirmation probe", confirmed: true })] });
+  assert.equal(rejected.status, "confirmation_required", "Embedded JSON must not authorize a write");
+  // Validate provider readiness first; never spend a call testing an unavailable
+  // integration or count a fluent answer as evidence of a working command.
+  const readiness = [];
+  for (const scenario of scenarios) {
+    const result = await tool({ ...smokeRequest(scenario), cwd: env.PHONECLAW_TEST_CWD });
+    readiness.push({ id: scenario.id, ok: validateSmokeResult(scenario, result), status: result.status });
+  }
+  console.log(JSON.stringify({ universal_readiness: readiness }));
+  assert.ok(readiness.every(r => r.ok), "One or more selected integrations failed preflight; no call placed");
+}
 // Spell the commonly misheard /opt component and speak separators explicitly.
 const spokenPath = env.PHONECLAW_TEST_CWD.replaceAll("/", " slash ").replace(/\bopt\b/g, "O P T");
 const phrase = `Please use run CLI with command P W D and working directory ${spokenPath}, all lowercase. Tell me the working directory returned by the tool.`;
 const twiml = new twilio.twiml.VoiceResponse();
 twiml.pause({ length: 6 });
-twiml.say({ voice: "alice", language: "en-US" }, phrase);
-twiml.pause({ length: 35 });
+if (universalMode) {
+  for (const scenario of scenarios) {
+    twiml.say({ voice: "alice", language: "en-US" }, scenario.phrase);
+    twiml.pause({ length: 35 });
+  }
+  twiml.say({ voice: "alice", language: "en-US" }, "Thank you. That is all for now. Goodbye.");
+  twiml.pause({ length: 8 });
+} else {
+  twiml.say({ voice: "alice", language: "en-US" }, phrase);
+  twiml.pause({ length: 35 });
+}
 twiml.hangup();
 const started = Math.floor(Date.now() / 1000);
 let call;
@@ -49,9 +80,10 @@ async function eleven(path) {
 }
 try {
   // No retries: an ambiguous create response must not place a second call.
-  call = await client.calls.create({ to: env.TWILIO_TEST_TO, from: env.TWILIO_TEST_FROM, twiml: twiml.toString(), timeout: 20, timeLimit: 90 });
+  const callLimit = universalMode ? Math.min(600, 30 + scenarios.length * 60) : 90;
+  call = await client.calls.create({ to: env.TWILIO_TEST_TO, from: env.TWILIO_TEST_FROM, twiml: twiml.toString(), timeout: 20, timeLimit: callLimit });
   console.log(JSON.stringify({ call_started: true, call_sid: call.sid }));
-  for (let i = 0; i < 55 && !terminal.has(call.status); i++) { await wait(2000); call = await client.calls(call.sid).fetch(); }
+  for (let i = 0; i < (callLimit + 20) / 2 && !terminal.has(call.status); i++) { await wait(2000); call = await client.calls(call.sid).fetch(); }
   assert.equal(call.status, "completed", "Twilio call did not complete normally");
   // Twilio-to-Twilio calls have separate outgoing and incoming call SIDs.
   const inbound = (await client.calls.list({ to: env.TWILIO_TEST_TO, from: env.TWILIO_TEST_FROM, limit: 20 })).filter(c => c.direction === "inbound" && Math.floor(new Date(c.dateCreated).getTime() / 1000) >= started - 2);
@@ -79,6 +111,23 @@ try {
   const cliResult = results.find(r => r.tool_name === "run_cli");
   const value = typeof cliResult?.result_value === "string" ? JSON.parse(cliResult.result_value) : cliResult?.result_value;
   const checks = { twilio_completed: call.status === "completed", conversation_correlated: true, conversation_finalized: matched.status === "done", run_cli_ok: cliResult?.is_error === false && value?.ok === true, expected_policy: value?.policy_version === GENERIC_CLI_POLICY_VERSION, expected_directory: value?.working_directory === env.PHONECLAW_TEST_CWD, user_audio_transcribed: matched.transcript?.some(t => t.role === "user" && /\b(run|command|directory|pwd)\b/i.test(t.message || "")) };
+  if (universalMode) {
+    delete checks.expected_policy;delete checks.expected_directory;
+    checks.expected_runner = value?.runner_version === UNIVERSAL_CLI_VERSION;
+    const calls = matched.transcript.flatMap(t => t.tool_calls || []);
+    for (const scenario of scenarios) {
+      const invocation = calls.find(c => {
+        try { return c.tool_name === "run_cli" && matchesSmokeCall(scenario, typeof c.params_as_json === "string" ? JSON.parse(c.params_as_json) : c.params_as_json); } catch { return false; }
+      });
+      // Bind the result to this invocation, not another successful command.
+      const result = invocation?.request_id && results.find(r => r.request_id === invocation.request_id && r.tool_name === "run_cli");
+      let payload;
+      try { payload = typeof result?.result_value === "string" ? JSON.parse(result.result_value) : result?.result_value; } catch {}
+      checks[scenario.id] = Boolean(invocation && result?.is_error === false && payload?.runner_version === UNIVERSAL_CLI_VERSION && validateSmokeResult(scenario, payload));
+    }
+    checks.only_universal_application_tool = calls.every(c => ["run_cli", "end_call"].includes(c.tool_name));
+    checks.no_tool_errors = !results.some(r => r.is_error);
+  }
   console.log(JSON.stringify({ ok: Object.values(checks).every(Boolean), transport: "twilio_pstn", revision: env.PHONECLAW_TEST_REVISION, call_sid: call.sid, incoming_call_sid: sid, conversation_id: matched.conversation_id, checks }, null, 2));
   assert.ok(Object.values(checks).every(Boolean), "Twilio functionality test failed");
 } finally {

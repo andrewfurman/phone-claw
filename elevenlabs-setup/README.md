@@ -1,5 +1,7 @@
 # ElevenLabs Setup
 
+The application interface is now one `run_cli` tool. Follow [universal CLI migration](../docs/UNIVERSAL_CLI.md) and [universal-cli.md](prompt-templates/universal-cli.md). `npm run elevenlabs:tools:configure` previews; add `-- --apply` after deploying the matching bridge. The exported snapshot and individual tool descriptions below are historical compatibility references, not the new agent menu.
+
 ## Agent
 
 Create or select a Conversational AI agent in ElevenLabs.

@@ -1,3 +1,5 @@
+> For the universal runner, use [universal-cli.md](universal-cli.md). This file documents the older specialized-tool configuration and should not be pasted over the new command guide.
+
 # ElevenLabs Prompt Templates
 
 Sample markdown snippets you can paste into an ElevenLabs Conversational AI agent prompt. They describe the configured virtual-machine CLI tools behind phone-claw (including the additive generic run_cli tool) and the common command patterns the voice agent should follow.

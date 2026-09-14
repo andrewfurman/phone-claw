@@ -576,12 +576,13 @@ function allToolItems(conversation) {
 function normalizeToolItem(item, type, turn, conversation) {
   const parsedParams = parseJson(item.params_as_json || item.params || item.parameters || {});
   const parsedResult = parseJson(item.result_value || item.result || item.value || {});
-  const raw = type === "result" ? parsedResult : parsedParams;
   const name = item.tool_name || item.name || parsedResult?.tool_name || "";
+  const domainResult = name === "run_cli" && parsedResult?.data && !parsedResult.data_truncated ? parsedResult.data : parsedResult;
+  const raw = type === "result" ? domainResult : parsedParams;
   const normalized = {
     type,
     name,
-    action: parsedResult?.action || parsedParams?.action || "",
+    action: domainResult?.action || parsedParams?.action || "",
     raw,
     preview: compactPreview(raw),
     happenedAt: timestampForToolItem(item, turn, conversation),

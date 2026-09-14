@@ -1,3 +1,5 @@
+> For the universal runner, use [universal-cli.md](universal-cli.md). This file documents the older specialized-tool configuration and should not be pasted over the new command guide.
+
 # Prompt Template: Configured VM CLI Tools
 
 Paste this block into an ElevenLabs agent prompt when the agent should understand which tools run on the private virtual machine bridge.

@@ -1,6 +1,6 @@
 # phone-claw
 
-phone-claw connects a Twilio phone number to an ElevenLabs Conversational AI agent and gives that agent authenticated tool calls for web search, GitHub, Gmail through Himalaya CLI, Otter transcripts, configured RSS feeds, archived conversation memory, and explicit Claude Code escalation.
+phone-claw connects a Twilio phone number to an ElevenLabs Conversational AI agent and gives that agent one authenticated universal CLI tool for web search, GitHub, Gmail through Himalaya CLI, Otter transcripts, configured RSS feeds, archived conversation memory, and explicit Claude Code escalation.
 
 This repo is public-safe. Real API keys, account IDs, phone numbers, webhook tokens, tunnel tokens, CLI auth files, local deploy config, and private feed URLs stay in ignored files or provider secret stores.
 
@@ -23,8 +23,8 @@ Inbound phone call
   -> Cloudflare Worker /twilio/inbound
   -> ElevenLabs register-call API
   -> ElevenLabs live agent
-  -> authenticated webhook tool calls back to Cloudflare Worker
-  -> Worker handles edge-safe tools or proxies CLI tools through Cloudflare Tunnel
+  -> run_cli webhook calls to Cloudflare Worker /cli/run
+  -> Worker proxies through Cloudflare Tunnel
   -> EC2 Fastify bridge on 127.0.0.1:8000
   -> local CLIs, configured RSS files, Claude Code, and Neon/Postgres
 ```
@@ -36,7 +36,7 @@ The Worker is the public HTTPS edge. The EC2 bridge is private because Cloudflar
 | Layer | What is set up | Why it exists |
 | --- | --- | --- |
 | Twilio | The phone number sends inbound calls and call/media-stream callbacks to the Worker. | Twilio owns PSTN telephony and bridges caller audio to ElevenLabs. |
-| ElevenLabs | `Andrew Assistant Agent`, Twilio telephony audio format `ulaw_8000`, Jessi voice, two-hour max call duration, inline webhook tools, and the built-in `end_call` tool. | This is the voice agent and tool-calling brain. |
+| ElevenLabs | `Andrew Assistant Agent`, Twilio telephony audio format `ulaw_8000`, Jessi voice, two-hour max call duration, the universal `run_cli` tool, and the built-in `end_call` tool. | This is the voice agent and tool-calling brain. |
 | Cloudflare Worker | `webhooks.aifurman.com` handles Twilio webhooks, tool auth, web search, GitHub/CLI proxy routes, visualizer APIs, Twilio diagnostics, and conversation archive triggers. | Public, low-latency HTTPS surface with secrets in Worker secret storage. |
 | Cloudflare KV | `TWILIO_EVENT_LOGS` stores recent Twilio call and Media Stream diagnostic events. | Lets `/twilio/events` explain dropped/static/busy calls without combing provider UI by hand. |
 | Cloudflare Tunnel | Exposes the EC2 Fastify bridge to the Worker without opening a public bridge port. | Keeps CLI credentials off the public internet. |
@@ -97,8 +97,7 @@ See [docs/VM_BRIDGE_SETUP_GUIDE.md](docs/VM_BRIDGE_SETUP_GUIDE.md) for the short
 
 ## ElevenLabs Setup
 
-`npm run elevenlabs:tools:configure` updates the live ElevenLabs agent. It patches inline `prompt.tools` because that is the active execution path for the current agent, and it also updates the shared tool definitions for consistency. It validates that `web_search` points at `https://webhooks.aifurman.com/web-search` and has the expected diagnostics/result-count schema.
-
+`npm run elevenlabs:tools:configure` previews the migration to one `run_cli` application tool and the [Markdown command guide](elevenlabs-setup/prompt-templates/universal-cli.md). After deploying the matching bridge, pass `-- --apply` to update the live agent. The script uses shared tool IDs, preserves unrelated settings, and creates a private rollback backup outside the repository. See [migration instructions](docs/UNIVERSAL_CLI.md).
 Current important settings:
 
 - Agent: `Andrew Assistant Agent`.
@@ -118,9 +117,9 @@ npm run elevenlabs:agent:export
 
 Sample prompt snippets for VM CLI tools and common command patterns live in [elevenlabs-setup/prompt-templates/](elevenlabs-setup/prompt-templates/). They are meant to be pasted into an ElevenLabs agent prompt when bootstrapping or refreshing capability sections. See also [elevenlabs-setup/README.md](elevenlabs-setup/README.md).
 
-## Tool Call Reference
+## Legacy Tool Compatibility Reference
 
-All webhook tool calls are configured on the ElevenLabs agent. Public calls hit the Worker first. Rows marked "EC2 bridge" are then proxied to Fastify, which calls the local CLI or local service.
+The new agent uses only `run_cli` and the command guide. The table below documents deprecated URLs for older clients during migration; existing behaviors are available as `phoneclaw` CLI commands. Public calls hit the Worker before the private bridge. Disable compatibility routes after clients migrate.
 
 | Tool | Endpoint | Runs on | Purpose and guardrails |
 | --- | --- | --- | --- |
@@ -227,6 +226,14 @@ npm run worker:deploy
 ```
 
 It is embedded into `cloudflare-worker/visualizer-assets.generated.mjs`; it is not served from S3.
+
+## Universal CLI interface
+
+The agent now uses one `run_cli` application tool. It can execute any installed CLI with literal arguments; new CLIs need installation/configuration and command-guide examples, not additional Fastify endpoints or ElevenLabs tool schemas.
+
+Existing email, GitHub, RSS, Otter, conversation history, SendGrid, web search/fetch and async Claude workflows are available as `phoneclaw` commands. The specialized tool names and URLs listed above describe compatibility routes, which are deprecated. Built-in call controls such as `end_call` remain separate.
+
+See [Universal CLI setup and migration](docs/UNIVERSAL_CLI.md) and the [agent's Markdown command guide](elevenlabs-setup/prompt-templates/universal-cli.md). Agent configuration previews by default; apply it only after deploying the matching bridge.
 
 ## Local Development
 

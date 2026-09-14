@@ -171,7 +171,7 @@ export function classifyGenericCliCommand(command) {
     : {
         kind: "dangerous",
         needs_confirmation: true,
-        reason: "Confirm the exact shell command with Andrew before calling run_cli with confirmed=true. Only pwd and ls with supported flags run without confirmation; prefer specialized tools for other read-only actions.",
+        reason: "Confirm the exact shell command with Andrew before calling run_cli with confirmed=true. Only pwd and ls with supported flags run without confirmation; use the phoneclaw commands for other read-only actions.",
       };
 }
 
@@ -202,7 +202,7 @@ export function findBlockedReason(command) {
   return "";
 }
 
-function resolveAllowedWorkingDirectory(cwd) {
+export function resolveAllowedWorkingDirectory(cwd) {
   const requested = normalizeString(cwd, process.cwd());
   let resolved;
   try {
@@ -248,7 +248,7 @@ function resolveAllowedWorkingDirectory(cwd) {
   };
 }
 
-function buildChildEnv(requestedEnv) {
+export function buildChildEnv(requestedEnv) {
   const allowlist = new Set(
     (process.env.GENERIC_CLI_ENV_ALLOWLIST || DEFAULT_ENV_ALLOWLIST.join(","))
       .split(",")
@@ -384,8 +384,15 @@ function missingField(field, message) {
   };
 }
 
-function redact(value) {
-  return String(value || "")
+export function redact(value, { abbreviateHome = true } = {}) {
+  let text = String(value || "");
+  // Provider tokens need not have recognizable prefixes (e.g. Twilio).
+  for (const [key, secret] of Object.entries(process.env)) {
+    if (/TOKEN|SECRET|PASSWORD|PASSWD|API_KEY|DATABASE_URL|PRIVATE_KEY/i.test(key) && secret.length >= 12) {
+      text = text.split(secret).join("[redacted]");
+    }
+  }
+  text = text
     .replace(/github_pat_[A-Za-z0-9_]+/g, "github_pat_[redacted]")
     .replace(/gh[opsu]_[A-Za-z0-9_]+/g, "gh_[redacted]")
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
@@ -393,20 +400,20 @@ function redact(value) {
       /("?(?:access_token|refresh_token|api_key|token|password|secret)"?\s*[:=]\s*")[^"]+/gi,
       "$1[redacted]"
     )
-    .replace(/(AKIA[0-9A-Z]{16})/g, "[redacted-aws-key]")
-    .replace(homedir(), "~");
+    .replace(/(AKIA[0-9A-Z]{16})/g, "[redacted-aws-key]");
+  return abbreviateHome ? text.replace(homedir(), "~") : text;
 }
 
-function truncateUtf8(value, maxBytes) {
+export function truncateUtf8(value, maxBytes) {
   const text = String(value || "");
   if (Buffer.byteLength(text, "utf8") <= maxBytes) {
     return { value: text, truncated: false };
   }
 
-  return {
-    value: Buffer.from(text, "utf8").subarray(0, maxBytes).toString("utf8"),
-    truncated: true,
-  };
+  const bytes = Buffer.from(text, "utf8");
+  let end = maxBytes;
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
+  return { value: bytes.subarray(0, end).toString("utf8"), truncated: true };
 }
 
 function normalizeString(value, fallback = "") {

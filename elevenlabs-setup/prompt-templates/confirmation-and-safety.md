@@ -1,3 +1,5 @@
+> For the universal runner, use [universal-cli.md](universal-cli.md). This file documents the older specialized-tool configuration and should not be pasted over the new command guide.
+
 # Prompt Template: Confirmation And Safety
 
 Paste this block near the behavior section of an ElevenLabs agent prompt.

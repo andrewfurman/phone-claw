@@ -18,40 +18,11 @@ Health check:
 curl http://localhost:8000/health
 ```
 
-The local app mirrors the Worker endpoints, including:
+The application tool interface is `POST /cli/run`. It accepts an executable `command`, literal `args`, optional `cwd`, exact `confirmed`, timeout and output limits. Native executables run directly; `phoneclaw` commands preserve existing provider workflows through the shared registry.
 
-- `POST /twilio/inbound`
-- `POST /twilio/stream-status`
-- `POST /twilio/call-status`
-- `GET /twilio/events`
-- `POST /web-search`
-- `POST /github-summary`
-- `POST /github-cli/ls`
-- `POST /github-cli/cat`
-- `POST /github-issues/create`
-- `POST /github-issues/update`
-- `POST /cli/himalaya/email-list`
-- `POST /cli/himalaya/email-read`
-- `POST /cli/himalaya/email-images`
-- `POST /cli/himalaya/email-archive`
-- `POST /cli/himalaya/draft-create`
-- `POST /cli/himalaya/draft-reply`
-- `POST /cli/himalaya/email-forward`
-- `POST /cli/himalaya/email-send`
-- `POST /cli/otter/speeches-list`
-- `POST /cli/otter/speech-get`
-- `POST /cli/otter/speech-search`
-- `POST /cli/github/common`
-- `POST /cli/rss/feeds`
-- `POST /cli/rss/recent`
-- `POST /cli/rss/search`
-- `POST /cli/rss/article-text`
-- `POST /cli/rss/refresh`
-- `POST /cli/url-fetch`
-- `POST /cli/claude-code`
-- `POST /agent-command`
+Twilio webhooks, diagnostics, call-memory context and archive endpoints remain infrastructure. Old specialized tool URLs are deprecated compatibility aliases, enabled until `PHONECLAW_ENABLE_LEGACY_TOOL_ROUTES=false`. They are not needed for new integrations.
 
-The `/cli/*` endpoints execute focused local CLI wrappers and should run on a private bridge host in production. Email image inspection is a separate read-only endpoint from normal email reading. URL fetching is limited to public HTTP/HTTPS destinations and blocks localhost/private-network targets. Email write endpoints and Claude Code task submission are confirmation-gated. Email forwarding saves a draft and preserves original HTML inline when available. Email sends are isolated in the emergency-only `himalaya_email_send` tool, which requires preview plus second confirmation. See `docs/CLI_BRIDGE_SECURITY.md`.
+See [Universal CLI setup and migration](../docs/UNIVERSAL_CLI.md), the [command guide](../elevenlabs-setup/prompt-templates/universal-cli.md), and [security rules](../docs/CLI_BRIDGE_SECURITY.md).
 
 ## Expose Locally
 

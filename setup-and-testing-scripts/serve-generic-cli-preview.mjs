@@ -1,7 +1,8 @@
 // Temporary PR preview endpoint. Run as a restricted user; no production secrets.
 import Fastify from "fastify";
 import { timingSafeEqual } from "node:crypto";
-import { runGenericCli, GENERIC_CLI_POLICY_VERSION } from "../fastify-app/generic-cli.mjs";
+import { GENERIC_CLI_POLICY_VERSION } from "../fastify-app/generic-cli.mjs";
+import { runUniversalCli, UNIVERSAL_CLI_VERSION } from "../fastify-app/universal-cli.mjs";
 
 const token = process.env.PHONECLAW_TEST_TOOL_TOKEN;
 const revision = process.env.PHONECLAW_TEST_REVISION;
@@ -14,9 +15,9 @@ app.addHook("onRequest", async (request, reply) => {
   const expected = Buffer.from(`Bearer ${token}`);
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return reply.code(401).send({ ok: false });
 });
-app.get("/health", async () => ({ ok: true, revision, policy_version: GENERIC_CLI_POLICY_VERSION }));
+app.get("/health", async () => ({ ok: true, revision, policy_version: GENERIC_CLI_POLICY_VERSION, runner_version: UNIVERSAL_CLI_VERSION }));
 app.post("/cli/run", async request => {
   const body = request.body || {};
-  return { ...await runGenericCli({ command: body.command, cwd: body.cwd, confirmed: body.confirmed, timeoutMs: body.timeout_ms, maxRawBytes: body.max_raw_bytes, env: body.env }), revision };
+  return { ...await runUniversalCli({ command: body.command, args: body.args, cwd: body.cwd, confirmed: body.confirmed, timeoutMs: body.timeout_ms, maxRawBytes: body.max_raw_bytes, env: body.env }), revision };
 });
 await app.listen({ host: "127.0.0.1", port: Number(process.env.PORT || 18000) });
