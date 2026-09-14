@@ -384,7 +384,7 @@ function missingField(field, message) {
   };
 }
 
-export function redact(value) {
+export function redact(value, { abbreviateHome = true } = {}) {
   let text = String(value || "");
   // Provider tokens need not have recognizable prefixes (e.g. Twilio).
   for (const [key, secret] of Object.entries(process.env)) {
@@ -392,7 +392,7 @@ export function redact(value) {
       text = text.split(secret).join("[redacted]");
     }
   }
-  return text
+  text = text
     .replace(/github_pat_[A-Za-z0-9_]+/g, "github_pat_[redacted]")
     .replace(/gh[opsu]_[A-Za-z0-9_]+/g, "gh_[redacted]")
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
@@ -400,8 +400,8 @@ export function redact(value) {
       /("?(?:access_token|refresh_token|api_key|token|password|secret)"?\s*[:=]\s*")[^"]+/gi,
       "$1[redacted]"
     )
-    .replace(/(AKIA[0-9A-Z]{16})/g, "[redacted-aws-key]")
-    .replace(homedir(), "~");
+    .replace(/(AKIA[0-9A-Z]{16})/g, "[redacted-aws-key]");
+  return abbreviateHome ? text.replace(homedir(), "~") : text;
 }
 
 export function truncateUtf8(value, maxBytes) {

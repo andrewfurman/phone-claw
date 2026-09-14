@@ -72,7 +72,7 @@ async function runPhoneclaw(args, confirmed, timeoutMs) {
 }
 
 function capResult(result, budget) {
-  const safe = JSON.parse(redact(JSON.stringify(result)));
+  const safe = redactStructured(result);
   // Preserve the actual resolved cwd contract; home abbreviation is for output.
   safe.working_directory = result.working_directory;
   const encoded = JSON.stringify(safe.data ?? safe.stdout ?? "");
@@ -87,4 +87,14 @@ function capResult(result, budget) {
   safe.stderr = truncateUtf8(safe.stderr || "", Math.min(budget, 4_000)).value;
   safe.answer_text = truncateUtf8(safe.answer_text || "", 4_000).value;
   return safe;
+}
+
+function redactStructured(value) {
+  if (typeof value === "string") return redact(value, { abbreviateHome: false });
+  if (Array.isArray(value)) return value.map(redactStructured);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key,
+    /^(access_token|refresh_token|api_key|token|password|secret)$/i.test(key) && entry
+      ? "[redacted]" : redactStructured(entry),
+  ]));
 }

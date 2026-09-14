@@ -145,6 +145,17 @@ test("large domain results are capped and no truncated object masquerades as com
   const r = await run({ command: "phoneclaw", args: ["help"], maxRawBytes: 1000 });
   assert.equal(r.data_truncated, true);assert.equal(r.stdout_truncated, true);assert.equal(r.data, undefined);assert.ok(Buffer.byteLength(r.stdout) <= 1003);
 });
+test("structured redaction preserves JSON when provider secrets contain quotes and newlines", async () => {
+  const previous = commandAdapters["rss feeds"];
+  const secret = 'synthetic-secret-"quoted"\nwith-newline';
+  process.env.EXAMPLE_ESCAPED_SECRET = secret;
+  commandAdapters["rss feeds"] = async () => ({ ok: true, text: `before ${secret} after`, token: "synthetic-token-value", nested: { text: 'literal "quotes"' } });
+  try {
+    const r = await builtin("rss feeds");
+    assert.equal(r.ok, true);assert.equal(r.data.text, "before [redacted] after");
+    assert.equal(r.data.token, "[redacted]");assert.equal(r.data.nested.text, 'literal "quotes"');
+  } finally { commandAdapters["rss feeds"] = previous;delete process.env.EXAMPLE_ESCAPED_SECRET; }
+});
 test("agent provisioning exposes one schema and replaces obsolete tool instructions idempotently", () => {
   const guide = readFileSync(new URL("../elevenlabs-setup/prompt-templates/universal-cli.md", import.meta.url), "utf8");
   const next = universalPrompt("Personal instruction.\n\nWeb search capability:\nOld many-tool instructions", guide);

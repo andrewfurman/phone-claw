@@ -5,14 +5,16 @@ export const UNIVERSAL_SMOKE_SCENARIOS = [
   { id: "rss", phrase: "Please use the phoneclaw RSS feeds command to list my configured feeds. Tell me only how many feeds are configured.", builtin: "rss feeds", options: {} },
   { id: "email", phrase: "Please use the phoneclaw Himalaya email list command to list the latest two emails in my inbox. Just tell me whether the lookup worked, without reading their contents.", builtin: "himalaya email-list", options: { page_size: 2 } },
   { id: "history", phrase: "Please use the phoneclaw history search command to search previous calls for the word CLI, limited to two results. Just tell me whether the lookup worked.", builtin: "history search", options: { query: "CLI", limit: 2 } },
-  { id: "otter", phrase: "Please use the phoneclaw Otter speeches list command to look up two recent transcripts. Just tell me whether the lookup worked.", builtin: "otter speeches-list", options: { page_size: 2 } },
+  { id: "otter", phrase: "Please use the phoneclaw Otter speeches list command to look up two recent transcripts. Just tell me whether the lookup worked.", builtin: "otter speeches-list", options: { page_size: 2 }, maxRawBytes: 200_000 },
   { id: "web_fetch", phrase: "Please use the phoneclaw web fetch command to fetch H T T P S colon slash slash example dot com. Give a one sentence description.", builtin: "web fetch", options: { url: "https://example.com" } },
   { id: "web_search", phrase: "Please use the phoneclaw web search command to search for the official Python programming language website. Give only one short sentence from the results.", builtin: "web search", options: { query: "official Python programming language website", max_results: 2 } },
   { id: "claude", phrase: "Please use the phoneclaw Claude code command with action auth underscore status to check authentication. Just report the authentication status; do not start a coding task.", builtin: "claude code", options: { action: "auth_status" } },
 ];
 
 export function smokeRequest(scenario) {
-  return scenario.builtin ? { command: "phoneclaw", args: [...scenario.builtin.split(" "), "--json", JSON.stringify(scenario.options)] } : { command: scenario.command, args: scenario.args };
+  const request = scenario.builtin ? { command: "phoneclaw", args: [...scenario.builtin.split(" "), "--json", JSON.stringify(scenario.options)] } : { command: scenario.command, args: scenario.args };
+  if (scenario.maxRawBytes) request.max_raw_bytes = scenario.maxRawBytes;
+  return request;
 }
 
 export function matchesSmokeCall(scenario, params) {

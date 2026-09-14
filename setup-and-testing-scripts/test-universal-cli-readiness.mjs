@@ -5,7 +5,7 @@ import { UNIVERSAL_SMOKE_SCENARIOS, smokeRequest, validateSmokeResult } from "..
 if (!process.env.ELEVENLABS_API_KEY) loadPhoneclawEnv();
 const checks = [];
 for (const scenario of UNIVERSAL_SMOKE_SCENARIOS) {
-  const result = await runUniversalCli({ ...smokeRequest(scenario), timeoutMs: 60_000 });
+  const result = await runUniversalCli({ ...smokeRequest(scenario), maxRawBytes: scenario.maxRawBytes, timeoutMs: 60_000 });
   const check = { scenario: scenario.id, ok: validateSmokeResult(scenario, result), status: result.status, data_status: result.data?.status || "" };
   checks.push(check);
   console.log(JSON.stringify(check));
