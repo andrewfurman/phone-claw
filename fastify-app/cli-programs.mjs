@@ -9,13 +9,21 @@ const BRIDGE_SECRET = /^(CLI_BRIDGE_TOKEN|WEB_SEARCH_TOKEN|COMMAND_BRIDGE_TOKEN|
 // meaning of an otherwise harmless command. Unknown commands require confirmation.
 export function loadCliPrograms() {
   const programs = {
-    gh: { executable: process.env.GH_BIN || "gh", env: ["GH_TOKEN", "GITHUB_TOKEN", "GH_CONFIG_DIR"], readOnlyArgs: [["--version"]], blockedArgs: [["auth", "token"], ["auth", "status", "--show-token"]] },
+    gh: { executable: process.env.GH_BIN || "gh", env: ["GH_TOKEN", "GITHUB_TOKEN", "GH_CONFIG_DIR"], readOnlyArgs: [["--version"], ["--help"], ["-h"], ["help"]], blockedArgs: [["auth", "token"], ["auth", "status", "--show-token"]] },
     gws: {
       executable: process.env.GWS_BIN || "gws",
       env: ["GOOGLE_WORKSPACE_CLI_CONFIG_DIR", "GOOGLE_WORKSPACE_CLI_CREDENTIALS_FILE"],
       // Exact read-only agenda lookups (#114). Writes (+insert, events insert/patch/delete) stay confirmation-gated.
       readOnlyArgs: [
         ["--version"],
+        ["--help"],
+        ["-h"],
+        ["help"],
+        ["calendar", "--help"],
+        ["calendar", "-h"],
+        ["calendar", "help"],
+        ["calendar", "events", "--help"],
+        ["calendar", "events", "help"],
         ["calendar", "+agenda"],
         ["calendar", "+agenda", "--today"],
         ["calendar", "+agenda", "--tomorrow"],
@@ -38,9 +46,9 @@ export function loadCliPrograms() {
       ],
       blockedArgs: [["auth", "export"]],
     },
-    himalaya: { executable: process.env.HIMALAYA_BIN || "himalaya", env: ["HIMALAYA_CONFIG"], readOnlyArgs: [["--version"]], blockedArgs: [["message", "send"], ["template", "send"]] },
-    otter: { executable: process.env.OTTER_BIN || "otter", env: [], readOnlyArgs: [["--version"]] },
-    claude: { executable: process.env.CLAUDE_BIN || "claude", env: ["CLAUDE_CONFIG_DIR"], readOnlyArgs: [["--version"]] },
+    himalaya: { executable: process.env.HIMALAYA_BIN || "himalaya", env: ["HIMALAYA_CONFIG"], readOnlyArgs: [["--version"], ["--help"], ["-h"], ["help"]], blockedArgs: [["message", "send"], ["template", "send"]] },
+    otter: { executable: process.env.OTTER_BIN || "otter", env: [], readOnlyArgs: [["--version"], ["--help"], ["-h"], ["help"]] },
+    claude: { executable: process.env.CLAUDE_BIN || "claude", env: ["CLAUDE_CONFIG_DIR"], readOnlyArgs: [["--version"], ["--help"], ["-h"], ["help"]] },
   };
   if (process.env.GENERIC_CLI_PROGRAMS_PATH) {
     const config = JSON.parse(readFileSync(process.env.GENERIC_CLI_PROGRAMS_PATH, "utf8"));
