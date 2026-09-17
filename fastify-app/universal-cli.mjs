@@ -4,16 +4,24 @@ import { CLI_COMMAND_CATALOG } from "../shared/cli-command-catalog.mjs";
 import { loadCliPrograms, programEnvironment } from "./cli-programs.mjs";
 import { executeCli } from "../shared/cli-process.mjs";
 
-export const UNIVERSAL_CLI_VERSION = "2026-09-17.1";
+export const UNIVERSAL_CLI_VERSION = "2026-09-17.2";
 const confirmedValue = value => value === true || value === "true";
 
 const HELP_TOKENS = new Set(["help", "--help", "-h"]);
-/** Help-only argv: final token is help/-h/--help; earlier tokens are subcommand path pieces (no flags). */
+const isPathPiece = arg => typeof arg === "string" && arg.length > 0 && arg.length < 64 && !arg.startsWith("-") && !arg.includes("\0");
+/**
+ * Help-only native argv never needs confirmation (#109).
+ * Allow: only help flags; leading `help` + path pieces; or final help/--help/-h with only path pieces before.
+ * Reject flags mixed with help (except pure help-token lists) so `--help && write` style argv cannot sneak through.
+ */
 export function isHelpOnlyArgs(args) {
   if (!Array.isArray(args) || args.length < 1 || args.length > 16) return false;
+  if (!args.every(arg => typeof arg === "string" && arg.length > 0 && arg.length < 64 && !arg.includes("\0"))) return false;
+  if (args.every(arg => HELP_TOKENS.has(arg))) return true;
+  if (args[0] === "help" && args.slice(1).every(isPathPiece)) return true;
   const last = args[args.length - 1];
   if (!HELP_TOKENS.has(last)) return false;
-  return args.slice(0, -1).every(arg => typeof arg === "string" && arg.length > 0 && arg.length < 64 && !arg.startsWith("-") && !arg.includes("\0"));
+  return args.slice(0, -1).every(isPathPiece);
 }
 
 const clamp = (value, min, max, fallback) => Number.isFinite(Number(value)) && value != null ? Math.max(min, Math.min(max, Math.floor(Number(value)))) : fallback;
