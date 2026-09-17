@@ -169,13 +169,31 @@ export async function rssConfiguredEntryFullText({
     };
   }
 
-  const text = normalizeArticleText(match.entry.full_text || match.entry.summary || "");
+  let text = normalizeArticleText(match.entry.full_text || match.entry.summary || "");
+  let contentSource = match.entry.content_source;
+  let companionStatus = null;
+
+  // Private Economist-style feeds expose signed /article.txt companion links in
+  // <link>. When the RSS body is only an excerpt, fetch that companion text.
+  if (text.length < 700 && isArticleTextCompanionUrl(match.entry.url)) {
+    const companion = await fetchArticleTextCompanion(match.entry.url, {
+      timeoutMs: match.feedResult?.feed?.timeout_ms || DEFAULT_TIMEOUT_MS,
+    });
+    companionStatus = companion.status;
+    if (companion.ok && companion.text.length > text.length) {
+      text = companion.text;
+      contentSource = "article_txt";
+    }
+  }
+
   const truncated = truncateText(text, boundedMax);
-  const fullArticleAvailable = text.length >= 700 && match.entry.content_source !== "feed_summary";
+  const fullArticleAvailable = text.length >= 700 && contentSource !== "feed_summary";
   const accessNote =
     fullArticleAvailable || text.length >= 700
       ? ""
-      : "The returned article text is short; this feed may only provide an excerpt.";
+      : companionStatus && companionStatus !== "ok"
+        ? `The returned article text is short; companion article text fetch status: ${companionStatus}.`
+        : "The returned article text is short; this feed may only provide an excerpt.";
 
   return {
     ok: true,
@@ -186,7 +204,8 @@ export async function rssConfiguredEntryFullText({
     entry_id: match.entry.id,
     feed_id: match.entry.feed_id,
     feed_title: match.entry.feed_title,
-    content_source: match.entry.content_source,
+    content_source: contentSource,
+    article_text_status: companionStatus,
     full_article_available: fullArticleAvailable,
     full_text_chars: text.length,
     returned_text_chars: truncated.value.length,
@@ -872,4 +891,51 @@ function hashString(value) {
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isArticleTextCompanionUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.pathname.replace(/\/+$/, "").endsWith("/article.txt");
+  } catch {
+    return false;
+  }
+}
+
+async function fetchArticleTextCompanion(articleUrl, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1_000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS));
+  try {
+    const response = await fetch(articleUrl, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        accept: "text/plain;q=1.0, text/*;q=0.9, */*;q=0.1",
+        "user-agent": "phoneclaw-rss-article-text/1.0",
+      },
+    });
+    const body = await response.text();
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status === 404 ? "article_text_not_found" : "article_text_request_failed",
+        upstream_status: response.status,
+        text: "",
+      };
+    }
+    const text = normalizeArticleText(body);
+    return text
+      ? { ok: true, status: "ok", text }
+      : { ok: false, status: "article_text_empty", text: "" };
+  } catch (error) {
+    return {
+      ok: false,
+      status: error?.name === "AbortError" ? "article_text_timeout" : "article_text_request_failed",
+      message: error?.message || String(error),
+      text: "",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
