@@ -6,16 +6,24 @@ import { join } from "node:path";
 import { runUniversalCli, isHelpOnlyArgs } from "../fastify-app/universal-cli.mjs";
 import { loadCliPrograms } from "../fastify-app/cli-programs.mjs";
 
-test("help-only argv detection rejects flags before help", () => {
+test("help-only argv detection covers safe help forms and rejects flag tricks", () => {
   assert.equal(isHelpOnlyArgs(["--help"]), true);
   assert.equal(isHelpOnlyArgs(["-h"]), true);
   assert.equal(isHelpOnlyArgs(["help"]), true);
+  assert.equal(isHelpOnlyArgs(["--help", "-h"]), true);
+  assert.equal(isHelpOnlyArgs(["help", "--help"]), true);
   assert.equal(isHelpOnlyArgs(["calendar", "--help"]), true);
   assert.equal(isHelpOnlyArgs(["calendar", "events", "help"]), true);
   assert.equal(isHelpOnlyArgs(["calendar", "+agenda", "--help"]), true);
+  assert.equal(isHelpOnlyArgs(["issue", "create", "--help"]), true);
+  assert.equal(isHelpOnlyArgs(["help", "issue"]), true);
+  assert.equal(isHelpOnlyArgs(["help", "issue", "create"]), true);
   assert.equal(isHelpOnlyArgs(["calendar", "--today", "--help"]), false);
   assert.equal(isHelpOnlyArgs(["-rf", "--help"]), false);
+  assert.equal(isHelpOnlyArgs(["--force", "--help"]), false);
+  assert.equal(isHelpOnlyArgs(["help", "--json"]), false);
   assert.equal(isHelpOnlyArgs(["calendar", "+insert"]), false);
+  assert.equal(isHelpOnlyArgs(["--help", "send"]), false);
   assert.equal(isHelpOnlyArgs([]), false);
 });
 
@@ -33,7 +41,7 @@ test("gws help forms are listed as operator-approved reads", () => {
   }
 });
 
-test("unconfirmed help-only native argv does not require confirmation (#109/#114)", async () => {
+test("unconfirmed help-only native argv does not require confirmation (#109)", async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "phoneclaw-help-")));
   const fixture = join(root, "fixture-cli");
   const configPath = join(root, "programs.json");
@@ -43,11 +51,24 @@ test("unconfirmed help-only native argv does not require confirmation (#109/#114
     process.env.GENERIC_CLI_PROGRAMS_PATH = configPath;
     writeFileSync(configPath, JSON.stringify({ fixture: { executable: fixture, env: [], readOnlyArgs: [["version"]] } }));
     writeFileSync(fixture, `#!${process.execPath}\nconsole.log(JSON.stringify(process.argv.slice(2)));\n`, { mode: 0o700 });
-    const help = await runUniversalCli({ command: "fixture", args: ["calendar", "events", "--help"], cwd: root, confirmed: false });
-    assert.equal(help.ok, true, JSON.stringify(help));
-    assert.notEqual(help.status, "confirmation_required");
+
+    for (const args of [
+      ["--help"],
+      ["-h"],
+      ["help"],
+      ["calendar", "events", "--help"],
+      ["help", "calendar"],
+      ["--help", "-h"],
+    ]) {
+      const help = await runUniversalCli({ command: "fixture", args, cwd: root, confirmed: false });
+      assert.equal(help.ok, true, JSON.stringify({ args, help }));
+      assert.notEqual(help.status, "confirmation_required", args.join(" "));
+    }
+
     const flagged = await runUniversalCli({ command: "fixture", args: ["--force", "--help"], cwd: root, confirmed: false });
     assert.equal(flagged.status, "confirmation_required");
+    const helpThenWriteish = await runUniversalCli({ command: "fixture", args: ["--help", "send"], cwd: root, confirmed: false });
+    assert.equal(helpThenWriteish.status, "confirmation_required");
     const writeish = await runUniversalCli({ command: "fixture", args: ["calendar", "+insert"], cwd: root, confirmed: false });
     assert.equal(writeish.status, "confirmation_required");
   } finally {
