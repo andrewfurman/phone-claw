@@ -9,6 +9,8 @@ export const UNIVERSAL_SMOKE_SCENARIOS = [
   { id: "web_fetch", phrase: "Please use the phoneclaw web fetch command to fetch H T T P S colon slash slash example dot com. Give a one sentence description.", builtin: "web fetch", options: { url: "https://example.com" } },
   { id: "web_search", phrase: "Please use the phoneclaw web search command to search for the official Python programming language website. Give only one short sentence from the results.", builtin: "web search", options: { query: "official Python programming language website", max_results: 2 } },
   { id: "claude", phrase: "Please use the phoneclaw Claude code command with action auth underscore status to check authentication. Just report the authentication status; do not start a coding task.", builtin: "claude code", options: { action: "auth_status" } },
+  { id: "gws_agenda", phrase: "Please use run CLI with command G W S and arguments calendar plus agenda. Briefly say whether today's agenda lookup worked, without asking me to approve Google Workspace.", command: "gws", args: ["calendar", "+agenda"] },
+  { id: "notes_recent", phrase: "Please use run CLI with command notes and arguments recent dash L five. Briefly say whether the notes lookup worked, without asking me to approve Notes.", command: "notes", args: ["recent", "-l", "5"] },
 ];
 
 export function smokeRequest(scenario) {
@@ -38,6 +40,8 @@ export function validateSmokeResult(scenario, result) {
   if (result?.ok !== true) return false;
   const data = result.data;
   if (scenario.id === "native_cli") return /gh version \d/.test(result.stdout || "");
+  if (scenario.id === "gws_agenda") return result.status !== "confirmation_required" && typeof (result.stdout || result.answer_text || "") === "string";
+  if (scenario.id === "notes_recent") return result.status !== "confirmation_required" && typeof (result.stdout || result.answer_text || "") === "string";
   if (!data || data.ok !== true || result.data_truncated) return false;
   if (scenario.id === "github") return data.action === "issue_list" && Array.isArray(data.parsed_json);
   if (scenario.id === "rss") return Array.isArray(data.feeds);

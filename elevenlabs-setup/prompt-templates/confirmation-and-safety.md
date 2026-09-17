@@ -22,4 +22,4 @@ Confirmation and safety:
 - If Claude Code or CLI auth looks broken, use the dedicated status/list tools first and report the tool error plainly.
 ```
 
-- Help on any CLI never needs confirmation. Do not ask Andrew to confirm or review operator-approved reads (allowlisted native argv, help-only argv, or protected phoneclaw reads). Only request confirmation when a tool returns confirmation_required or the action is a write. There is no separate read-aloud CLI.
+- Help on any CLI never needs confirmation. Do not ask Andrew to confirm, approve Google Workspace, approve Notes, or review operator-approved reads (gws agenda allowlists, notes recent/search/read allowlists, help-only argv, or protected phoneclaw reads). Use confirmed=false for those reads. Only request confirmation when a tool returns confirmation_required or the action is a write. There is no separate read-aloud CLI.
