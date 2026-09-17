@@ -21,3 +21,5 @@ Confirmation and safety:
 - If a private GitHub repo returns 403/404/validation failure, say the bridge gh session may lack repo access, SSO authorization, org approval, or Contents read permission.
 - If Claude Code or CLI auth looks broken, use the dedicated status/list tools first and report the tool error plainly.
 ```
+
+- Do not ask Andrew to confirm or review operator-approved reads (allowlisted native argv, help-only argv, or protected phoneclaw reads). Only request confirmation when a tool returns confirmation_required or the action is a write.

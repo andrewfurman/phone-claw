@@ -4,8 +4,18 @@ import { CLI_COMMAND_CATALOG } from "../shared/cli-command-catalog.mjs";
 import { loadCliPrograms, programEnvironment } from "./cli-programs.mjs";
 import { executeCli } from "../shared/cli-process.mjs";
 
-export const UNIVERSAL_CLI_VERSION = "2026-09-14.1";
+export const UNIVERSAL_CLI_VERSION = "2026-09-17.1";
 const confirmedValue = value => value === true || value === "true";
+
+const HELP_TOKENS = new Set(["help", "--help", "-h"]);
+/** Help-only argv: final token is help/-h/--help; earlier tokens are subcommand path pieces (no flags). */
+export function isHelpOnlyArgs(args) {
+  if (!Array.isArray(args) || args.length < 1 || args.length > 16) return false;
+  const last = args[args.length - 1];
+  if (!HELP_TOKENS.has(last)) return false;
+  return args.slice(0, -1).every(arg => typeof arg === "string" && arg.length > 0 && arg.length < 64 && !arg.startsWith("-") && !arg.includes("\0"));
+}
+
 const clamp = (value, min, max, fallback) => Number.isFinite(Number(value)) && value != null ? Math.max(min, Math.min(max, Math.floor(Number(value)))) : fallback;
 const failure = (status, message) => ({ ok: false, status, message, answer_text: message, stdout: "", stderr: "", exit_code: null });
 const guidance = "Use run_cli with command=phoneclaw and args=[group, action, --json, JSON options]. Put confirmed=true on run_cli only after the exact action is confirmed.";
@@ -32,7 +42,7 @@ export async function runUniversalCli({ command, args, cwd, confirmed, env, time
       const spec = Object.hasOwn(programs, command) ? programs[command] : { executable: command, env: [] };
       const blocked = findBlockedReason([command, ...args].join(" ")) || (spec.blockedArgs || []).some(prefix => prefix.every((arg, i) => args[i] === arg));
       if (blocked) return { ...metadata, ...failure("command_blocked", "This command can expose credentials or bypass a protected workflow. Use the corresponding phoneclaw command.") };
-      const readOnly = (spec.readOnlyArgs || []).some(allowed => allowed.length === args.length && allowed.every((arg, i) => args[i] === arg));
+      const readOnly = isHelpOnlyArgs(args) || (spec.readOnlyArgs || []).some(allowed => allowed.length === args.length && allowed.every((arg, i) => args[i] === arg));
       if (!readOnly && !confirmedValue(confirmed)) return { ...metadata, ...failure("confirmation_required", "Confirm the exact executable and arguments before setting confirmed=true. For existing read operations, use the phoneclaw commands in the command guide.") };
       const ran = await executeCli(spec.executable, args, { cwd: directory.cwd, env: programEnvironment(spec, env), timeoutMs: timeout });
       result = { ...ran, answer_text: ran.ok ? "Command completed. Use stdout for the result." : `${ran.status}. A timed-out or failed write may have taken effect; check before retrying.` };
