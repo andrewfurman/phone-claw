@@ -4,7 +4,7 @@ import { CLI_COMMAND_CATALOG } from "../shared/cli-command-catalog.mjs";
 import { loadCliPrograms, programEnvironment } from "./cli-programs.mjs";
 import { executeCli } from "../shared/cli-process.mjs";
 
-export const UNIVERSAL_CLI_VERSION = "2026-09-17.2";
+export const UNIVERSAL_CLI_VERSION = "2026-09-17.3";
 const confirmedValue = value => value === true || value === "true";
 
 const HELP_TOKENS = new Set(["help", "--help", "-h"]);
@@ -23,6 +23,42 @@ export function isHelpOnlyArgs(args) {
   if (!HELP_TOKENS.has(last)) return false;
   return args.slice(0, -1).every(isPathPiece);
 }
+
+const NOTES_SAFE_LIMITS = new Set(["1", "2", "3", "5", "10", "20"]);
+const isNotesQueryToken = arg => typeof arg === "string" && arg.length > 0 && arg.length <= 120 && !arg.startsWith("-") && !arg.includes("\0");
+const isNotesNumericId = arg => typeof arg === "string" && /^[1-9][0-9]{0,9}$/.test(arg);
+/**
+ * Safe Apple Notes reads beyond exact readOnlyArgs (#notes-voice).
+ * Allows: read <numeric-id>; search <query> with optional -l/--limit and -f/--folder.
+ * Does not allow create/delete/edit/index or unknown flags. Only for notes/mac-notes.
+ */
+export function isNotesSafeReadArgs(args) {
+  if (!Array.isArray(args) || args.length < 1 || args.length > 8) return false;
+  if (!args.every(arg => typeof arg === "string" && arg.length > 0 && arg.length <= 120 && !arg.includes("\0"))) return false;
+  if (args[0] === "read") return args.length === 2 && isNotesNumericId(args[1]);
+  if (args[0] !== "search") return false;
+  let i = 1;
+  let query = null;
+  while (i < args.length) {
+    const tok = args[i];
+    if (tok === "-l" || tok === "--limit") {
+      if (i + 1 >= args.length || !NOTES_SAFE_LIMITS.has(args[i + 1])) return false;
+      i += 2;
+      continue;
+    }
+    if (tok === "-f" || tok === "--folder") {
+      if (i + 1 >= args.length || !isNotesQueryToken(args[i + 1])) return false;
+      i += 2;
+      continue;
+    }
+    if (tok.startsWith("-")) return false;
+    if (query !== null) return false;
+    query = tok;
+    i += 1;
+  }
+  return query !== null;
+}
+
 
 const clamp = (value, min, max, fallback) => Number.isFinite(Number(value)) && value != null ? Math.max(min, Math.min(max, Math.floor(Number(value)))) : fallback;
 const failure = (status, message) => ({ ok: false, status, message, answer_text: message, stdout: "", stderr: "", exit_code: null });
@@ -50,7 +86,10 @@ export async function runUniversalCli({ command, args, cwd, confirmed, env, time
       const spec = Object.hasOwn(programs, command) ? programs[command] : { executable: command, env: [] };
       const blocked = findBlockedReason([command, ...args].join(" ")) || (spec.blockedArgs || []).some(prefix => prefix.every((arg, i) => args[i] === arg));
       if (blocked) return { ...metadata, ...failure("command_blocked", "This command can expose credentials or bypass a protected workflow. Use the corresponding phoneclaw command.") };
-      const readOnly = isHelpOnlyArgs(args) || (spec.readOnlyArgs || []).some(allowed => allowed.length === args.length && allowed.every((arg, i) => args[i] === arg));
+      const notesProgram = command === "notes" || command === "mac-notes";
+      const readOnly = isHelpOnlyArgs(args)
+        || (notesProgram && isNotesSafeReadArgs(args))
+        || (spec.readOnlyArgs || []).some(allowed => allowed.length === args.length && allowed.every((arg, i) => args[i] === arg));
       if (!readOnly && !confirmedValue(confirmed)) return { ...metadata, ...failure("confirmation_required", "Confirm the exact executable and arguments before setting confirmed=true. For existing read operations, use the phoneclaw commands in the command guide.") };
       const ran = await executeCli(spec.executable, args, { cwd: directory.cwd, env: programEnvironment(spec, env), timeoutMs: timeout });
       result = { ...ran, answer_text: ran.ok ? "Command completed. Use stdout for the result." : `${ran.status}. A timed-out or failed write may have taken effect; check before retrying.` };

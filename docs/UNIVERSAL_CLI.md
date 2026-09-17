@@ -46,7 +46,7 @@ To add a CLI: install it for the service user, configure its login or scoped
 credential names, add useful examples to the Markdown guide, and apply the guide
 to ElevenLabs after testing. Use exact operator-approved reads only after
 checking the installed CLI's behavior. Other invocations retain confirmation.
-Google Workspace Calendar `gws calendar +agenda` exact argv lists are operator-approved reads (#114); other `gws` mutations still require confirmation. Installation/auth was completed in #102.
+Google Workspace Calendar `gws calendar +agenda` exact argv lists are operator-approved reads (#114); other `gws` mutations still require confirmation. Installation/auth was completed in #102. Apple Notes (`notes` / `mac-notes`) uses exact `readOnlyArgs` for `recent` (alone and with limits 1/2/3/5/10/20) plus a notes-only safe pattern for `read <numeric-id>` and `search <query>` with optional `-l`/`--limit` and `-f`/`--folder`; `create`/`delete`/`edit`/`index` stay blocked or confirmation-gated.
 
 ## Existing workflows through the phoneclaw CLI
 
