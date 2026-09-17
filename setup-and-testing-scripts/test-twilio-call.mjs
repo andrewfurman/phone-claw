@@ -8,6 +8,7 @@ import { UNIVERSAL_SMOKE_SCENARIOS, smokeRequest, matchesSmokeCall, validateSmok
 if (!process.env.ELEVENLABS_API_KEY) loadPhoneclawEnv();
 const env = process.env;
 const universalMode = process.argv.includes("--universal");
+const AUTOMATED_TEST_CALL_PREFIX = "This is an automated PhoneClaw test call.";
 const requestedScenarios = env.PHONECLAW_TEST_SCENARIOS?.split(",").map(x => x.trim()).filter(Boolean);
 if (requestedScenarios?.some(id => !UNIVERSAL_SMOKE_SCENARIOS.some(s => s.id === id))) throw new Error("Unknown PHONECLAW_TEST_SCENARIOS entry");
 const scenarios = universalMode ? UNIVERSAL_SMOKE_SCENARIOS.filter(s => !requestedScenarios || requestedScenarios.includes(s.id)) : [];
@@ -54,15 +55,15 @@ if (universalMode) {
 }
 // Spell the commonly misheard /opt component and speak separators explicitly.
 const spokenPath = env.PHONECLAW_TEST_CWD.replaceAll("/", " slash ").replace(/\bopt\b/g, "O P T");
-const phrase = `Please use run CLI with command P W D and working directory ${spokenPath}, all lowercase. Tell me the working directory returned by the tool.`;
+const phrase = `${AUTOMATED_TEST_CALL_PREFIX} Please use run CLI with command P W D and working directory ${spokenPath}, all lowercase. Tell me the working directory returned by the tool.`;
 const twiml = new twilio.twiml.VoiceResponse();
 twiml.pause({ length: 6 });
 if (universalMode) {
   for (const scenario of scenarios) {
-    twiml.say({ voice: "alice", language: "en-US" }, scenario.phrase);
+    twiml.say({ voice: "alice", language: "en-US" }, `${AUTOMATED_TEST_CALL_PREFIX} ${scenario.phrase}`);
     twiml.pause({ length: 35 });
   }
-  twiml.say({ voice: "alice", language: "en-US" }, "Thank you. That is all for now. Goodbye.");
+  twiml.say({ voice: "alice", language: "en-US" }, "Thank you. This was an automated PhoneClaw test call. Goodbye.");
   twiml.pause({ length: 8 });
 } else {
   twiml.say({ voice: "alice", language: "en-US" }, phrase);

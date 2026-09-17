@@ -108,6 +108,17 @@ Success requires a completed Twilio call, an unambiguously matched inbound call,
 
 The driver was validated through the real Twilio phone network on September 8, 2026 against revision `28d68bf7166f5b8a902cd1a8ddb38f7441ac27f3`: all seven checks passed. Evidence is recorded in [PR #101](https://github.com/andrewfurman/phone-claw/pull/101). The original bridge service was restored after candidate validation. Rerun against each intended deployed revision; if credentials are missing, report “Twilio test not run” separately from any passing direct ElevenLabs test.
 
+
+
+## Identifying automated test calls
+
+Every automated Twilio test call must identify itself as a test so live transcripts and Twilio logs are unambiguous:
+
+- Speak an explicit prefix such as **“This is an automated PhoneClaw test call.”** before the functional request (see `AUTOMATED_TEST_CALL_PREFIX` in `setup-and-testing-scripts/test-twilio-call.mjs`).
+- Prefer a closing line that again names the automated test call before hangup.
+- Record the Twilio Call SID and correlated ElevenLabs conversation id with the PR or issue; keep personal calendar/email content out of public comments.
+- Do not place automated calls to a personal handset; use the dedicated owned Twilio destination only.
+
 ## Troubleshooting
 
 - **401:** wrong Worker/bridge/preview token; these tokens serve different boundaries.
