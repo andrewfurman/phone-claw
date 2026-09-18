@@ -219,3 +219,8 @@ sudo systemctl enable --now phoneclaw-conversation-archive.timer
 The Worker also best-effort triggers `conversation-history/archive-elevenlabs` when Twilio reports a terminal call status. The timer is the retry backstop so late ElevenLabs transcripts are still archived.
 
 If the database URL is missing, conversation-history endpoints return `conversation_history_not_configured` with HTTP 200 so the voice agent can explain the missing setup without treating it as a transport failure.
+
+
+## AI Gateway (email image inspect)
+
+Set `AI_GATEWAY_API_KEY` in `/etc/phoneclaw/bridge.env`. Optional: `AI_GATEWAY_BASE_URL`, `PHONECLAW_VISION_MODEL` (default `google/gemini-3.8-flash`).

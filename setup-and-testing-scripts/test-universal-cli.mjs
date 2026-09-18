@@ -100,10 +100,10 @@ test("output is bounded before retention and missing executables are explicit", 
   assert.equal((await run({ command: join(root, "missing"), args: [], confirmed: true })).status, "cli_not_installed");
 });
 test("all prior application tools are discoverable behind one command and output schema", async () => {
-  assert.equal(CLI_COMMAND_CATALOG.length, 30);
+  assert.equal(CLI_COMMAND_CATALOG.length, 31);
   assert.deepEqual(Object.keys(commandAdapters), CLI_COMMAND_CATALOG.map(x => x.command));
   const help = await run({ command: "phoneclaw", args: ["help"] });
-  assert.equal(help.ok, true);assert.equal(help.data.length, 30);
+  assert.equal(help.ok, true);assert.equal(help.data.length, 31);
   for (const command of CLI_COMMAND_CATALOG) {
     const r = await run({ command: "phoneclaw", args: [...command.command.split(" "), "--help"] });
     assert.equal(r.ok, true);assert.equal(r.data.command, command.command);
@@ -172,7 +172,9 @@ test("live call assertions require the requested operation and successful struct
     assert.equal(matchesSmokeCall(scenario, request), true);
     assert.equal(matchesSmokeCall(scenario, { ...request, confirmed: true }), false);
     assert.equal(matchesSmokeCall(scenario, { command: "pwd" }), false);
-    assert.equal(validateSmokeResult(scenario, { ok: true, answer_text: "It worked" }), false);
+    // Native allowlisted reads (gws agenda / notes) may accept answer_text-only success.
+    const answerOnlyOk = scenario.id === "gws_agenda" || scenario.id === "notes_recent";
+    assert.equal(validateSmokeResult(scenario, { ok: true, answer_text: "It worked" }), answerOnlyOk);
     assert.equal(validateSmokeResult(scenario, { ok: false, data: { ok: true } }), false);
   }
   const github = UNIVERSAL_SMOKE_SCENARIOS.find(s => s.id === "github");

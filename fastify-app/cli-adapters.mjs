@@ -1,6 +1,6 @@
 import { claudeCodeTool } from "./claude-code-tools.mjs";
 import { conversationHistoryGet, conversationHistorySearch } from "./conversation-history.mjs";
-import { githubCliCommon, himalayaCreateForwardDraft, himalayaCreateReplyAllDraft, himalayaDraftCreate, himalayaDraftReply, himalayaEmailArchive, himalayaEmailImages, himalayaEmailForward, himalayaEmailList, himalayaEmailRead, himalayaEmailSend, otterSpeechGet, otterSpeechSearch, otterSpeechesList, urlFetch } from "./cli-tools.mjs";
+import { githubCliCommon, himalayaCreateForwardDraft, himalayaCreateReplyAllDraft, himalayaDraftCreate, himalayaDraftReply, himalayaEmailArchive, himalayaEmailImageInspect, himalayaEmailImages, himalayaEmailForward, himalayaEmailList, himalayaEmailRead, himalayaEmailSend, otterSpeechGet, otterSpeechSearch, otterSpeechesList, urlFetch } from "./cli-tools.mjs";
 import { sendgridEmailSend } from "./sendgrid-tools.mjs";
 import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSearchEntries, rssListConfiguredFeeds, rssRefreshConfiguredFeeds } from "./rss-feed-tools.mjs";
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
@@ -76,6 +76,20 @@ export const commandAdapters = {
     markSeen: body.mark_seen ?? body.markSeen,
     includeRaw: body.include_raw ?? body.includeRaw,
     maxBodyChars: body.max_body_chars || body.maxBodyChars,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+    "himalaya email-image-inspect": (body, context) => himalayaEmailImageInspect({
+    id: body.id || body.envelope_id || body.envelopeId,
+    folder: body.folder,
+    account: body.account,
+    imageIndex: body.image_index ?? body.imageIndex,
+    imageId: body.image_id || body.imageId || body.content_id || body.contentId || body.cid,
+    cid: body.cid || body.content_id || body.contentId,
+    prompt: body.prompt,
+    maxImages: body.max_images || body.maxImages,
+    maxImageBytes: body.max_image_bytes || body.maxImageBytes,
+    maxOriginalBytes:
+      body.max_original_bytes || body.maxOriginalBytes || body.max_raw_bytes || body.maxRawBytes,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   }),
   "himalaya email-images": (body, context) => himalayaEmailImages({
