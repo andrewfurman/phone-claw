@@ -58,6 +58,10 @@ OTTER_BIN=/home/phoneclaw/.cargo/bin/otter
 GH_BIN=/usr/bin/gh
 HIMALAYA_ARCHIVE_FOLDER="[Gmail]/All Mail"
 HIMALAYA_DRAFTS_FOLDER="[Gmail]/Drafts"
+# Vercel AI Gateway for `phoneclaw himalaya email-image-inspect` (leave empty until set)
+AI_GATEWAY_API_KEY=
+# AI_GATEWAY_BASE_URL=https://ai-gateway.vercel.sh/v1
+# PHONECLAW_VISION_MODEL=google/gemini-3.8-flash
 ENV
 fi
 chown root:phoneclaw /etc/phoneclaw/bridge.env

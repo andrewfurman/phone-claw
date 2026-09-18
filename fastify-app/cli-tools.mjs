@@ -7,6 +7,11 @@ import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { htmlToText } from "html-to-text";
+import {
+  analyzeImagesWithGateway,
+  DEFAULT_VISION_MODEL,
+  resolveVisionGatewayConfig,
+} from "./ai-gateway-vision.mjs";
 
 const DEFAULT_TIMEOUT_MS = 25_000;
 const DEFAULT_MAX_BUFFER_BYTES = 1_000_000;
@@ -26,6 +31,10 @@ const DEFAULT_EMAIL_IMAGE_MAX_BYTES = 250_000;
 const MAX_EMAIL_IMAGE_MAX_BYTES = 1_000_000;
 const DEFAULT_EMAIL_IMAGE_MAX_ORIGINAL_BYTES = 2_000_000;
 const MAX_EMAIL_IMAGE_MAX_ORIGINAL_BYTES = 5_000_000;
+const DEFAULT_EMAIL_IMAGE_INSPECT_MAX_IMAGES = 3;
+const MAX_EMAIL_IMAGE_INSPECT_MAX_IMAGES = 5;
+const DEFAULT_EMAIL_IMAGE_INSPECT_PROMPT =
+  "Describe this email image briefly and extract any readable text (OCR). Prefer exact wording for signs, screenshots, codes, amounts, and labels.";
 const DEFAULT_HIMALAYA_SEND_TIMEOUT_MS = 8_000;
 const DEFAULT_FORWARD_MAX_ORIGINAL_BYTES = 600_000;
 const MAX_FORWARD_ORIGINAL_BYTES = 1_500_000;
@@ -259,6 +268,238 @@ export async function himalayaEmailImages({
     html_images: inspection.html_images,
     answer_text: formatEmailImagesAnswer(inspection.images, inspection.html_images),
   };
+}
+
+
+export async function himalayaEmailImageInspect({
+  id,
+  folder = "INBOX",
+  account,
+  imageIndex,
+  imageId,
+  cid,
+  prompt,
+  maxImages = DEFAULT_EMAIL_IMAGE_INSPECT_MAX_IMAGES,
+  maxImageBytes = DEFAULT_EMAIL_IMAGE_MAX_BYTES,
+  maxOriginalBytes = DEFAULT_EMAIL_IMAGE_MAX_ORIGINAL_BYTES,
+  maxRawBytes = DEFAULT_MAX_RAW_BYTES,
+  visionAnalyze = analyzeImagesWithGateway,
+  emailImagesFn = himalayaEmailImages,
+} = {}) {
+  const messageId = normalizeString(id);
+  const sourceFolder = normalizeString(folder, "INBOX");
+  if (!messageId) {
+    return missingField("id", "A Himalaya envelope id is required.");
+  }
+
+  const gateway = resolveVisionGatewayConfig();
+  if (!gateway.configured) {
+    return {
+      ok: false,
+      status: "ai_gateway_not_configured",
+      command: "himalaya email-image-inspect",
+      id: messageId,
+      folder: sourceFolder,
+      model: gateway.model,
+      message:
+        "AI gateway not configured. Set AI_GATEWAY_API_KEY on the bridge and restart phoneclaw-bridge.",
+      answer_text:
+        "AI gateway not configured. Set AI_GATEWAY_API_KEY on the bridge and restart phoneclaw-bridge.",
+    };
+  }
+
+  const requestedMaxImages = clampInteger(
+    maxImages,
+    1,
+    MAX_EMAIL_IMAGE_INSPECT_MAX_IMAGES,
+    DEFAULT_EMAIL_IMAGE_INSPECT_MAX_IMAGES
+  );
+  // Pull enough metadata+bytes to resolve 0-based image_index / cid selection.
+  const extractionMaxImages = clampInteger(
+    Math.max(
+      requestedMaxImages,
+      Number.isInteger(Number(imageIndex)) ? Number(imageIndex) + 1 : 0,
+      8
+    ),
+    1,
+    MAX_EMAIL_IMAGE_MAX_IMAGES,
+    8
+  );
+
+  const extraction = await emailImagesFn({
+    id: messageId,
+    folder: sourceFolder,
+    account,
+    includeEmbedded: true,
+    includeAttachments: true,
+    includeData: true,
+    maxImages: extractionMaxImages,
+    maxImageBytes,
+    maxOriginalBytes,
+    maxRawBytes,
+  });
+  if (!extraction.ok) return extraction;
+
+  const selected = selectEmailImagesForInspect(extraction.images || [], {
+    imageIndex,
+    imageId,
+    cid,
+    maxImages: requestedMaxImages,
+  });
+  if (!selected.ok) {
+    return {
+      ok: false,
+      status: selected.status,
+      command: "himalaya email-image-inspect",
+      id: messageId,
+      folder: sourceFolder,
+      message: selected.message,
+      answer_text: selected.message,
+      available_count: extraction.returned_count,
+      images: (extraction.images || []).map((image) => stripImageData(image)),
+    };
+  }
+
+  const analysisPrompt = normalizeString(
+    prompt,
+    DEFAULT_EMAIL_IMAGE_INSPECT_PROMPT
+  );
+  const vision = await visionAnalyze({
+    prompt: analysisPrompt,
+    images: selected.images.map((image) => ({
+      media_type: image.media_type,
+      data_base64: image.data_base64,
+      filename: image.filename,
+      index: image.index,
+      content_id: image.content_id,
+    })),
+  });
+  if (!vision.ok) {
+    return {
+      ok: false,
+      status: vision.status || "ai_gateway_error",
+      command: "himalaya email-image-inspect",
+      id: messageId,
+      folder: sourceFolder,
+      model: vision.model || gateway.model,
+      message: vision.message || "Vision analysis failed.",
+      answer_text: vision.message || "Vision analysis failed.",
+      inspected_count: selected.images.length,
+      images: selected.images.map((image) => stripImageData(image)),
+    };
+  }
+
+  const inspected = selected.images.map((image, offset) => ({
+    ...stripImageData(image),
+    description: selected.images.length === 1 ? vision.description : vision.description,
+    ocr_text: selected.images.length === 1 ? vision.ocr_text : vision.ocr_text,
+  }));
+
+  const answerText =
+    normalizeString(vision.answer_text) ||
+    normalizeString(vision.description) ||
+    "I inspected the selected email image.";
+
+  return {
+    ...compactCliResult(extraction),
+    ok: true,
+    status: "ok",
+    command: "himalaya email-image-inspect",
+    id: messageId,
+    folder: sourceFolder,
+    model: vision.model || gateway.model,
+    prompt: analysisPrompt,
+    inspected_count: inspected.length,
+    available_count: extraction.returned_count,
+    has_more: extraction.has_more,
+    description: vision.description || "",
+    ocr_text: vision.ocr_text || "",
+    images: inspected,
+    usage: vision.usage || null,
+    answer_text: answerText,
+  };
+}
+
+function stripImageData(image = {}) {
+  const { data_base64, ...rest } = image;
+  return {
+    ...rest,
+    data_base64: "",
+    returned_data_bytes: 0,
+  };
+}
+
+function selectEmailImagesForInspect(images, { imageIndex, imageId, cid, maxImages }) {
+  const list = Array.isArray(images) ? images : [];
+  if (list.length === 0) {
+    return {
+      ok: false,
+      status: "no_images",
+      message: "That email has no embedded images or image attachments to inspect.",
+    };
+  }
+
+  const contentKey = normalizeString(imageId || cid).replace(/^<|>$/g, "").toLowerCase();
+  if (contentKey) {
+    const match = list.find((image) => {
+      const contentId = normalizeString(image.content_id).replace(/^<|>$/g, "").toLowerCase();
+      return contentId && contentId === contentKey;
+    });
+    if (!match) {
+      return {
+        ok: false,
+        status: "image_not_found",
+        message: `No email image matched content id ${contentKey}.`,
+      };
+    }
+    if (!normalizeString(match.data_base64)) {
+      return {
+        ok: false,
+        status: "image_data_unavailable",
+        message: "The selected email image could not be decoded for vision analysis.",
+      };
+    }
+    return { ok: true, images: [match] };
+  }
+
+  if (imageIndex !== undefined && imageIndex !== null && imageIndex !== "") {
+    const index = Number.parseInt(imageIndex, 10);
+    if (!Number.isInteger(index) || index < 0) {
+      return {
+        ok: false,
+        status: "invalid_image_index",
+        message: "image_index must be a non-negative integer (0-based).",
+      };
+    }
+    const match = list[index];
+    if (!match) {
+      return {
+        ok: false,
+        status: "image_not_found",
+        message: `No email image at image_index ${index}. This email has ${list.length} available image(s).`,
+      };
+    }
+    if (!normalizeString(match.data_base64)) {
+      return {
+        ok: false,
+        status: "image_data_unavailable",
+        message: "The selected email image could not be decoded for vision analysis.",
+      };
+    }
+    return { ok: true, images: [match] };
+  }
+
+  const bounded = list
+    .filter((image) => normalizeString(image.data_base64))
+    .slice(0, maxImages);
+  if (bounded.length === 0) {
+    return {
+      ok: false,
+      status: "image_data_unavailable",
+      message: "Email image bytes were unavailable for vision analysis.",
+    };
+  }
+  return { ok: true, images: bounded };
 }
 
 export function inspectEmailImagesFromRawMessage(rawMessage, {

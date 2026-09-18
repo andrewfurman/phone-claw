@@ -53,6 +53,9 @@ Edit the bridge env as root:
 
 ```bash
 sudoedit /etc/phoneclaw/bridge.env
+
+For email image OCR/description, also set `AI_GATEWAY_API_KEY` (and optionally `AI_GATEWAY_BASE_URL`, `PHONECLAW_VISION_MODEL`). Leave the key empty until you have a Vercel AI Gateway credential; the command returns `ai_gateway_not_configured` without it.
+
 ```
 
 Minimum production values:
