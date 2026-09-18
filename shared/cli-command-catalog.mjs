@@ -144,6 +144,37 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "image inspect",
+    "legacy_path": "/cli/image/inspect",
+    "parameters": [
+      "id",
+      "envelope_id",
+      "envelopeId",
+      "url",
+      "href",
+      "folder",
+      "account",
+      "image_index",
+      "imageIndex",
+      "image_id",
+      "imageId",
+      "cid",
+      "content_id",
+      "contentId",
+      "prompt",
+      "max_images",
+      "maxImages",
+      "max_image_bytes",
+      "maxImageBytes",
+      "max_original_bytes",
+      "maxOriginalBytes",
+      "max_raw_bytes",
+      "maxRawBytes",
+      "timeout_ms",
+      "timeoutMs"
+    ]
+  },
+  {
     "command": "himalaya email-image-inspect",
     "legacy_path": "/cli/himalaya/email-image-inspect",
     "parameters": [

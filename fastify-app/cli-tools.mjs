@@ -35,6 +35,8 @@ const DEFAULT_EMAIL_IMAGE_INSPECT_MAX_IMAGES = 3;
 const MAX_EMAIL_IMAGE_INSPECT_MAX_IMAGES = 5;
 const DEFAULT_EMAIL_IMAGE_INSPECT_PROMPT =
   "Describe this email image briefly and extract any readable text (OCR). Prefer exact wording for signs, screenshots, codes, amounts, and labels.";
+const DEFAULT_IMAGE_INSPECT_PROMPT =
+  "Describe this image briefly and extract any readable text (OCR). Prefer exact wording for signs, screenshots, codes, amounts, and labels.";
 const DEFAULT_HIMALAYA_SEND_TIMEOUT_MS = 8_000;
 const DEFAULT_FORWARD_MAX_ORIGINAL_BYTES = 600_000;
 const MAX_FORWARD_ORIGINAL_BYTES = 1_500_000;
@@ -44,6 +46,10 @@ const DEFAULT_URL_FETCH_BYTES = 1_500_000;
 const MAX_URL_FETCH_BYTES = 3_000_000;
 const DEFAULT_URL_FETCH_TIMEOUT_MS = 12_000;
 const MAX_URL_FETCH_TIMEOUT_MS = 25_000;
+const DEFAULT_PUBLIC_IMAGE_MAX_BYTES = DEFAULT_EMAIL_IMAGE_MAX_BYTES;
+const MAX_PUBLIC_IMAGE_MAX_BYTES = MAX_EMAIL_IMAGE_MAX_BYTES;
+const DEFAULT_PUBLIC_IMAGE_TIMEOUT_MS = DEFAULT_URL_FETCH_TIMEOUT_MS;
+const MAX_PUBLIC_IMAGE_TIMEOUT_MS = MAX_URL_FETCH_TIMEOUT_MS;
 const MAX_URL_REDIRECTS = 5;
 const MAX_CLI_ARGUMENT_BYTES = 60_000;
 
@@ -271,6 +277,74 @@ export async function himalayaEmailImages({
 }
 
 
+export async function phoneclawImageInspect({
+  id,
+  envelopeId,
+  envelope_id,
+  url,
+  href,
+  folder = "INBOX",
+  account,
+  imageIndex,
+  imageId,
+  cid,
+  prompt,
+  maxImages = DEFAULT_EMAIL_IMAGE_INSPECT_MAX_IMAGES,
+  maxImageBytes = DEFAULT_EMAIL_IMAGE_MAX_BYTES,
+  maxOriginalBytes = DEFAULT_EMAIL_IMAGE_MAX_ORIGINAL_BYTES,
+  maxRawBytes = DEFAULT_MAX_RAW_BYTES,
+  timeoutMs = DEFAULT_PUBLIC_IMAGE_TIMEOUT_MS,
+  visionAnalyze = analyzeImagesWithGateway,
+  emailImagesFn = himalayaEmailImages,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const messageId = normalizeString(id || envelopeId || envelope_id);
+  const imageUrl = normalizeString(url || href);
+  const hasEmail = Boolean(messageId);
+  const hasUrl = Boolean(imageUrl);
+
+  if (hasEmail === hasUrl) {
+    return {
+      ok: false,
+      status: "invalid_arguments",
+      command: "image inspect",
+      message:
+        "Provide exactly one source: email id/envelope_id, or a public https url.",
+      answer_text:
+        "Provide exactly one source: an email id, or a public https image URL.",
+    };
+  }
+
+  if (hasUrl) {
+    return inspectPublicImageUrl({
+      url: imageUrl,
+      prompt,
+      maxImageBytes,
+      timeoutMs,
+      visionAnalyze,
+      fetchImpl,
+      commandName: "image inspect",
+    });
+  }
+
+  return inspectEmailImagesWithVision({
+    id: messageId,
+    folder,
+    account,
+    imageIndex,
+    imageId,
+    cid,
+    prompt,
+    maxImages,
+    maxImageBytes,
+    maxOriginalBytes,
+    maxRawBytes,
+    visionAnalyze,
+    emailImagesFn,
+    commandName: "image inspect",
+  });
+}
+
 export async function himalayaEmailImageInspect({
   id,
   folder = "INBOX",
@@ -286,6 +360,41 @@ export async function himalayaEmailImageInspect({
   visionAnalyze = analyzeImagesWithGateway,
   emailImagesFn = himalayaEmailImages,
 } = {}) {
+  // Compat alias: keep the email-only command working for existing prompt/docs.
+  return inspectEmailImagesWithVision({
+    id,
+    folder,
+    account,
+    imageIndex,
+    imageId,
+    cid,
+    prompt,
+    maxImages,
+    maxImageBytes,
+    maxOriginalBytes,
+    maxRawBytes,
+    visionAnalyze,
+    emailImagesFn,
+    commandName: "himalaya email-image-inspect",
+  });
+}
+
+async function inspectEmailImagesWithVision({
+  id,
+  folder = "INBOX",
+  account,
+  imageIndex,
+  imageId,
+  cid,
+  prompt,
+  maxImages = DEFAULT_EMAIL_IMAGE_INSPECT_MAX_IMAGES,
+  maxImageBytes = DEFAULT_EMAIL_IMAGE_MAX_BYTES,
+  maxOriginalBytes = DEFAULT_EMAIL_IMAGE_MAX_ORIGINAL_BYTES,
+  maxRawBytes = DEFAULT_MAX_RAW_BYTES,
+  visionAnalyze = analyzeImagesWithGateway,
+  emailImagesFn = himalayaEmailImages,
+  commandName = "image inspect",
+} = {}) {
   const messageId = normalizeString(id);
   const sourceFolder = normalizeString(folder, "INBOX");
   if (!messageId) {
@@ -297,7 +406,7 @@ export async function himalayaEmailImageInspect({
     return {
       ok: false,
       status: "ai_gateway_not_configured",
-      command: "himalaya email-image-inspect",
+      command: commandName,
       id: messageId,
       folder: sourceFolder,
       model: gateway.model,
@@ -350,7 +459,7 @@ export async function himalayaEmailImageInspect({
     return {
       ok: false,
       status: selected.status,
-      command: "himalaya email-image-inspect",
+      command: commandName,
       id: messageId,
       folder: sourceFolder,
       message: selected.message,
@@ -362,7 +471,9 @@ export async function himalayaEmailImageInspect({
 
   const analysisPrompt = normalizeString(
     prompt,
-    DEFAULT_EMAIL_IMAGE_INSPECT_PROMPT
+    commandName === "himalaya email-image-inspect"
+      ? DEFAULT_EMAIL_IMAGE_INSPECT_PROMPT
+      : DEFAULT_IMAGE_INSPECT_PROMPT
   );
   const vision = await visionAnalyze({
     prompt: analysisPrompt,
@@ -378,7 +489,7 @@ export async function himalayaEmailImageInspect({
     return {
       ok: false,
       status: vision.status || "ai_gateway_error",
-      command: "himalaya email-image-inspect",
+      command: commandName,
       id: messageId,
       folder: sourceFolder,
       model: vision.model || gateway.model,
@@ -389,10 +500,10 @@ export async function himalayaEmailImageInspect({
     };
   }
 
-  const inspected = selected.images.map((image, offset) => ({
+  const inspected = selected.images.map((image) => ({
     ...stripImageData(image),
-    description: selected.images.length === 1 ? vision.description : vision.description,
-    ocr_text: selected.images.length === 1 ? vision.ocr_text : vision.ocr_text,
+    description: vision.description,
+    ocr_text: vision.ocr_text,
   }));
 
   const answerText =
@@ -404,9 +515,10 @@ export async function himalayaEmailImageInspect({
     ...compactCliResult(extraction),
     ok: true,
     status: "ok",
-    command: "himalaya email-image-inspect",
+    command: commandName,
     id: messageId,
     folder: sourceFolder,
+    source: "email",
     model: vision.model || gateway.model,
     prompt: analysisPrompt,
     inspected_count: inspected.length,
@@ -418,6 +530,361 @@ export async function himalayaEmailImageInspect({
     usage: vision.usage || null,
     answer_text: answerText,
   };
+}
+
+async function inspectPublicImageUrl({
+  url,
+  prompt,
+  maxImageBytes = DEFAULT_PUBLIC_IMAGE_MAX_BYTES,
+  timeoutMs = DEFAULT_PUBLIC_IMAGE_TIMEOUT_MS,
+  visionAnalyze = analyzeImagesWithGateway,
+  fetchImpl = globalThis.fetch,
+  commandName = "image inspect",
+} = {}) {
+  const gateway = resolveVisionGatewayConfig();
+  if (!gateway.configured) {
+    return {
+      ok: false,
+      status: "ai_gateway_not_configured",
+      command: commandName,
+      url,
+      model: gateway.model,
+      message:
+        "AI gateway not configured. Set AI_GATEWAY_API_KEY on the bridge and restart phoneclaw-bridge.",
+      answer_text:
+        "AI gateway not configured. Set AI_GATEWAY_API_KEY on the bridge and restart phoneclaw-bridge.",
+    };
+  }
+
+  const fetched = await fetchPublicImageBytes({
+    url,
+    maxImageBytes,
+    timeoutMs,
+    fetchImpl,
+  });
+  if (!fetched.ok) {
+    return {
+      ...fetched,
+      command: commandName,
+    };
+  }
+
+  const analysisPrompt = normalizeString(prompt, DEFAULT_IMAGE_INSPECT_PROMPT);
+  const vision = await visionAnalyze({
+    prompt: analysisPrompt,
+    images: [
+      {
+        media_type: fetched.media_type,
+        data_base64: fetched.data_base64,
+        filename: fetched.filename,
+        source_url: fetched.final_url || fetched.url,
+      },
+    ],
+  });
+  if (!vision.ok) {
+    return {
+      ok: false,
+      status: vision.status || "ai_gateway_error",
+      command: commandName,
+      url: fetched.url,
+      final_url: fetched.final_url,
+      model: vision.model || gateway.model,
+      message: vision.message || "Vision analysis failed.",
+      answer_text: vision.message || "Vision analysis failed.",
+      inspected_count: 1,
+      images: [
+        {
+          index: 0,
+          filename: fetched.filename,
+          media_type: fetched.media_type,
+          byte_length: fetched.byte_length,
+          source_url: fetched.final_url || fetched.url,
+          data_base64: "",
+          returned_data_bytes: 0,
+        },
+      ],
+    };
+  }
+
+  const answerText =
+    normalizeString(vision.answer_text) ||
+    normalizeString(vision.description) ||
+    "I inspected the image URL.";
+
+  return {
+    ok: true,
+    status: "ok",
+    command: commandName,
+    source: "url",
+    url: fetched.url,
+    final_url: fetched.final_url,
+    model: vision.model || gateway.model,
+    prompt: analysisPrompt,
+    inspected_count: 1,
+    description: vision.description || "",
+    ocr_text: vision.ocr_text || "",
+    images: [
+      {
+        index: 0,
+        filename: fetched.filename,
+        media_type: fetched.media_type,
+        byte_length: fetched.byte_length,
+        source_url: fetched.final_url || fetched.url,
+        description: vision.description || "",
+        ocr_text: vision.ocr_text || "",
+        data_base64: "",
+        returned_data_bytes: 0,
+      },
+    ],
+    usage: vision.usage || null,
+    answer_text: answerText,
+  };
+}
+
+async function fetchPublicImageBytes({
+  url,
+  maxImageBytes = DEFAULT_PUBLIC_IMAGE_MAX_BYTES,
+  timeoutMs = DEFAULT_PUBLIC_IMAGE_TIMEOUT_MS,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const requestedUrl = normalizeString(url);
+  if (!requestedUrl) {
+    return missingField("url", "A public https image URL is required.");
+  }
+  if (typeof fetchImpl !== "function") {
+    return {
+      ok: false,
+      status: "fetch_unavailable",
+      url: requestedUrl,
+      message: "Fetch is unavailable in this runtime.",
+      answer_text: "Fetch is unavailable in this runtime.",
+    };
+  }
+
+  const maxBytes = clampInteger(
+    maxImageBytes,
+    1_000,
+    MAX_PUBLIC_IMAGE_MAX_BYTES,
+    DEFAULT_PUBLIC_IMAGE_MAX_BYTES
+  );
+  const timeout = clampInteger(
+    timeoutMs,
+    1_000,
+    MAX_PUBLIC_IMAGE_TIMEOUT_MS,
+    DEFAULT_PUBLIC_IMAGE_TIMEOUT_MS
+  );
+
+  const visited = [];
+  let currentUrl = requestedUrl;
+  let response = null;
+  let responseBuffer = Buffer.alloc(0);
+  let responseTruncated = false;
+
+  for (let redirectCount = 0; redirectCount <= MAX_URL_REDIRECTS; redirectCount += 1) {
+    const safety = await validatePublicHttpsImageUrl(currentUrl);
+    if (!safety.ok) return safety;
+
+    const abortController = new AbortController();
+    const timer = setTimeout(() => abortController.abort(), timeout);
+    try {
+      response = await fetchImpl(safety.url, {
+        method: "GET",
+        redirect: "manual",
+        signal: abortController.signal,
+        headers: {
+          accept: "image/*,*/*;q=0.1",
+          "user-agent": "phone-claw-image-inspect/1.0",
+        },
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        status: error?.name === "AbortError" ? "url_fetch_timeout" : "url_fetch_failed",
+        url: requestedUrl,
+        final_url: currentUrl,
+        message: error?.message || "Image URL fetch failed.",
+        answer_text:
+          error?.name === "AbortError"
+            ? "The image URL fetch timed out."
+            : "The image URL fetch failed.",
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+
+    visited.push({
+      url: currentUrl,
+      status_code: response.status,
+      method: "GET",
+    });
+
+    if (isRedirectStatus(response.status)) {
+      const location = response.headers.get("location") || "";
+      if (!location) break;
+      if (redirectCount >= MAX_URL_REDIRECTS) {
+        return {
+          ok: false,
+          status: "too_many_redirects",
+          url: requestedUrl,
+          final_url: currentUrl,
+          redirects: visited,
+          message: "The image URL fetch stopped after too many redirects.",
+          answer_text: "The image URL fetch stopped after too many redirects.",
+        };
+      }
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+
+    const body = await readResponseBuffer(response, maxBytes);
+    responseBuffer = body.buffer;
+    responseTruncated = body.truncated;
+    break;
+  }
+
+  if (!response) {
+    return {
+      ok: false,
+      status: "url_fetch_failed",
+      url: requestedUrl,
+      message: "The image URL fetch failed.",
+      answer_text: "The image URL fetch failed.",
+    };
+  }
+
+  if (!(response.status >= 200 && response.status < 300)) {
+    return {
+      ok: false,
+      status: "http_error",
+      url: requestedUrl,
+      final_url: currentUrl,
+      status_code: response.status,
+      redirects: visited,
+      message: `Image URL returned HTTP ${response.status}.`,
+      answer_text: `The image URL returned HTTP ${response.status}.`,
+    };
+  }
+
+  if (responseTruncated || responseBuffer.byteLength === 0) {
+    return {
+      ok: false,
+      status: responseTruncated ? "image_too_large" : "no_images",
+      url: requestedUrl,
+      final_url: currentUrl,
+      max_image_bytes: maxBytes,
+      message: responseTruncated
+        ? `The image exceeds the ${maxBytes} byte limit.`
+        : "The image URL returned an empty body.",
+      answer_text: responseTruncated
+        ? "That image is too large to inspect."
+        : "That image URL returned no image bytes.",
+    };
+  }
+
+  const contentTypeHeader = response.headers.get("content-type") || "";
+  const contentType = parseContentType(contentTypeHeader);
+  const mediaType = normalizeImageMediaType(
+    contentType.value,
+    responseBuffer,
+    currentUrl
+  );
+  if (!mediaType) {
+    return {
+      ok: false,
+      status: "unsupported_content_type",
+      url: requestedUrl,
+      final_url: currentUrl,
+      content_type: contentTypeHeader,
+      message: "Only image/* responses are supported for image inspect.",
+      answer_text: "That URL did not return an image content type.",
+    };
+  }
+
+  let filename = "";
+  try {
+    const pathname = new URL(currentUrl).pathname || "";
+    filename = decodeURIComponent(pathname.split("/").filter(Boolean).pop() || "");
+  } catch {
+    filename = "";
+  }
+
+  return {
+    ok: true,
+    status: "ok",
+    url: requestedUrl,
+    final_url: currentUrl,
+    media_type: mediaType,
+    byte_length: responseBuffer.byteLength,
+    filename: filename || `image.${mediaType.split("/")[1] || "bin"}`,
+    data_base64: responseBuffer.toString("base64"),
+    redirects: visited,
+  };
+}
+
+async function validatePublicHttpsImageUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(String(value || ""));
+  } catch {
+    return {
+      ok: false,
+      status: "invalid_url",
+      message: "The URL is invalid.",
+      answer_text: "That URL is invalid.",
+    };
+  }
+  if (parsed.protocol !== "https:") {
+    return {
+      ok: false,
+      status: "unsupported_url_protocol",
+      url: value,
+      message: "Only https image URLs are supported.",
+      answer_text: "Only https image URLs are supported.",
+    };
+  }
+  return validatePublicHttpUrl(value);
+}
+
+function normalizeImageMediaType(contentType, buffer, url) {
+  const raw = String(contentType || "").trim().toLowerCase().split(";")[0];
+  if (raw.startsWith("image/") && raw !== "image/*") return raw;
+  // Fall back to magic bytes / extension when servers omit or use generic types.
+  if (buffer?.length >= 3) {
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+      return "image/jpeg";
+    }
+    if (
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47
+    ) {
+      return "image/png";
+    }
+    if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+      return "image/gif";
+    }
+    if (
+      buffer[0] === 0x52 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x46
+    ) {
+      return "image/webp";
+    }
+  }
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    if (pathname.endsWith(".png")) return "image/png";
+    if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) return "image/jpeg";
+    if (pathname.endsWith(".gif")) return "image/gif";
+    if (pathname.endsWith(".webp")) return "image/webp";
+    if (pathname.endsWith(".svg")) return "image/svg+xml";
+  } catch {
+    // ignore
+  }
+  if (raw.startsWith("image/")) return raw === "image/*" ? "image/png" : raw;
+  return "";
 }
 
 function stripImageData(image = {}) {
