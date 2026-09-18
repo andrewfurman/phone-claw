@@ -99,7 +99,7 @@ export async function analyzeImagesWithGateway({
       {
         role: "system",
         content:
-          "You inspect email images for a voice assistant. Reply with compact JSON only: " +
+          "You inspect images for a voice assistant. Reply with compact JSON only: " +
           '{"description":"short visual description","ocr_text":"all readable text or empty string","answer_text":"one spoken sentence for the caller"}. ' +
           "Prefer OCR accuracy. Do not invent text that is not visible.",
       },
