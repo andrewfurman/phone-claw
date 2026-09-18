@@ -111,6 +111,18 @@ Confirmed arbitrary programs remain trusted code with service-user filesystem
 permissions, not an OS sandbox. Credential redaction and sensitive-command
 blocks are defense in depth; do not authorize a command to dump credentials.
 
+
+## Live agent tool attachment (post-#123 audit)
+
+Conversation sampling (2026-09-11 → 2026-09-18 ET, N=50 Twilio calls) showed **9/50** conversations still invoking legacy dedicated ElevenLabs tools (`web_search`, `github_*`, `himalaya_*`, `rss_*`, `url_fetch`, …) even though this runner and the command guide assume a single `run_cli` application tool. See [CONVERSATION_ARCHITECTURE_AUDIT.md](CONVERSATION_ARCHITECTURE_AUDIT.md).
+
+Operator checklist:
+
+1. Run `npm run elevenlabs:tools:configure` (preview), then `-- --apply`, so the Andrew Assistant Agent attaches **only** `run_cli` plus system `end_call`.
+2. Re-export the public-safe agent snapshot; confirm the prompt uses [universal-cli.md](../elevenlabs-setup/prompt-templates/universal-cli.md), not the older specialized-tool template files alone.
+3. After a short soak with Twilio smokes, set `PHONECLAW_ENABLE_LEGACY_TOOL_ROUTES=false` on bridge and Worker.
+4. Do not re-add specialized webhook tools when exporting or cloning agents.
+
 ## Migration and rollback
 
 1. Run `npm ci`, `npm run test:offline`, `npm run check`, `npm run worker:check`,

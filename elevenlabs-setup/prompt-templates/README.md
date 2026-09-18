@@ -36,3 +36,14 @@ See [../../docs/VM_BRIDGE_SETUP_GUIDE.md](../../docs/VM_BRIDGE_SETUP_GUIDE.md).
 ## Placeholders Only
 
 Do not paste real secrets, bridge tokens, phone numbers, private feed URLs, or CLI auth files into these templates or into Git. Use placeholders such as `<cli-bridge-token>` and `https://cli-bridge.example.com`.
+
+## Retiring legacy specialized tools
+
+The live voice agent should expose **one** application tool (`run_cli`) plus system `end_call`. Do not paste [vm-cli-tools.md](vm-cli-tools.md) / [common-command-patterns.md](common-command-patterns.md) as a substitute for [universal-cli.md](universal-cli.md) on a migrated agent — those files document the older specialized-tool configuration.
+
+After changing tools or prompts:
+
+1. Prefer `npm run elevenlabs:tools:configure -- --apply` so specialized `github_*` / `himalaya_*` / `rss_*` / `web_search` / `url_fetch` tools are not left attached beside `run_cli`.
+2. Export a public-safe snapshot and spot-check that tool IDs match the universal configuration.
+3. Read the evidence and follow-ups in [../../docs/CONVERSATION_ARCHITECTURE_AUDIT.md](../../docs/CONVERSATION_ARCHITECTURE_AUDIT.md) (#123).
+
