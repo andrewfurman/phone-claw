@@ -443,22 +443,25 @@ function parseFeedEntries(xml, feed) {
 
 function rssItemEntry(block, feed, feedTitle) {
   const title = tagText(block, "title");
-  const link = tagText(block, "link") || tagText(block, "guid");
+  const guid = tagText(block, "guid");
+  const link = tagText(block, "link");
   const contentHtml = tagText(block, "content:encoded") || tagText(block, "encoded");
   const descriptionHtml = tagText(block, "description") || tagText(block, "summary");
   const html = contentHtml || descriptionHtml;
   const fullText = normalizeArticleText(htmlToReadableText(html));
-  const url = normalizeString(link);
+  const url = normalizeString(link || guid);
+  const identity = articleIdentityValue({ url, guid, title });
   const publishedAt = normalizeDate(tagText(block, "pubDate") || tagText(block, "published"));
   const updatedAt = normalizeDate(tagText(block, "updated") || tagText(block, "dc:date"));
 
   return {
-    id: entryId(feed.id, url || tagText(block, "guid") || title),
+    id: entryId(feed.id, identity),
     feed_id: feed.id,
     feed_title: feedTitle || feed.title,
     feed_url: redactedFeedUrl(feed),
     title,
     url,
+    guid: normalizeString(guid),
     author: tagText(block, "author") || tagText(block, "dc:creator"),
     published_at: publishedAt,
     updated_at: updatedAt,
@@ -475,21 +478,24 @@ function rssItemEntry(block, feed, feedTitle) {
 
 function atomEntry(block, feed, feedTitle) {
   const title = tagText(block, "title");
-  const url = atomLink(block) || tagText(block, "id");
+  const atomId = tagText(block, "id");
+  const url = atomLink(block) || atomId;
   const contentHtml = tagText(block, "content");
   const summaryHtml = tagText(block, "summary");
   const html = contentHtml || summaryHtml;
   const fullText = normalizeArticleText(htmlToReadableText(html));
   const publishedAt = normalizeDate(tagText(block, "published"));
   const updatedAt = normalizeDate(tagText(block, "updated"));
+  const identity = articleIdentityValue({ url, guid: atomId, title });
 
   return {
-    id: entryId(feed.id, url || tagText(block, "id") || title),
+    id: entryId(feed.id, identity),
     feed_id: feed.id,
     feed_title: feedTitle || feed.title,
     feed_url: redactedFeedUrl(feed),
     title,
     url,
+    guid: normalizeString(atomId),
     author: nestedTagText(block, "author", "name"),
     published_at: publishedAt || updatedAt,
     updated_at: updatedAt,
@@ -575,6 +581,7 @@ function compactFeedEntry(entry, { maxExcerptChars }) {
     id: entry.id,
     title: entry.title || "",
     url: entry.url || "",
+    guid: entry.guid || "",
     author: entry.author || "",
     published_at: entry.published_at || "",
     created_at: entry.created_at || "",
@@ -634,7 +641,16 @@ function dedupeEntries(entries) {
   const seen = new Set();
   const result = [];
   for (const entry of entries) {
-    const key = canonicalArticleUrl(entry.url) || entry.id || normalizeString(entry.title).toLowerCase();
+    const identity = articleIdentityValue({
+      url: entry.url,
+      guid: entry.guid,
+      title: entry.title,
+    });
+    const key =
+      canonicalArticleUrl(identity) ||
+      normalizeString(identity).toLowerCase() ||
+      entry.id ||
+      normalizeString(entry.title).toLowerCase();
     if (key && seen.has(key)) continue;
     if (key) seen.add(key);
     result.push(entry);
@@ -724,16 +740,51 @@ function redactedFeedUrl(feed) {
   }
 }
 
-function canonicalArticleUrl(value) {
+function articleIdentityValue({ url, guid, title } = {}) {
+  const unwrapped = unwrapArticleTxtTarget(url);
+  if (unwrapped) return unwrapped;
+  const normalizedGuid = normalizeString(guid);
+  if (normalizedGuid) return normalizedGuid;
+  const normalizedUrl = normalizeString(url);
+  if (normalizedUrl) return normalizedUrl;
+  return normalizeString(title);
+}
+
+function unwrapArticleTxtTarget(value) {
   const raw = normalizeString(value);
   if (!raw) return "";
   try {
-    const url = new URL(raw);
+    const parsed = new URL(raw);
+    const path = parsed.pathname.replace(/\/+$/, "");
+    if (!/\/article\.txt$/i.test(path)) return "";
+    return normalizeString(
+      parsed.searchParams.get("url") ||
+        parsed.searchParams.get("link") ||
+        parsed.searchParams.get("guid")
+    );
+  } catch {
+    return "";
+  }
+}
+
+function canonicalArticleUrl(value) {
+  const raw = normalizeString(value);
+  if (!raw) return "";
+  const unwrapped = unwrapArticleTxtTarget(raw);
+  const target = unwrapped || raw;
+  try {
+    const url = new URL(target);
     url.hash = "";
+    const path = url.pathname.replace(/\/+$/, "");
+    // Wrapper endpoints keep identity in the query string; preserve it when we
+    // could not unwrap a nested article URL/guid.
+    if (/\/article\.txt$/i.test(path) && !unwrapped) {
+      return url.toString().replace(/\/+$/, "");
+    }
     url.search = "";
     return url.toString().replace(/\/+$/, "");
   } catch {
-    return raw.replace(/[?#].*$/, "").replace(/\/+$/, "");
+    return target.replace(/[?#].*$/, "").replace(/\/+$/, "");
   }
 }
 
