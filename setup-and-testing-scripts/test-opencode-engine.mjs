@@ -6,6 +6,8 @@ import { join } from "node:path";
 import {
   claudeCodeTool,
   codingEngine,
+  createOpencodeSummary,
+  feedOpencodeOutput,
   opencodeFailureStatus,
   summarizeOpencodeEvents,
 } from "../fastify-app/claude-code-tools.mjs";
@@ -56,6 +58,7 @@ if (process.argv[2] === "--version") { console.log("1.18.32"); process.exit(0); 
 fs.writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), pwd: process.env.PWD, cwd: process.cwd() }));
 const task = process.argv[process.argv.length - 1];
 const ev = (t, x) => console.log(JSON.stringify({ type: t, sessionID: "ses_fake1", ...x }));
+if (task.includes("HUGE_TOOL_OUTPUT")) ev("tool_use", { part: { type: "tool", tool: "read", state: { status: "completed", output: "x".repeat(300000) } } });
 if (task.includes("FAIL_402")) { ev("error", { error: { name: "APIError", data: { statusCode: 402, message: "Insufficient credits" } } }); process.exit(1); }
 ev("text", { part: { messageID: "m1", text: "Did the work." } });
 ev("step_finish", { part: { cost: 0.0004 } });
@@ -149,3 +152,25 @@ test("opencode reports out-of-credit jobs and bad keys plainly", withFakeOpencod
     globalThis.fetch = realFetch;
   }
 }));
+
+test("the final answer survives tool output far larger than the output buffer", withFakeOpencode(async ({ repo }) => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = okFetch({ data: { limit_remaining: 5 } });
+  try {
+    const started = await claudeCodeTool({ action: "submit_task", task: "HUGE_TOOL_OUTPUT", repoPath: repo, mode: "plan", confirmed: true });
+    const done = await finish(started.job_id);
+    assert.equal(done.status, "completed");
+    assert.equal(done.output_preview, "Did the work.");
+    assert.ok(done.raw_output_bytes > 300000);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}));
+
+test("streamed chunks split mid-line still parse", () => {
+  const s = createOpencodeSummary();
+  const line = event("text", { part: { messageID: "m9", text: "split ok" } }) + "\n";
+  feedOpencodeOutput(s, line.slice(0, 25));
+  feedOpencodeOutput(s, line.slice(25));
+  assert.equal(s.finalText, "split ok");
+});

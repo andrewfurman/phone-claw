@@ -568,26 +568,35 @@ async function opencodeAuthStatus({ fetchImpl = globalThis.fetch } = {}) {
   };
 }
 
-// Parse OpenCode `run --format json` JSONL events into a job result.
-export function summarizeOpencodeEvents(text) {
-  const summary = { sessionId: "", finalText: "", error: null, cost: 0 };
-  let lastMessageId = "";
-  const texts = [];
-  for (const line of String(text || "").split("\n")) {
+// Parse OpenCode `run --format json` JSONL events into a job result. Events are
+// fed line by line while the job streams, so large tool outputs (file reads)
+// cannot push the final answer past the capped raw output buffer.
+export function createOpencodeSummary() {
+  return { sessionId: "", finalText: "", error: null, cost: 0, lastMessageId: "", texts: [], partial: "" };
+}
+
+export function feedOpencodeOutput(summary, chunk, { final = false } = {}) {
+  const lines = `${summary.partial}${chunk}`.split("\n");
+  summary.partial = final ? "" : lines.pop();
+  for (const line of lines) {
     if (!line.trim()) continue;
     let event;
     try { event = JSON.parse(line); } catch { continue; }
     summary.sessionId ||= event.sessionID || "";
     if (event.type === "error") summary.error = event.error || { name: "UnknownError" };
     if (event.type === "text" && event.part?.text) {
-      if (event.part.messageID !== lastMessageId) texts.length = 0;
-      lastMessageId = event.part.messageID;
-      texts.push(event.part.text);
+      if (event.part.messageID !== summary.lastMessageId) summary.texts = [];
+      summary.lastMessageId = event.part.messageID;
+      summary.texts.push(event.part.text);
     }
     if (event.type === "step_finish" && Number.isFinite(event.part?.cost)) summary.cost += event.part.cost;
   }
-  summary.finalText = texts.join("\n").trim();
+  summary.finalText = summary.texts.join("\n").trim();
   return summary;
+}
+
+export function summarizeOpencodeEvents(text) {
+  return feedOpencodeOutput(createOpencodeSummary(), String(text || ""), { final: true });
 }
 
 export function opencodeFailureStatus(error) {
@@ -622,8 +631,13 @@ function startOpencodeJob({ job, task, cwd, sessionId, mode, timeoutMs }) {
     });
     running.process = child;
     running.timeout = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    const summary = createOpencodeSummary();
+    let rawBytes = 0;
     child.stdout.on("data", (chunk) => {
-      running.output = truncateUtf8(`${running.output}${chunk.toString("utf8")}`, MAX_OUTPUT_BYTES).value;
+      feedOpencodeOutput(summary, chunk.toString("utf8"));
+      rawBytes += chunk.length;
+      // While running, job_status previews the latest answer text, not raw JSON.
+      running.output = truncateUtf8(summary.finalText, MAX_OUTPUT_BYTES).value;
     });
     child.stderr.on("data", (chunk) => {
       running.error = truncateUtf8(`${running.error}${chunk.toString("utf8")}`, 20_000).value;
@@ -642,7 +656,7 @@ function startOpencodeJob({ job, task, cwd, sessionId, mode, timeoutMs }) {
     child.on("close", async (code, signal) => {
       clearTimeout(running.timeout);
       runningJobs.delete(job.job_id);
-      const summary = summarizeOpencodeEvents(running.output);
+      feedOpencodeOutput(summary, "", { final: true });
       if (summary.sessionId && summary.sessionId !== opencodeSession) {
         await mkdir(steeringDir(), { recursive: true });
         await writeFile(opencodeSessionPath(sessionId), `${summary.sessionId}\n`, "utf8").catch(() => {});
@@ -665,7 +679,8 @@ function startOpencodeJob({ job, task, cwd, sessionId, mode, timeoutMs }) {
         exit_code: code,
         signal,
         output_text: redact(summary.finalText),
-        output_truncated: Buffer.byteLength(running.output, "utf8") >= MAX_OUTPUT_BYTES,
+        output_truncated: Buffer.byteLength(summary.finalText, "utf8") >= MAX_OUTPUT_BYTES,
+        raw_output_bytes: rawBytes,
         parsed_json: {
           result: redact(summary.finalText),
           engine: "opencode",
