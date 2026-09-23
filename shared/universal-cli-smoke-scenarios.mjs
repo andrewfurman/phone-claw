@@ -49,7 +49,7 @@ export function validateSmokeResult(scenario, result) {
   if (scenario.id === "history") return Array.isArray(data.items);
   if (scenario.id === "otter") return data.parsed_json != null;
   if (scenario.id === "web_fetch") return data.status_code === 200 && /example domain/i.test(data.body_text || data.text || data.answer_text || "");
-  if (scenario.id === "web_search") return Array.isArray(data.results) && data.results.length > 0;
+  if (scenario.id === "web_search") return Array.isArray(data.results) && data.results.length > 0 && (data.search_health ?? "ok") === "ok";
   if (scenario.id === "claude") return data.authenticated === true;
   return false;
 }
