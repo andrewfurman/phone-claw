@@ -12,6 +12,7 @@ const cases = [
       }),
     },
     expect: {
+      health: "ok",
       provider: "Tavily",
       resultCount: 2,
       diagnostics: ["Tavily"],
@@ -38,6 +39,7 @@ const cases = [
       }),
     },
     expect: {
+      health: "ok",
       provider: "DuckDuckGo",
       resultCount: 1,
       diagnostics: ["Tavily", "DuckDuckGo"],
@@ -64,6 +66,7 @@ const cases = [
       }),
     },
     expect: {
+      health: "degraded",
       provider: "Wikipedia",
       resultCount: 1,
       diagnostics: ["Tavily", "DuckDuckGo", "Wikipedia"],
@@ -77,6 +80,7 @@ const cases = [
       fetchImpl: retryingTavilyFetch(),
     },
     expect: {
+      health: "ok",
       provider: "Tavily",
       resultCount: 2,
       diagnostics: ["Tavily"],
@@ -93,9 +97,28 @@ const cases = [
       }),
     },
     expect: {
+      health: "no_results",
       provider: "DuckDuckGo",
       resultCount: 0,
       diagnostics: ["DuckDuckGo", "Wikipedia"],
+    },
+  },
+  {
+    name: "reports a broken search tool instead of zero results when Tavily has no key (#130)",
+    options: {
+      fetchImpl: mockFetch({
+        duckInstant: emptyDuckInstant(),
+        duckHtml: "",
+        wikipediaSearch: [],
+      }),
+    },
+    expect: {
+      health: "unavailable",
+      provider: "DuckDuckGo",
+      resultCount: 0,
+      diagnostics: ["Tavily", "DuckDuckGo", "Wikipedia"],
+      answerIncludes: "Web search is not working right now (Tavily is not configured (missing API key))",
+      answerExcludes: "No results",
     },
   },
 ];
@@ -116,11 +139,20 @@ for (const testCase of cases) {
     testCase.expect.diagnostics,
     testCase.name
   );
+  assert.equal(result.search_health, testCase.expect.health, testCase.name);
+  assert.equal(result.answer_text.startsWith(result.search_notice), true, testCase.name);
+  if (testCase.expect.answerIncludes) {
+    assert.ok(result.answer_text.includes(testCase.expect.answerIncludes), testCase.name);
+  }
+  if (testCase.expect.answerExcludes) {
+    assert.ok(!result.answer_text.includes(testCase.expect.answerExcludes), testCase.name);
+  }
 
   results.push({
     name: testCase.name,
     provider: result.provider,
     result_count: result.result_count,
+    search_health: result.search_health,
     diagnostics: result.diagnostics,
   });
 }
