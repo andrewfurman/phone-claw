@@ -8,6 +8,36 @@ const MAX_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_OUTPUT_BYTES = 80_000;
 const MAX_ANSWER_BYTES = 6_000;
 const MAX_STEERING_INSTRUCTION_BYTES = 12_000;
+// #127: OpenCode + OpenRouter API key as an alternative engine to OAuth-based
+// Claude Code. Same phone command, jobs, status and steering; one env switch.
+const OPENCODE_DEFAULT_MODEL = "openrouter/deepseek/deepseek-v4.1-flash";
+const OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key";
+const OPENCODE_FAILURES = {
+  opencode_auth_failed: "The OpenRouter API key was rejected (invalid or revoked). Update OPENROUTER_API_KEY on the bridge.",
+  opencode_out_of_credit: "The OpenRouter key is out of credit or has hit its spending cap.",
+  opencode_rate_limited: "OpenRouter is rate limiting requests right now. Try again in a minute.",
+};
+
+export function codingEngine(env = process.env) {
+  return String(env.PHONECLAW_CODING_ENGINE || "claude").toLowerCase() === "opencode" ? "opencode" : "claude";
+}
+
+function engineLabel(engine = codingEngine()) {
+  return engine === "opencode" ? "OpenCode" : "Claude Code";
+}
+
+function opencodeModel() {
+  return normalizeString(process.env.OPENCODE_MODEL, OPENCODE_DEFAULT_MODEL);
+}
+
+function codingAuthStatus() {
+  return codingEngine() === "opencode" ? opencodeAuthStatus() : claudeAuthStatus();
+}
+
+function authFailureStatus(auth) {
+  if (String(auth.status || "").startsWith("opencode_")) return auth.status;
+  return auth.status === "claude_auth_expired" ? "claude_auth_expired" : "claude_not_authenticated";
+}
 
 const runningJobs = new Map();
 
@@ -29,11 +59,11 @@ export async function claudeCodeTool({
   );
 
   if (normalizedAction === "auth_status") {
-    return claudeAuthStatus();
+    return codingAuthStatus();
   }
 
   if (normalizedAction === "start_session") {
-    const auth = await claudeAuthStatus();
+    const auth = await codingAuthStatus();
     if (!auth.authenticated) {
       return {
         ok: false,
@@ -58,7 +88,8 @@ export async function claudeCodeTool({
       authenticated: true,
       auth_method: auth.auth_method,
       session_id: nextSessionId,
-      answer_text: `Claude Code session ${nextSessionId} is ready.`,
+      engine: codingEngine(),
+      answer_text: `${engineLabel()} session ${nextSessionId} is ready.`,
     };
   }
 
@@ -96,21 +127,18 @@ export async function claudeCodeTool({
     };
   }
 
-  const auth = await claudeAuthStatus();
+  const auth = await codingAuthStatus();
   if (!auth.authenticated) {
     return {
       ok: false,
-      status:
-        auth.status === "claude_auth_expired"
-          ? "claude_auth_expired"
-          : "claude_not_authenticated",
+      status: authFailureStatus(auth),
       action: normalizedAction,
       authenticated: false,
       auth_method: auth.auth_method,
       auth_probe: auth.auth_probe,
       message:
         auth.message ||
-        "Claude Code is installed, but the bridge user is not authenticated yet.",
+        `${engineLabel()} is installed, but the bridge is not authenticated yet.`,
       answer_text: auth.answer_text,
     };
   }
@@ -130,6 +158,8 @@ export async function claudeCodeTool({
     ok: true,
     status: "running",
     action: normalizedAction,
+    engine: codingEngine(),
+    model: codingEngine() === "opencode" ? opencodeModel() : "",
     job_id: normalizedJobId,
     session_id: normalizedSessionId,
     mode: normalizedMode,
@@ -147,7 +177,7 @@ export async function claudeCodeTool({
     output_truncated: false,
     parsed_json: null,
     error_text: "",
-    answer_text: `Started Claude Code job ${normalizedJobId}.`,
+    answer_text: `Started ${engineLabel()} job ${normalizedJobId}.`,
   };
 
   runningJobs.set(normalizedJobId, {
@@ -160,7 +190,8 @@ export async function claudeCodeTool({
   });
   await writeJob(job);
 
-  startClaudeJob({
+  const startJob = job.engine === "opencode" ? startOpencodeJob : startClaudeJob;
+  startJob({
     job,
     task: buildClaudeTaskPrompt(prompt, normalizedMode, { steeringFile }),
     cwd: cwdResult.cwd,
@@ -173,6 +204,8 @@ export async function claudeCodeTool({
     ok: true,
     status: "running",
     action: normalizedAction,
+    engine: job.engine,
+    model: job.model,
     job_id: normalizedJobId,
     session_id: normalizedSessionId,
     mode: normalizedMode,
@@ -181,7 +214,7 @@ export async function claudeCodeTool({
     working_directory: cwdResult.cwd,
     steering_file: steeringFile,
     answer_text:
-      `Started Claude Code ${normalizedMode} job ${normalizedJobId}. ` +
+      `Started ${engineLabel(job.engine)} ${normalizedMode} job ${normalizedJobId}. ` +
       "Ask for job status before saying the code work is complete.",
   };
 }
@@ -370,7 +403,7 @@ async function claudeJobStatus(jobId) {
       status: "running",
       job_id: jobId,
       output_preview: truncateUtf8(redact(running.output), MAX_ANSWER_BYTES).value,
-      answer_text: `Claude Code job ${jobId} is still running.`,
+      answer_text: `${engineLabel(job?.engine)} job ${jobId} is still running.`,
     };
   }
 
@@ -389,8 +422,10 @@ async function claudeJobStatus(jobId) {
     output_preview: claudeOutputPreview(job),
     answer_text:
       job.status === "completed"
-        ? `Claude Code job ${jobId} completed.`
-        : `Claude Code job ${jobId} ended with status ${job.status}.`,
+        ? `${engineLabel(job.engine)} job ${jobId} completed.`
+        : OPENCODE_FAILURES[job.status]
+          ? `${engineLabel(job.engine)} job ${jobId} failed: ${OPENCODE_FAILURES[job.status]}`
+          : `${engineLabel(job.engine)} job ${jobId} ended with status ${job.status}.`,
   };
 }
 
@@ -482,6 +517,168 @@ function startClaudeJob({ job, task, cwd, sessionId, mode, timeoutMs }) {
         status === "completed"
           ? `Claude Code job ${job.job_id} completed.`
           : `Claude Code job ${job.job_id} ended with status ${status}.`,
+    });
+  });
+}
+
+async function opencodeAuthStatus({ fetchImpl = globalThis.fetch } = {}) {
+  const base = { action: "auth_status", engine: "opencode", model: opencodeModel(), auth_method: "openrouter_api_key" };
+  const version = await runCommand(process.env.OPENCODE_BIN || "opencode", ["--version"], {
+    timeoutMs: 15_000,
+    cwd: process.cwd(),
+  });
+  if (!version.ok) {
+    const answer = "OpenCode is not installed on the bridge.";
+    return { ...base, ok: false, status: "opencode_not_installed", authenticated: false, message: answer, answer_text: answer };
+  }
+  const key = normalizeString(process.env.OPENROUTER_API_KEY);
+  if (!key) {
+    const answer = "OpenCode is installed, but OPENROUTER_API_KEY is not set on the bridge.";
+    return { ...base, ok: false, status: "opencode_not_configured", authenticated: false, opencode_version: version.stdout.trim(), message: answer, answer_text: answer };
+  }
+  let response;
+  let body = {};
+  try {
+    response = await fetchImpl(OPENROUTER_KEY_URL, {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    body = await response.json().catch(() => ({}));
+  } catch {
+    const answer = "Could not reach OpenRouter to check the API key.";
+    return { ...base, ok: false, status: "opencode_auth_probe_failed", authenticated: false, message: answer, answer_text: answer };
+  }
+  if (response.status === 401 || response.status === 403) {
+    return { ...base, ok: false, status: "opencode_auth_failed", authenticated: false, message: OPENCODE_FAILURES.opencode_auth_failed, answer_text: OPENCODE_FAILURES.opencode_auth_failed };
+  }
+  const remaining = body?.data?.limit_remaining;
+  if (!response.ok || (typeof remaining === "number" && remaining <= 0)) {
+    const status = response.ok ? "opencode_out_of_credit" : "opencode_auth_probe_failed";
+    const answer = OPENCODE_FAILURES[status] || `OpenRouter key check returned HTTP ${response.status}.`;
+    return { ...base, ok: false, status, authenticated: false, message: answer, answer_text: answer };
+  }
+  return {
+    ...base,
+    ok: true,
+    status: "ok",
+    authenticated: true,
+    opencode_version: version.stdout.trim(),
+    limit_remaining: typeof remaining === "number" ? Math.round(remaining * 100) / 100 : null,
+    answer_text: `OpenCode is ready on the bridge using ${opencodeModel().replace(/^openrouter\//, "")} through OpenRouter.`,
+  };
+}
+
+// Parse OpenCode `run --format json` JSONL events into a job result.
+export function summarizeOpencodeEvents(text) {
+  const summary = { sessionId: "", finalText: "", error: null, cost: 0 };
+  let lastMessageId = "";
+  const texts = [];
+  for (const line of String(text || "").split("\n")) {
+    if (!line.trim()) continue;
+    let event;
+    try { event = JSON.parse(line); } catch { continue; }
+    summary.sessionId ||= event.sessionID || "";
+    if (event.type === "error") summary.error = event.error || { name: "UnknownError" };
+    if (event.type === "text" && event.part?.text) {
+      if (event.part.messageID !== lastMessageId) texts.length = 0;
+      lastMessageId = event.part.messageID;
+      texts.push(event.part.text);
+    }
+    if (event.type === "step_finish" && Number.isFinite(event.part?.cost)) summary.cost += event.part.cost;
+  }
+  summary.finalText = texts.join("\n").trim();
+  return summary;
+}
+
+export function opencodeFailureStatus(error) {
+  const code = Number(error?.data?.statusCode);
+  if (code === 401 || code === 403) return "opencode_auth_failed";
+  if (code === 402) return "opencode_out_of_credit";
+  if (code === 429) return "opencode_rate_limited";
+  return "failed";
+}
+
+function opencodeSessionPath(sessionId) {
+  return resolve(steeringDir(), `opencode-${sessionId}.id`);
+}
+
+function startOpencodeJob({ job, task, cwd, sessionId, mode, timeoutMs }) {
+  const command = process.env.OPENCODE_BIN || "opencode";
+  const model = opencodeModel();
+  const baseArgs = ["run", "--format", "json", "-m", model, "--title", `phoneclaw ${job.job_id}`];
+  if (mode === "plan") baseArgs.push("--agent", "plan");
+  else baseArgs.push("--auto");
+  const running = runningJobs.get(job.job_id);
+
+  readFile(opencodeSessionPath(sessionId), "utf8").catch(() => "").then((existing) => {
+    const opencodeSession = existing.trim();
+    // OpenCode picks its project from PWD, not the spawn cwd: pass both explicitly
+    // or it would edit the bridge's own checkout instead of the requested repo.
+    const args = [...baseArgs, "--dir", cwd, ...(/^ses_[A-Za-z0-9]+$/.test(opencodeSession) ? ["-s", opencodeSession] : []), "--", task];
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...process.env, PWD: cwd, NO_COLOR: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    running.process = child;
+    running.timeout = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    child.stdout.on("data", (chunk) => {
+      running.output = truncateUtf8(`${running.output}${chunk.toString("utf8")}`, MAX_OUTPUT_BYTES).value;
+    });
+    child.stderr.on("data", (chunk) => {
+      running.error = truncateUtf8(`${running.error}${chunk.toString("utf8")}`, 20_000).value;
+    });
+    child.on("error", async (error) => {
+      clearTimeout(running.timeout);
+      runningJobs.delete(job.job_id);
+      await writeJob({
+        ...job,
+        status: "failed_to_start",
+        updated_at: new Date().toISOString(),
+        error_text: redact(error.message),
+        answer_text: `OpenCode job ${job.job_id} failed to start.`,
+      });
+    });
+    child.on("close", async (code, signal) => {
+      clearTimeout(running.timeout);
+      runningJobs.delete(job.job_id);
+      const summary = summarizeOpencodeEvents(running.output);
+      if (summary.sessionId && summary.sessionId !== opencodeSession) {
+        await mkdir(steeringDir(), { recursive: true });
+        await writeFile(opencodeSessionPath(sessionId), `${summary.sessionId}\n`, "utf8").catch(() => {});
+      }
+      const timedOut = signal === "SIGTERM" && code === null;
+      const status = timedOut
+        ? "timed_out"
+        : summary.error
+          ? opencodeFailureStatus(summary.error)
+          : code === 0 ? "completed" : "failed";
+      const errorMessage = summary.error
+        ? OPENCODE_FAILURES[status] || redact(String(summary.error?.data?.message || summary.error?.name || "OpenCode error"))
+        : "";
+      const steeringMetadata = await steeringJobMetadata(job.session_id);
+      await writeJob({
+        ...job,
+        ...steeringMetadata,
+        status,
+        updated_at: new Date().toISOString(),
+        exit_code: code,
+        signal,
+        output_text: redact(summary.finalText),
+        output_truncated: Buffer.byteLength(running.output, "utf8") >= MAX_OUTPUT_BYTES,
+        parsed_json: {
+          result: redact(summary.finalText),
+          engine: "opencode",
+          model,
+          opencode_session_id: summary.sessionId,
+          cost_usd: Math.round(summary.cost * 10_000) / 10_000,
+        },
+        error_text: truncateUtf8(redact([errorMessage, running.error].filter(Boolean).join("\n")), 4_000).value,
+        answer_text:
+          status === "completed"
+            ? `OpenCode job ${job.job_id} completed.`
+            : `OpenCode job ${job.job_id} ${OPENCODE_FAILURES[status] ? `failed: ${OPENCODE_FAILURES[status]}` : `ended with status ${status}.`}`,
+      });
     });
   });
 }
