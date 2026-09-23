@@ -95,24 +95,31 @@ app.get("/health", async () => ({
   allowed_caller_numbers_configured:
     parseAllowedCallerNumbers(process.env.ALLOWED_CALLER_NUMBERS).length > 0,
   twilio_signature_enforced: enforceTwilioSignature,
+  bridge_twilio_routes_enabled: process.env.PHONECLAW_BRIDGE_TWILIO_ROUTES === "true",
   twilio_event_log_configured: true,
 }));
 
-app.post("/twilio/inbound", async (request, reply) =>
-  handleTwilioCall(request, reply, "inbound")
-);
+// Phone calls are handled by the Cloudflare Worker (caller allowlist there).
+// The bridge's own Twilio call routes are publicly reachable through the tunnel
+// and, with no allowlist or signature check, would let a forged request start
+// an agent session. Keep them off unless explicitly re-enabled.
+if (process.env.PHONECLAW_BRIDGE_TWILIO_ROUTES === "true") {
+  app.post("/twilio/inbound", async (request, reply) =>
+    handleTwilioCall(request, reply, "inbound")
+  );
 
-app.post("/twilio/outbound", async (request, reply) =>
-  handleTwilioCall(request, reply, "outbound")
-);
+  app.post("/twilio/outbound", async (request, reply) =>
+    handleTwilioCall(request, reply, "outbound")
+  );
 
-app.post("/twilio/stream-status", async (request, reply) =>
-  handleTwilioStatusCallback(request, reply, "twilio_stream_status")
-);
+  app.post("/twilio/stream-status", async (request, reply) =>
+    handleTwilioStatusCallback(request, reply, "twilio_stream_status")
+  );
 
-app.post("/twilio/call-status", async (request, reply) =>
-  handleTwilioStatusCallback(request, reply, "twilio_call_status")
-);
+  app.post("/twilio/call-status", async (request, reply) =>
+    handleTwilioStatusCallback(request, reply, "twilio_call_status")
+  );
+}
 
 app.get("/twilio/events", async (request, reply) => handleTwilioEvents(request, reply));
 
