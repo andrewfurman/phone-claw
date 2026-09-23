@@ -61,6 +61,18 @@ CONVERSATION_DATABASE_URL=postgres://...
 
 For local development only, the bridge can fall back to `WEB_SEARCH_TOKEN` if `CLI_BRIDGE_TOKEN` is unset. Production should set `CLI_BRIDGE_TOKEN`.
 
+## Who can reach PhoneClaw (verified 2026-09-23)
+
+Three independent gates; keep all of them on.
+
+1. **Phone calls go only through the Cloudflare Worker** (`webhooks.aifurman.com/twilio/inbound`).
+   - `TWILIO_WEBHOOK_TOKEN` is required: a request without the token baked into the Twilio webhook URL gets 403 (a forged POST with any From/To was rejected).
+   - `ALLOWED_CALLER_NUMBERS` is set: only listed callers reach the agent; others hear the outside-coverage message. Andrew's cell (ending 9996) is on the list and is also the verified caller ID the automated Twilio tests use (`TWILIO_TEST_FROM`), so keep it listed or both break. In the 30 days before verification, the only other caller (ending 6413, six short calls on Sep 7) never reached the agent.
+2. **The bridge's own Twilio call routes are off** (#138). `cli-bridge.aifurman.com` is public through the tunnel; its `/twilio/inbound|outbound|stream-status|call-status` routes exist only with `PHONECLAW_BRIDGE_TWILIO_ROUTES=true`, because that code path has no token or allowlist on the bridge. `/health` reports `bridge_twilio_routes_enabled`.
+3. **The ElevenLabs agent requires authorization** (`platform_settings.auth.enable_auth: true`). The agent id is in this public repo, so without this anyone could open a conversation (and use its tools) directly through ElevenLabs. With it, a public connection closes with "This agent requires conversations to be authorized"; Twilio `register-call` (server-side, API key) and the live test scripts (signed URLs) keep working. A backup of the previous platform settings is at `/var/lib/phoneclaw/agent-backups/` on the bridge.
+
+Re-verify after any Worker, agent, or tunnel change: unauthenticated POST to both hostnames' `/twilio/inbound` (expect 403/404), the public agent WebSocket (expect close code 3000), then `npm run twilio:call:test -- --universal --place-call`.
+
 ## Lockdown Checklist
 
 - Keep the bridge off the public internet when possible. Put it behind a Cloudflare Tunnel, private network, or firewall rule that only allows Cloudflare egress.
