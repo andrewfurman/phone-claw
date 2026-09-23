@@ -1,0 +1,13 @@
+#!/bin/bash
+# Thin SSH wrapper: read-only Apple Photos tool (mac-tools/photos) on MacinCloud.
+# Install the Mac side at ~/.local/bin/photos. Read policy is enforced by
+# phoneclaw (isPhotosSafeReadArgs + GENERIC_CLI_PROGRAMS_PATH); `export` is used
+# only by `phoneclaw photos email` and is blocked for raw run_cli.
+set -euo pipefail
+ALIAS="${MAC_SSH_ALIAS:-macincloud}"
+REMOTE_PREFIX='export PATH="$HOME/.local/bin:/usr/bin:/bin:$PATH"; exec photos'
+quoted=()
+for arg in "$@"; do
+  quoted+=("$(printf '%q' "$arg")")
+done
+exec ssh -o BatchMode=yes -o ConnectTimeout=25 "$ALIAS" "$REMOTE_PREFIX ${quoted[*]}"

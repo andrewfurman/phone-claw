@@ -2,6 +2,7 @@ import { claudeCodeTool } from "./claude-code-tools.mjs";
 import { conversationHistoryGet, conversationHistorySearch } from "./conversation-history.mjs";
 import { githubCliCommon, himalayaCreateForwardDraft, himalayaCreateReplyAllDraft, himalayaDraftCreate, himalayaDraftReply, himalayaEmailArchive, himalayaEmailImageInspect, himalayaEmailImages, phoneclawImageInspect, himalayaEmailForward, himalayaEmailList, himalayaEmailRead, himalayaEmailSend, otterSpeechGet, otterSpeechSearch, otterSpeechesList, urlFetch } from "./cli-tools.mjs";
 import { sendgridEmailSend } from "./sendgrid-tools.mjs";
+import { photosEmail } from "./photos-tools.mjs";
 import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSearchEntries, rssListConfiguredFeeds, rssRefreshConfiguredFeeds } from "./rss-feed-tools.mjs";
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
@@ -205,6 +206,10 @@ export const commandAdapters = {
     previewed: body.previewed,
     confirmed: context.confirmed,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+  "photos email": (body, context) => photosEmail({
+    id: body.id || body.photo_id || body.photoId,
+    confirmed: context.confirmed,
   }),
   "sendgrid email-send": (body, context) => sendgridEmailSend({
     from: body.from,

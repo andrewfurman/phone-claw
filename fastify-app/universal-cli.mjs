@@ -60,6 +60,45 @@ export function isNotesSafeReadArgs(args) {
 }
 
 
+const PHOTOS_NO_ARG = new Set(["recent", "people", "albums", "stats"]);
+const isPhotosNameToken = arg => isNotesQueryToken(arg) && arg.length <= 60;
+/**
+ * Safe Apple Photos reads for photos/mac-photos (#112). The Mac-side tool is
+ * read-only by construction; this still allows only known subcommands and
+ * flags. `export` (raw image bytes) is never allowed here; it is used only by
+ * the phoneclaw photos email command.
+ */
+export function isPhotosSafeReadArgs(args) {
+  if (!Array.isArray(args) || args.length < 1 || args.length > 8) return false;
+  if (!args.every(arg => typeof arg === "string" && arg.length > 0 && arg.length <= 120 && !arg.includes("\0"))) return false;
+  const [cmd, ...rest] = args;
+  const positional = [];
+  const flags = new Set();
+  for (let i = 0; i < rest.length; i += 1) {
+    const tok = rest[i];
+    const val = rest[i + 1];
+    if (tok === "-l" || tok === "--limit") {
+      if (!NOTES_SAFE_LIMITS.has(val)) return false;
+    } else if (tok === "--person") {
+      if (!["date", "on-this-day"].includes(cmd) || !isPhotosNameToken(val)) return false;
+    } else if (tok === "--date") {
+      if (cmd !== "on-this-day" || !/^\d{2}-\d{2}$/.test(val || "")) return false;
+    } else if (tok.startsWith("-")) {
+      return false;
+    } else {
+      positional.push(tok);
+      continue;
+    }
+    if (flags.has(tok)) return false;
+    flags.add(tok);
+    i += 1;
+  }
+  if (PHOTOS_NO_ARG.has(cmd) || cmd === "on-this-day") return positional.length === 0;
+  if (cmd === "person") return positional.length >= 1 && positional.length <= 4 && positional.every(isPhotosNameToken);
+  if (cmd === "date") return positional.length === 1 && /^\d{4}-\d{2}-\d{2}$/.test(positional[0]);
+  return false;
+}
+
 const clamp = (value, min, max, fallback) => Number.isFinite(Number(value)) && value != null ? Math.max(min, Math.min(max, Math.floor(Number(value)))) : fallback;
 const failure = (status, message) => ({ ok: false, status, message, answer_text: message, stdout: "", stderr: "", exit_code: null });
 const guidance = "Use run_cli with command=phoneclaw and args=[group, action, --json, JSON options]. Put confirmed=true on run_cli only after the exact action is confirmed.";
@@ -87,8 +126,10 @@ export async function runUniversalCli({ command, args, cwd, confirmed, env, time
       const blocked = findBlockedReason([command, ...args].join(" ")) || (spec.blockedArgs || []).some(prefix => prefix.every((arg, i) => args[i] === arg));
       if (blocked) return { ...metadata, ...failure("command_blocked", "This command can expose credentials or bypass a protected workflow. Use the corresponding phoneclaw command.") };
       const notesProgram = command === "notes" || command === "mac-notes";
+      const photosProgram = command === "photos" || command === "mac-photos";
       const readOnly = isHelpOnlyArgs(args)
         || (notesProgram && isNotesSafeReadArgs(args))
+        || (photosProgram && isPhotosSafeReadArgs(args))
         || (spec.readOnlyArgs || []).some(allowed => allowed.length === args.length && allowed.every((arg, i) => args[i] === arg));
       if (!readOnly && !confirmedValue(confirmed)) return { ...metadata, ...failure("confirmation_required", "Confirm the exact executable and arguments before setting confirmed=true. For existing read operations, use the phoneclaw commands in the command guide.") };
       const ran = await executeCli(spec.executable, args, { cwd: directory.cwd, env: programEnvironment(spec, env), timeoutMs: timeout });

@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""Read-only Apple Photos lookups for PhoneClaw voice (issue #112).
+
+Runs on the Mac (MacinCloud DXNY124) and is invoked from the bridge through the
+`mac-photos` SSH wrapper. It opens Photos.sqlite with mode=ro&immutable=1, so it
+cannot change the library, never starts Photos.app, and does not need the
+~15 minute osxphotos library load. Output is short, voice-friendly text with
+sanitized metadata: date/time in the photo's own time zone, people, favorite,
+media type, title/description, album names. No GPS coordinates or file paths.
+
+Usage:
+  photos recent [-l N]
+  photos person <name> [-l N]
+  photos date <YYYY-MM-DD> [--person <name>] [-l N]
+  photos on-this-day [--date MM-DD] [--person <name>] [-l N]
+  photos people [-l N]
+  photos albums [-l N]
+  photos stats
+  photos export <id>        (bridge-internal: one photo as JSON + base64 JPEG)
+"""
+from __future__ import annotations
+
+import base64
+import datetime as dt
+import glob
+import json
+import os
+import subprocess
+import tempfile
+import re
+import sqlite3
+import sys
+
+LIBRARY = os.environ.get(
+    "PHOTOS_LIBRARY", os.path.expanduser("~/Pictures/Photos Library.photoslibrary")
+)
+LIMITS = {1, 2, 3, 5, 10, 20}
+DEFAULT_LIMIT = 5
+APPLE_EPOCH = 978307200  # 2001-01-01 in Unix seconds
+
+# Capture time in the photo's own time zone (the Mac itself is on Pacific time).
+LOCAL_TS = "(a.ZDATECREATED + 978307200 + coalesce(x.ZTIMEZONEOFFSET, 0))"
+VISIBLE = "a.ZTRASHEDSTATE = 0 and a.ZHIDDEN = 0"
+PERSON_NAME = "coalesce(nullif(p.ZFULLNAME, ''), nullif(p.ZDISPLAYNAME, ''))"
+
+
+class UsageError(Exception):
+    pass
+
+
+def connect() -> sqlite3.Connection:
+    path = os.path.join(LIBRARY, "database", "Photos.sqlite")
+    if not os.path.exists(path):
+        raise UsageError("Photos library not found on this Mac.")
+    uri = "file:" + path.replace("?", "%3F").replace("#", "%23") + "?mode=ro&immutable=1"
+    return sqlite3.connect(uri, uri=True)
+
+
+def album_join(db: sqlite3.Connection) -> tuple[str, str, str] | None:
+    """Find the album↔asset join table (named Z_<n>ASSETS, varies by library)."""
+    for (name,) in db.execute(
+        "select name from sqlite_master where type='table' and name like 'Z\\_%ASSETS' escape '\\'"
+    ):
+        cols = [r[1] for r in db.execute(f'pragma table_info("{name}")')]
+        album = next((c for c in cols if c.endswith("ALBUMS")), None)
+        asset = next((c for c in cols if c.endswith("ASSETS") and not c.startswith("Z_FOK")), None)
+        if album and asset:
+            return name, album, asset
+    return None
+
+
+def parse(argv: list[str]) -> tuple[str, list[str], dict]:
+    if not argv or argv[0] in {"help", "--help", "-h"}:
+        return "help", [], {}
+    cmd, rest = argv[0], argv[1:]
+    opts: dict = {"limit": DEFAULT_LIMIT}
+    positional: list[str] = []
+    i = 0
+    while i < len(rest):
+        tok = rest[i]
+        if tok in {"-l", "--limit", "--person", "--date"}:
+            if i + 1 >= len(rest):
+                raise UsageError(f"{tok} needs a value.")
+            val = rest[i + 1]
+            if tok in {"-l", "--limit"}:
+                if not val.isdigit() or int(val) not in LIMITS:
+                    raise UsageError("Limit must be one of 1, 2, 3, 5, 10, 20.")
+                opts["limit"] = int(val)
+            else:
+                opts[tok[2:]] = val
+            i += 2
+            continue
+        if tok.startswith("-"):
+            raise UsageError(f"Unknown option {tok}.")
+        positional.append(tok)
+        i += 1
+    return cmd, positional, opts
+
+
+def person_pks(db: sqlite3.Connection, name: str) -> list[int]:
+    name = name.strip()
+    if not name or len(name) > 60:
+        raise UsageError("Give a person's name (up to 60 characters).")
+    like = f"%{name}%"
+    rows = db.execute(
+        f"select p.Z_PK from ZPERSON p where p.ZFACECOUNT > 0 and "
+        f"(p.ZFULLNAME like ? or p.ZDISPLAYNAME like ?)",
+        (like, like),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def photo_rows(db: sqlite3.Connection, where: str, params: tuple, limit: int) -> list[tuple]:
+    sql = f"""
+    select a.Z_PK, a.ZUUID, datetime({LOCAL_TS}, 'unixepoch') as taken, a.ZKIND, a.ZFAVORITE,
+           x.ZTITLE, d.ZLONGDESCRIPTION,
+           (select group_concat(name, ', ') from (
+              select distinct {PERSON_NAME} as name from ZDETECTEDFACE f
+              join ZPERSON p on p.Z_PK = f.ZPERSONFORFACE
+              where f.ZASSETFORFACE = a.Z_PK and {PERSON_NAME} is not null)) as people
+    from ZASSET a
+    left join ZADDITIONALASSETATTRIBUTES x on x.ZASSET = a.Z_PK
+    left join ZASSETDESCRIPTION d on d.ZASSETATTRIBUTES = x.Z_PK
+    where {VISIBLE} and ({where})
+    order by a.ZDATECREATED desc
+    limit ?"""
+    return db.execute(sql, (*params, limit)).fetchall()
+
+
+def describe(row: tuple, albums: dict[int, str]) -> str:
+    pk, uuid, taken, kind, favorite, title, desc, people = row
+    when = dt.datetime.fromisoformat(taken)
+    parts = [f"{when:%a %b} {when.day}, {when.year} {when:%-I:%M %p}", "video" if kind == 1 else "photo"]
+    if people:
+        parts.append("with " + people)
+    if favorite:
+        parts.append("favorite")
+    if albums.get(pk):
+        parts.append("album: " + albums[pk])
+    text = " · ".join(parts)
+    note = (title or "").strip() or (desc or "").strip()
+    if note:
+        text += f" · {note[:200]}"
+    return f"- {text} [id {uuid[:8]}]"
+
+
+def albums_for(db: sqlite3.Connection, pks: list[int]) -> dict[int, str]:
+    join = album_join(db)
+    if not join or not pks:
+        return {}
+    table, album_col, asset_col = join
+    marks = ",".join("?" * len(pks))
+    out: dict[int, list[str]] = {}
+    for asset, title in db.execute(
+        f'select j."{asset_col}", g.ZTITLE from "{table}" j join ZGENERICALBUM g on g.Z_PK = j."{album_col}" '
+        f'where g.ZKIND = 2 and g.ZTRASHEDSTATE = 0 and g.ZTITLE is not null and j."{asset_col}" in ({marks})',
+        pks,
+    ):
+        out.setdefault(asset, []).append(title)
+    return {k: ", ".join(v[:2]) for k, v in out.items()}
+
+
+def print_photos(db: sqlite3.Connection, header: str, rows: list[tuple]) -> None:
+    if not rows:
+        print(f"{header}: no matching photos.")
+        return
+    albums = albums_for(db, [r[0] for r in rows])
+    print(f"{header} ({len(rows)} shown, newest first):")
+    for r in rows:
+        print(describe(r, albums))
+
+
+def person_clause(db: sqlite3.Connection, name: str | None) -> tuple[str, tuple, str]:
+    if not name:
+        return "1=1", (), ""
+    pks = person_pks(db, name)
+    if not pks:
+        raise UsageError(f"No person named {name!r} in Photos People.")
+    marks = ",".join("?" * len(pks))
+    return (
+        f"exists (select 1 from ZDETECTEDFACE f where f.ZASSETFORFACE = a.Z_PK and f.ZPERSONFORFACE in ({marks}))",
+        tuple(pks),
+        f" with {name}",
+    )
+
+
+MAX_EXPORT_BYTES = 6_000_000
+
+
+def export_photo(db: sqlite3.Connection, ident: str) -> dict:
+    """Resolve an id prefix and return the best local JPEG (never downloads from iCloud)."""
+    if not re.fullmatch(r"[0-9A-Fa-f]{8}(-[0-9A-Fa-f-]{0,28})?", ident):
+        raise UsageError("Photo id must be the 8-character id from a photos listing.")
+    rows = db.execute(
+        f"select a.Z_PK, a.ZUUID from ZASSET a where {VISIBLE} and a.ZKIND = 0 and a.ZUUID like ?",
+        (ident.upper() + "%",),
+    ).fetchall()
+    if not rows:
+        raise UsageError("No photo with that id.")
+    if len(rows) > 1:
+        raise UsageError("That id matches more than one photo; use a longer id.")
+    pk, uuid = rows[0]
+    meta = photo_rows(db, "a.Z_PK = ?", (pk,), 1)[0]
+    res = os.path.join(LIBRARY, "resources", "derivatives")
+    candidates = [
+        (os.path.join(res, uuid[0], f"{uuid}_1_105_c.jpeg"), "preview"),
+        (os.path.join(res, "masters", uuid[0], f"{uuid}_4_5005_c.jpeg"), "thumbnail"),
+    ]
+    source, path = None, None
+    for cand, label in candidates:
+        if os.path.exists(cand):
+            source, path = label, cand
+            break
+    tmp = None
+    if path is None:
+        originals = glob.glob(os.path.join(LIBRARY, "originals", uuid[0], f"{uuid}.*"))
+        if not originals:
+            raise UsageError("That photo is only in iCloud and has no local copy on the Mac.")
+        tmp = tempfile.NamedTemporaryFile(suffix=".jpeg", delete=False).name
+        subprocess.run(["sips", "-s", "format", "jpeg", "-Z", "2000", originals[0], "--out", tmp],
+                       check=True, capture_output=True, timeout=60)
+        source, path = "original", tmp
+    try:
+        data = open(path, "rb").read()
+    finally:
+        if tmp:
+            os.unlink(tmp)
+    if len(data) > MAX_EXPORT_BYTES:
+        raise UsageError("That photo is too large to email.")
+    _, _, taken, _, favorite, title, desc, people = meta
+    return {
+        "ok": True,
+        "id": uuid[:8],
+        "taken": taken,
+        "people": people or "",
+        "note": ((title or "").strip() or (desc or "").strip())[:200],
+        "source": source,
+        "bytes": len(data),
+        "jpeg_base64": base64.b64encode(data).decode(),
+    }
+
+
+def main(argv: list[str]) -> int:
+    try:
+        cmd, pos, opts = parse(argv)
+        if cmd == "help":
+            print(__doc__.split("Usage:")[1].strip())
+            return 0
+        db = connect()
+        limit = opts["limit"]
+
+        if cmd == "recent" and not pos:
+            print_photos(db, "Most recent photos", photo_rows(db, "1=1", (), limit))
+        elif cmd == "person" and len(pos) >= 1:
+            name = " ".join(pos)
+            clause, params, label = person_clause(db, name)
+            print_photos(db, f"Recent photos{label}", photo_rows(db, clause, params, limit))
+        elif cmd == "date" and len(pos) == 1:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", pos[0]):
+                raise UsageError("Date must look like 2024-09-24.")
+            clause, params, label = person_clause(db, opts.get("person"))
+            where = f"date({LOCAL_TS}, 'unixepoch') = ? and {clause}"
+            print_photos(db, f"Photos on {pos[0]}{label}", photo_rows(db, where, (pos[0], *params), limit))
+        elif cmd == "on-this-day" and not pos:
+            md = opts.get("date") or dt.date.today().strftime("%m-%d")
+            if not re.fullmatch(r"\d{2}-\d{2}", md):
+                raise UsageError("--date must look like 09-24.")
+            clause, params, label = person_clause(db, opts.get("person"))
+            this_year = str(dt.date.today().year)
+            where = (f"strftime('%m-%d', {LOCAL_TS}, 'unixepoch') = ? and "
+                     f"strftime('%Y', {LOCAL_TS}, 'unixepoch') < ? and "
+                     f"coalesce(a.ZISDETECTEDSCREENSHOT, 0) = 0 and {clause}")
+            print_photos(db, f"On this day ({md}) in past years{label}",
+                         photo_rows(db, where, (md, this_year, *params), limit))
+        elif cmd == "people" and not pos:
+            rows = db.execute(
+                f"select {PERSON_NAME} as name, p.ZFACECOUNT from ZPERSON p "
+                f"where p.ZFACECOUNT > 0 and {PERSON_NAME} is not null order by p.ZFACECOUNT desc limit ?",
+                (limit,),
+            ).fetchall()
+            print(f"Top {len(rows)} named people by tagged faces:")
+            for name, n in rows:
+                print(f"- {name}: {n:,} faces")
+        elif cmd == "albums" and not pos:
+            rows = db.execute(
+                "select ZTITLE, ZCACHEDCOUNT from ZGENERICALBUM where ZKIND = 2 and ZTRASHEDSTATE = 0 "
+                "and ZTITLE is not null order by ZCACHEDCOUNT desc limit ?",
+                (limit,),
+            ).fetchall()
+            print(f"Top {len(rows)} albums by size:")
+            for title, n in rows:
+                print(f"- {title}: {n or 0:,} items")
+        elif cmd == "export" and len(pos) == 1:
+            print(json.dumps(export_photo(db, pos[0])))
+        elif cmd == "stats" and not pos:
+            total, videos, favs = db.execute(
+                f"select count(*), sum(a.ZKIND = 1), sum(a.ZFAVORITE) from ZASSET a where {VISIBLE}"
+            ).fetchone()
+            first, last = db.execute(
+                f"select min(a.ZDATECREATED), max(a.ZDATECREATED) from ZASSET a where {VISIBLE}"
+            ).fetchone()
+            people = db.execute(
+                f"select count(*) from ZPERSON p where p.ZFACECOUNT > 0 and {PERSON_NAME} is not null"
+            ).fetchone()[0]
+            span = [dt.datetime.utcfromtimestamp(v + APPLE_EPOCH).year for v in (first, last)]
+            print(f"Photos library: {total:,} items ({total - (videos or 0):,} photos, {videos or 0:,} videos), "
+                  f"{favs or 0:,} favorites, {people} named people, from {span[0]} to {span[1]}.")
+        else:
+            raise UsageError("Unknown or malformed command. Run: photos help")
+        return 0
+    except UsageError as e:
+        print(f"photos: {e}", file=sys.stderr)
+        return 2
+    except sqlite3.Error:
+        print("photos: could not read the Photos library database.", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

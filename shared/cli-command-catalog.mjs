@@ -365,6 +365,15 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "photos email",
+    "legacy_path": "/cli/photos/email",
+    "parameters": [
+      "id",
+      "photo_id",
+      "photoId"
+    ]
+  },
+  {
     "command": "sendgrid email-send",
     "legacy_path": "/cli/sendgrid/email-send",
     "parameters": [
