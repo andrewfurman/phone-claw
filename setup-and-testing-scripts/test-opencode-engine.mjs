@@ -59,6 +59,7 @@ fs.writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.
 const task = process.argv[process.argv.length - 1];
 const ev = (t, x) => console.log(JSON.stringify({ type: t, sessionID: "ses_fake1", ...x }));
 if (task.includes("HUGE_TOOL_OUTPUT")) ev("tool_use", { part: { type: "tool", tool: "read", state: { status: "completed", output: "x".repeat(300000) } } });
+if (task.includes("BLOCKED")) { process.stderr.write("\u001b[93m! \u001b[0mpermission requested: external_directory (/x/*); auto-rejecting\\n"); process.exit(0); }
 if (task.includes("FAIL_402")) { ev("error", { error: { name: "APIError", data: { statusCode: 402, message: "Insufficient credits" } } }); process.exit(1); }
 ev("text", { part: { messageID: "m1", text: "Did the work." } });
 ev("step_finish", { part: { cost: 0.0004 } });
@@ -173,4 +174,24 @@ test("streamed chunks split mid-line still parse", () => {
   feedOpencodeOutput(s, line.slice(0, 25));
   feedOpencodeOutput(s, line.slice(25));
   assert.equal(s.finalText, "split ok");
+});
+
+test("a silently rejected permission is reported, not called completed", withFakeOpencode(async ({ repo }) => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = okFetch({ data: { limit_remaining: 5 } });
+  try {
+    const started = await claudeCodeTool({ action: "submit_task", task: "BLOCKED", repoPath: repo, mode: "plan", confirmed: true });
+    const done = await finish(started.job_id);
+    assert.equal(done.status, "opencode_permission_blocked");
+    assert.match(done.answer_text, /permission it needed was blocked/);
+    assert.ok(!done.error_text.includes("\u001b["), "ANSI color codes are stripped");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}));
+
+test("deploy/opencode.json lets OpenCode read the steering folder and still denies risky commands", () => {
+  const config = JSON.parse(readFileSync(new URL("../deploy/opencode.json", import.meta.url), "utf8"));
+  assert.equal(config.permission.external_directory["/var/lib/phoneclaw/claude-steering/*"], "allow");
+  for (const cmd of ["git push*", "sudo *", "rm -rf *"]) assert.equal(config.permission.bash[cmd], "deny");
 });
