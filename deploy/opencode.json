@@ -15,6 +15,10 @@
       "sudo *": "deny",
       "shutdown*": "deny",
       "systemctl *": "deny"
+    },
+    "external_directory": {
+      "*": "ask",
+      "/var/lib/phoneclaw/claude-steering/*": "allow"
     }
   }
 }

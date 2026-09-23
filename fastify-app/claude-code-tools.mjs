@@ -16,6 +16,7 @@ const OPENCODE_FAILURES = {
   opencode_auth_failed: "The OpenRouter API key was rejected (invalid or revoked). Update OPENROUTER_API_KEY on the bridge.",
   opencode_out_of_credit: "The OpenRouter key is out of credit or has hit its spending cap.",
   opencode_rate_limited: "OpenRouter is rate limiting requests right now. Try again in a minute.",
+  opencode_permission_blocked: "OpenCode stopped without an answer because a permission it needed was blocked. Check error_text on the job.",
 };
 
 export function codingEngine(env = process.env) {
@@ -662,11 +663,15 @@ function startOpencodeJob({ job, task, cwd, sessionId, mode, timeoutMs }) {
         await writeFile(opencodeSessionPath(sessionId), `${summary.sessionId}\n`, "utf8").catch(() => {});
       }
       const timedOut = signal === "SIGTERM" && code === null;
+      const stderrText = running.error.replace(/\x1b\[[0-9;]*m/g, "");
+      const blocked = !summary.finalText && /auto-rejecting/i.test(stderrText);
       const status = timedOut
         ? "timed_out"
         : summary.error
           ? opencodeFailureStatus(summary.error)
-          : code === 0 ? "completed" : "failed";
+          : blocked
+            ? "opencode_permission_blocked"
+            : code === 0 ? "completed" : "failed";
       const errorMessage = summary.error
         ? OPENCODE_FAILURES[status] || redact(String(summary.error?.data?.message || summary.error?.name || "OpenCode error"))
         : "";
@@ -688,7 +693,7 @@ function startOpencodeJob({ job, task, cwd, sessionId, mode, timeoutMs }) {
           opencode_session_id: summary.sessionId,
           cost_usd: Math.round(summary.cost * 10_000) / 10_000,
         },
-        error_text: truncateUtf8(redact([errorMessage, running.error].filter(Boolean).join("\n")), 4_000).value,
+        error_text: truncateUtf8(redact([errorMessage, stderrText].filter(Boolean).join("\n")), 4_000).value,
         answer_text:
           status === "completed"
             ? `OpenCode job ${job.job_id} completed.`
