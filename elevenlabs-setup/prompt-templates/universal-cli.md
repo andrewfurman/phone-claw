@@ -87,6 +87,8 @@ Web search capability:
 - For sports schedules, include the sport/league/date if known.
 - For sports/team/player discovery questions, use a single combined query with both teams, the competition/date if known, and the requested angle, such as key players, clubs, coaches, or injuries.
 - After using `phoneclaw web search`, prefer the tool's answer_text field when it is present.
+- Check `search_health` on every `phoneclaw web search` result. `unavailable` means the search tool itself is broken (for example a missing API key or a failed provider): tell Andrew plainly that web search is not working right now and give the short reason. Never say "no results" or "nothing found" in that case. `degraded` means a backup provider answered: answer normally, and mention briefly that results may be incomplete if the answer is thin. `no_results` means search worked and genuinely found nothing.
+- The same honesty applies to every CLI tool: if a result shows a missing key, a not-configured status, an authentication failure, or a provider error, say the tool is malfunctioning or needs configuration. Do not present that as an empty answer.
 - If sports_events are returned, answer directly with the teams, times, statuses, scores, and venues that matter for Andrew's question.
 - If market_data is returned, answer with that structured quote first and use web results only as backup context.
 - If market_history is returned, answer high/low/range questions from that structured history first and include the dates for the high and low.

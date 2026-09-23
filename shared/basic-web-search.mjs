@@ -26,6 +26,16 @@ export async function basicWebSearch({
   const searchedQuery = addRelativeDateContext(cleanQuery, now);
   const diagnostics = [];
 
+  if (!shouldUseTavily({ provider, tavilyApiKey }) && tavilyExpected({ provider })) {
+    diagnostics.push(
+      providerDiagnostic(TAVILY_PROVIDER, {
+        ok: false,
+        status: "tavily_not_configured",
+        message: "TAVILY_API_KEY is not configured on this host.",
+      })
+    );
+  }
+
   if (shouldUseTavily({ provider, tavilyApiKey })) {
     const tavily = await fetchTavilySearch({
       query: searchedQuery,
@@ -181,6 +191,14 @@ function shouldUseTavily({ provider, tavilyApiKey }) {
   return Boolean(configuredKey) && ["tavily", "auto"].includes(normalizedProvider);
 }
 
+function tavilyExpected({ provider }) {
+  const configuredProvider =
+    provider ||
+    (typeof process === "undefined" ? "" : process.env.WEB_SEARCH_PROVIDER) ||
+    "";
+  return ["", "auto", "tavily"].includes(String(configuredProvider).toLowerCase());
+}
+
 async function fetchEnrichments(query, now, fetchImpl) {
   const [sports, marketData, marketHistory] = await Promise.all([
     fetchSportsEnrichment(query, now, fetchImpl).catch(() => null),
@@ -189,6 +207,51 @@ async function fetchEnrichments(query, now, fetchImpl) {
   ]);
 
   return { sports, marketData, marketHistory };
+}
+
+const PROBLEM_TEXT = {
+  tavily_not_configured: "is not configured (missing API key)",
+  tavily_failed: "failed",
+  tavily_search_failed: "returned an error",
+  duckduckgo_failed: "failed",
+  wikipedia_failed: "failed",
+};
+
+function describeProblems(diagnostics) {
+  return diagnostics
+    .filter((item) => !item.ok)
+    .map((item) => `${item.provider} ${PROBLEM_TEXT[item.status] || "failed"}`)
+    .join("; ");
+}
+
+// search_health tells the voice agent whether an empty or thin answer means
+// "nothing out there" or "the search tool itself is broken" (issue #130).
+export function assessSearchHealth({ provider, diagnostics, hasContent }) {
+  const problems = describeProblems(diagnostics);
+  if (!hasContent && problems) {
+    return {
+      search_health: "unavailable",
+      search_notice:
+        `Web search is not working right now (${problems}). ` +
+        "Tell Andrew the search tool is malfunctioning or missing configuration. " +
+        "Do not say that nothing was found.",
+    };
+  }
+  if (!hasContent) {
+    return {
+      search_health: "no_results",
+      search_notice: "Web search worked but found no results for this query.",
+    };
+  }
+  if (problems) {
+    return {
+      search_health: "degraded",
+      search_notice:
+        `Search note: ${problems}, so these results come from the ${provider} backup ` +
+        "and may be incomplete. Mention this briefly if the answer seems thin.",
+    };
+  }
+  return { search_health: "ok", search_notice: "" };
 }
 
 function searchResponse({
@@ -205,6 +268,23 @@ function searchResponse({
   diagnostics,
 }) {
   const cappedResults = results.slice(0, limit);
+  const health = assessSearchHealth({
+    provider,
+    diagnostics,
+    hasContent:
+      cappedResults.length > 0 ||
+      Boolean(sports?.events?.length) ||
+      Boolean(marketData) ||
+      Boolean(marketHistory),
+  });
+  const answerText = formatAnswerText(
+    cleanQuery,
+    searchedQuery,
+    cappedResults,
+    sports,
+    marketData,
+    marketHistory
+  );
 
   return {
     ok: true,
@@ -224,14 +304,12 @@ function searchResponse({
       result_count: item.result_count,
       message: item.message,
     })),
-    answer_text: formatAnswerText(
-      cleanQuery,
-      searchedQuery,
-      cappedResults,
-      sports,
-      marketData,
-      marketHistory
-    ),
+    search_health: health.search_health,
+    search_notice: health.search_notice,
+    answer_text:
+      health.search_health === "unavailable"
+        ? health.search_notice
+        : [health.search_notice, answerText].filter(Boolean).join("\n\n"),
     results: cappedResults,
   };
 }
