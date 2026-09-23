@@ -240,7 +240,7 @@ sudo systemctl restart phoneclaw-bridge
 ```
 
 - Default model: `openrouter/deepseek/deepseek-v4.1-flash` (tool calling; about $0.10 / $0.50 per million input/output tokens). Override with `OPENCODE_MODEL`.
-- `deploy/opencode.json` disables sharing and autoupdate and **denies** `git push`, `git reset --hard`, `gh pr merge`, `gh release`, `npm publish`, `rm -rf`, `sudo`, `systemctl`, `shutdown`. Deny rules hold even with `--auto`. Plan mode uses OpenCode's read-only `plan` agent without `--auto`.
+- `deploy/opencode.json` disables sharing and autoupdate. **Pushes are allowed except to `main`, `master` or `dev`** (any refspec form, including `HEAD:main` and `refs/heads/main`), plus bare `git push`/`git push origin` (they push the current branch, which may be protected) and `--all`/`--mirror`. It also **denies** `gh pr merge` (Andrew merges), `git reset --hard`, `gh release`, `npm publish`, `rm -rf`, `sudo`, `systemctl`, `shutdown`. Rules match command text, so GitHub branch protection is the hard guarantee. Deny rules hold even with `--auto`. Plan mode uses OpenCode's read-only `plan` agent without `--auto`.
 - The bridge passes `--dir <repo>` and `PWD=<repo>`: OpenCode picks its project from PWD, not the process working directory, and would otherwise edit the bridge checkout.
 - `auth_status` checks the binary, then `GET https://openrouter.ai/api/v1/key` (no model cost). OpenRouter 401/403, 402 and 429 become `opencode_auth_failed`, `opencode_out_of_credit` and `opencode_rate_limited`, spoken plainly instead of retried.
 - OpenCode's session id is stored next to the steering file, so follow-up tasks in the same PhoneClaw session continue the same OpenCode session.
