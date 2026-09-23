@@ -137,7 +137,7 @@ if (process.env.PHONECLAW_ENABLE_LEGACY_TOOL_ROUTES !== "false") {
         confirmed: body.confirmed, maxRawBytes: 750_000, timeoutMs: 60_000,
       });
       const legacy = result.data || result;
-      const claudeOutcome = command === "claude code" && ["claude_auth_expired", "claude_auth_probe_failed", "claude_not_authenticated", "job_not_found", "session_ready", "steering_recorded"].includes(legacy.status);
+      const claudeOutcome = command === "claude code" && ["claude_auth_expired", "claude_auth_probe_failed", "claude_not_authenticated", "job_not_found", "session_ready", "steering_recorded", "opencode_not_installed", "opencode_not_configured", "opencode_auth_failed", "opencode_out_of_credit", "opencode_auth_probe_failed"].includes(legacy.status);
       return reply.code(claudeOutcome ? 200 : toolResultStatusCode(legacy)).send(legacy);
     });
   }

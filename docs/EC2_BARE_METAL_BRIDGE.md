@@ -224,3 +224,24 @@ If the database URL is missing, conversation-history endpoints return `conversat
 ## AI Gateway (email image inspect)
 
 Set `AI_GATEWAY_API_KEY` in `/etc/phoneclaw/bridge.env`. Optional: `AI_GATEWAY_BASE_URL`, `PHONECLAW_VISION_MODEL` (default `google/gemini-3.8-flash`).
+
+## OpenCode + OpenRouter coding engine (#127)
+
+`phoneclaw claude code` can run on OpenCode with an OpenRouter API key instead of
+Claude Code's OAuth login, which avoids interactive re-authentication. Same
+actions (auth_status, start_session, submit_task, job_status, steer_session).
+
+```bash
+sudo npm install -g opencode-ai@1.18.32          # pinned; installs /usr/bin/opencode
+sudo -u phoneclaw mkdir -p /home/phoneclaw/.config/opencode
+sudo install -o phoneclaw -g phoneclaw -m 644 deploy/opencode.json /home/phoneclaw/.config/opencode/opencode.json
+# bridge.env: PHONECLAW_CODING_ENGINE=opencode, OPENROUTER_API_KEY=..., optional OPENCODE_MODEL
+sudo systemctl restart phoneclaw-bridge
+```
+
+- Default model: `openrouter/deepseek/deepseek-v4.1-flash` (tool calling; about $0.10 / $0.50 per million input/output tokens). Override with `OPENCODE_MODEL`.
+- `deploy/opencode.json` disables sharing and autoupdate and **denies** `git push`, `git reset --hard`, `gh pr merge`, `gh release`, `npm publish`, `rm -rf`, `sudo`, `systemctl`, `shutdown`. Deny rules hold even with `--auto`. Plan mode uses OpenCode's read-only `plan` agent without `--auto`.
+- The bridge passes `--dir <repo>` and `PWD=<repo>`: OpenCode picks its project from PWD, not the process working directory, and would otherwise edit the bridge checkout.
+- `auth_status` checks the binary, then `GET https://openrouter.ai/api/v1/key` (no model cost). OpenRouter 401/403, 402 and 429 become `opencode_auth_failed`, `opencode_out_of_credit` and `opencode_rate_limited`, spoken plainly instead of retried.
+- OpenCode's session id is stored next to the steering file, so follow-up tasks in the same PhoneClaw session continue the same OpenCode session.
+- Roll back: set `PHONECLAW_CODING_ENGINE=claude` (or remove it) and restart.
