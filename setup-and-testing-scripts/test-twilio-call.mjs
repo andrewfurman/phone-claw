@@ -4,6 +4,7 @@ import twilio from "twilio";
 import { loadPhoneclawEnv } from "../shared/load-env-file.mjs";
 import { GENERIC_CLI_POLICY_VERSION } from "../fastify-app/generic-cli.mjs";
 import { UNIVERSAL_CLI_VERSION } from "../fastify-app/universal-cli.mjs";
+import { CLI_COMMAND_CATALOG } from "../shared/cli-command-catalog.mjs";
 import { UNIVERSAL_SMOKE_SCENARIOS, smokeRequest, matchesSmokeCall, validateSmokeResult } from "../shared/universal-cli-smoke-scenarios.mjs";
 if (!process.env.ELEVENLABS_API_KEY) loadPhoneclawEnv();
 const env = process.env;
@@ -40,7 +41,7 @@ assert.equal(head.stdout.trim(), env.PHONECLAW_TEST_REVISION, "Deployed checkout
 if (universalMode) {
   assert.equal(preflight.runner_version, UNIVERSAL_CLI_VERSION);
   const catalog = await tool({ command: "phoneclaw", args: ["help"], cwd: env.PHONECLAW_TEST_CWD });
-  assert.equal(catalog.ok, true);assert.equal(catalog.data?.length, 30);
+  assert.equal(catalog.ok, true);assert.equal(catalog.data?.length, CLI_COMMAND_CATALOG.length, "Deployed CLI catalog differs from this checkout");
   const rejected = await tool({ command: "phoneclaw", args: ["github", "issue-create", "--json", JSON.stringify({ repo: "owner/repo", title: "Synthetic confirmation probe", confirmed: true })] });
   assert.equal(rejected.status, "confirmation_required", "Embedded JSON must not authorize a write");
   // Validate provider readiness first; never spend a call testing an unavailable
