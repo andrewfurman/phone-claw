@@ -25,6 +25,16 @@ export async function sendgridEmailSend(options = {}, deps = {}) {
   const bodyText = normalizeString(options.body ?? options.text);
   const bodyHtml = normalizeString(options.html);
   const previewed = toBoolean(options.previewed, false);
+  // Base64 attachments from trusted bridge code only (e.g. photos email); not a voice parameter.
+  const attachments = (Array.isArray(options.attachments) ? options.attachments : [])
+    .filter((item) => item && typeof item.content === "string" && typeof item.filename === "string")
+    .slice(0, 5)
+    .map((item) => ({
+      content: item.content,
+      filename: item.filename.replace(/[^\w.-]/g, "_").slice(0, 80),
+      type: typeof item.type === "string" ? item.type : "application/octet-stream",
+      disposition: "attachment",
+    }));
   const confirmed = toBoolean(options.confirmed, false);
 
   let toEmails = parseEmailList(toRaw);
@@ -132,6 +142,7 @@ export async function sendgridEmailSend(options = {}, deps = {}) {
     from: { email: fromEmail },
     subject,
     content: buildContent(bodyText, bodyHtml),
+    ...(attachments.length ? { attachments } : {}),
   };
 
   const timeoutMs = clampInteger(

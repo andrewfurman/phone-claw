@@ -261,5 +261,79 @@
         "index"
       ]
     ]
+  },
+  "photos": {
+    "executable": "/home/phoneclaw/bin/mac-photos",
+    "env": [
+      "MAC_SSH_ALIAS",
+      "MAC_SSH_HOST",
+      "MAC_SSH_USER",
+      "MAC_SSH_KEY"
+    ],
+    "readOnlyArgs": [
+      [
+        "--help"
+      ],
+      [
+        "-h"
+      ],
+      [
+        "help"
+      ],
+      [
+        "recent"
+      ],
+      [
+        "people"
+      ],
+      [
+        "albums"
+      ],
+      [
+        "stats"
+      ]
+    ],
+    "blockedArgs": [
+      [
+        "export"
+      ]
+    ]
+  },
+  "mac-photos": {
+    "executable": "/home/phoneclaw/bin/mac-photos",
+    "env": [
+      "MAC_SSH_ALIAS",
+      "MAC_SSH_HOST",
+      "MAC_SSH_USER",
+      "MAC_SSH_KEY"
+    ],
+    "readOnlyArgs": [
+      [
+        "--help"
+      ],
+      [
+        "-h"
+      ],
+      [
+        "help"
+      ],
+      [
+        "recent"
+      ],
+      [
+        "people"
+      ],
+      [
+        "albums"
+      ],
+      [
+        "stats"
+      ]
+    ],
+    "blockedArgs": [
+      [
+        "export"
+      ]
+    ]
   }
 }
