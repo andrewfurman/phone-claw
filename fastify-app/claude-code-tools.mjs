@@ -707,7 +707,8 @@ function buildClaudeTaskPrompt(task, mode, { steeringFile = "" } = {}) {
   const guardrails = [
     "You are running from phone-claw's voice-agent bridge on an EC2 host.",
     "Work only in the current repository unless the user explicitly named another allowed path.",
-    "Do not push commits, deploy, rotate secrets, or perform destructive operations unless the user explicitly requested that exact action.",
+    "You may commit, push feature branches, and open or update pull requests when the user asks. Never push to main, master, or dev, and never merge pull requests: Andrew merges.",
+    "Do not deploy, rotate secrets, or perform destructive operations unless the user explicitly requested that exact action.",
     "Do not reveal secrets or credential values. Redact any secret-like value you encounter.",
   ];
 

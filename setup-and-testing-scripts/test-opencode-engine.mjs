@@ -193,5 +193,8 @@ test("a silently rejected permission is reported, not called completed", withFak
 test("deploy/opencode.json lets OpenCode read the steering folder and still denies risky commands", () => {
   const config = JSON.parse(readFileSync(new URL("../deploy/opencode.json", import.meta.url), "utf8"));
   assert.equal(config.permission.external_directory["/var/lib/phoneclaw/claude-steering/*"], "allow");
-  for (const cmd of ["git push*", "sudo *", "rm -rf *"]) assert.equal(config.permission.bash[cmd], "deny");
+  for (const cmd of ["gh pr merge*", "sudo *", "rm -rf *", "git push", "git push origin", "git push * main", "git push *:dev", "git push *refs/heads/master*"]) assert.equal(config.permission.bash[cmd], "deny", cmd);
+  assert.equal(config.permission.bash["git push*"], "allow");
+  const keys = Object.keys(config.permission.bash);
+  assert.ok(keys.indexOf("git push*") < keys.indexOf("git push * main"), "protected-branch denies must come after the push allow (last match wins)");
 });
