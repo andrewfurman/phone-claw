@@ -3,6 +3,7 @@ import { conversationHistoryGet, conversationHistorySearch } from "./conversatio
 import { githubCliCommon, himalayaCreateForwardDraft, himalayaCreateReplyAllDraft, himalayaDraftCreate, himalayaDraftReply, himalayaEmailArchive, himalayaEmailImageInspect, himalayaEmailImages, phoneclawImageInspect, himalayaEmailForward, himalayaEmailList, himalayaEmailRead, himalayaEmailSend, otterSpeechGet, otterSpeechSearch, otterSpeechesList, urlFetch } from "./cli-tools.mjs";
 import { sendgridEmailSend } from "./sendgrid-tools.mjs";
 import { photosEmail } from "./photos-tools.mjs";
+import { imessageSend } from "./imessage-tools.mjs";
 import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSearchEntries, rssListConfiguredFeeds, rssRefreshConfiguredFeeds } from "./rss-feed-tools.mjs";
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
@@ -209,6 +210,13 @@ export const commandAdapters = {
   }),
   "photos email": (body, context) => photosEmail({
     id: body.id || body.photo_id || body.photoId,
+    confirmed: context.confirmed,
+  }),
+  "imessage send": (body, context) => imessageSend({
+    to: body.to || body.recipient || body.phone,
+    text: body.text || body.message || body.body,
+    service: body.service,
+    previewed: body.previewed,
     confirmed: context.confirmed,
   }),
   "sendgrid email-send": (body, context) => sendgridEmailSend({
