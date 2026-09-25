@@ -1,0 +1,16 @@
+[Unit]
+Description=PhoneClaw WhatsApp sync (wacli sync --follow)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=phoneclaw
+Group=phoneclaw
+Environment=HOME=/home/phoneclaw
+WorkingDirectory=/home/phoneclaw
+ExecStart=/usr/local/bin/wacli sync --follow --presence-mode quiet --max-reconnect 0 --max-db-size 2GB --refresh-contacts --refresh-groups
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

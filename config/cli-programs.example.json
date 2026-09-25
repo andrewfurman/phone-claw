@@ -525,5 +525,79 @@
         "watch"
       ]
     ]
+  },
+  "wacli": {
+    "executable": "/usr/local/bin/wacli",
+    "env": [
+      "WACLI_STORE_DIR"
+    ],
+    "readOnlyArgs": [
+      [
+        "--version"
+      ],
+      [
+        "version"
+      ],
+      [
+        "doctor"
+      ],
+      [
+        "auth",
+        "status"
+      ]
+    ],
+    "blockedArgs": [
+      [
+        "send"
+      ],
+      [
+        "auth"
+      ],
+      [
+        "accounts"
+      ],
+      [
+        "channels"
+      ],
+      [
+        "chats"
+      ],
+      [
+        "contacts"
+      ],
+      [
+        "groups"
+      ],
+      [
+        "history"
+      ],
+      [
+        "media"
+      ],
+      [
+        "messages"
+      ],
+      [
+        "poll"
+      ],
+      [
+        "polls"
+      ],
+      [
+        "presence"
+      ],
+      [
+        "profile"
+      ],
+      [
+        "store"
+      ],
+      [
+        "sync"
+      ],
+      [
+        "calls"
+      ]
+    ]
   }
 }

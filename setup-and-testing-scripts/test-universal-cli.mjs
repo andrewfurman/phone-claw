@@ -100,10 +100,10 @@ test("output is bounded before retention and missing executables are explicit", 
   assert.equal((await run({ command: join(root, "missing"), args: [], confirmed: true })).status, "cli_not_installed");
 });
 test("all prior application tools are discoverable behind one command and output schema", async () => {
-  assert.equal(CLI_COMMAND_CATALOG.length, 34);
+  assert.equal(CLI_COMMAND_CATALOG.length, 38);
   assert.deepEqual(Object.keys(commandAdapters), CLI_COMMAND_CATALOG.map(x => x.command));
   const help = await run({ command: "phoneclaw", args: ["help"] });
-  assert.equal(help.ok, true);assert.equal(help.data.length, 34);
+  assert.equal(help.ok, true);assert.equal(help.data.length, 38);
   for (const command of CLI_COMMAND_CATALOG) {
     const r = await run({ command: "phoneclaw", args: [...command.command.split(" "), "--help"] });
     assert.equal(r.ok, true);assert.equal(r.data.command, command.command);

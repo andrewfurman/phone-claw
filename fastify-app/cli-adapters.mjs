@@ -4,6 +4,7 @@ import { githubCliCommon, himalayaCreateForwardDraft, himalayaCreateReplyAllDraf
 import { sendgridEmailSend } from "./sendgrid-tools.mjs";
 import { photosEmail } from "./photos-tools.mjs";
 import { imessageSend } from "./imessage-tools.mjs";
+import { whatsappChats, whatsappMessages, whatsappSearch, whatsappSend } from "./whatsapp-tools.mjs";
 import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSearchEntries, rssListConfiguredFeeds, rssRefreshConfiguredFeeds } from "./rss-feed-tools.mjs";
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
@@ -210,6 +211,30 @@ export const commandAdapters = {
   }),
   "photos email": (body, context) => photosEmail({
     id: body.id || body.photo_id || body.photoId,
+    confirmed: context.confirmed,
+  }),
+  "whatsapp chats": body => whatsappChats({
+    query: body.query || body.name,
+    limit: body.limit || body.max_results,
+    unread: body.unread,
+  }),
+  "whatsapp messages": body => whatsappMessages({
+    chat: body.chat || body.chat_jid || body.jid,
+    limit: body.limit || body.max_results,
+    after: body.after,
+    before: body.before,
+  }),
+  "whatsapp search": body => whatsappSearch({
+    query: body.query || body.search_query,
+    chat: body.chat || body.chat_jid || body.jid,
+    limit: body.limit || body.max_results,
+    after: body.after,
+    before: body.before,
+  }),
+  "whatsapp send": (body, context) => whatsappSend({
+    to: body.to || body.recipient || body.chat || body.jid,
+    text: body.text || body.message || body.body,
+    previewed: body.previewed,
     confirmed: context.confirmed,
   }),
   "imessage send": (body, context) => imessageSend({
