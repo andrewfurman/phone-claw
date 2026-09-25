@@ -13,7 +13,7 @@ This repo is public-safe. Real API keys, account IDs, phone numbers, webhook tok
 - `setup-and-testing-scripts/` - ElevenLabs configuration, export, and live smoke-test scripts.
 - `docs/` - architecture, EC2, bridge-security notes, and the easy VM/bridge setup guide.
 - `elevenlabs-setup/` and `twilio-setup/` - provider setup notes, public-safe config snapshots, and sample ElevenLabs prompt templates.
-- `sample.env` and `.env.example` - identical public environment templates containing placeholders only.
+- `.env.example` and `.env.example` - identical public environment templates containing placeholders only.
 
 ## Runtime Architecture
 
@@ -241,7 +241,7 @@ See [Universal CLI setup and migration](docs/UNIVERSAL_CLI.md) and the [agent's 
 
 ```bash
 npm install
-cp sample.env .env
+cp .env.example .env
 npm start
 ```
 
@@ -275,4 +275,4 @@ Do not commit:
 - `.wrangler/`
 - provider API keys, auth tokens, recovery codes, account credentials, SSH keys, private feed URLs, or CLI auth files
 
-Use `sample.env` (also available as `.env.example`) and `cloudflare-worker/wrangler.example.toml` as templates only. Commit variable names, comments, and placeholders in the templates; put real values in your ignored `.env` or protected EC2 configuration files. The templates include the automated Twilio test settings. Never put account recovery codes in application configuration.
+Use `.env.example` (also available as `.env.example`) and `cloudflare-worker/wrangler.example.toml` as templates only. Commit variable names, comments, and placeholders in the templates; put real values in your ignored `.env` or protected EC2 configuration files. The templates include the automated Twilio test settings. Never put account recovery codes in application configuration.
