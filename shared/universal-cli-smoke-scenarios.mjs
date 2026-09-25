@@ -11,6 +11,7 @@ export const UNIVERSAL_SMOKE_SCENARIOS = [
   { id: "claude", phrase: "Please use the phoneclaw Claude code command with action auth underscore status to check authentication. Just report the authentication status; do not start a coding task.", builtin: "claude code", options: { action: "auth_status" } },
   { id: "gws_agenda", phrase: "Please use run CLI with command G W S and arguments calendar plus agenda. Briefly say whether today's agenda lookup worked, without asking me to approve Google Workspace.", command: "gws", args: ["calendar", "+agenda"] },
   { id: "photos_recent", phrase: "Please use run CLI with command photos and arguments person Emma dash L two. Briefly say the date of the newest photo, without asking me to approve Photos.", command: "photos", args: ["person", "Emma", "-l", "2"] },
+  { id: "whatsapp_chats", phrase: "Please use the phoneclaw WhatsApp chats command to list my three most recent WhatsApp chats. Just tell me how many chats it returned, without reading names.", builtin: "whatsapp chats", options: { limit: 3 } },
   { id: "notes_recent", phrase: "Please use run CLI with command notes and arguments recent dash L five. Briefly say whether the notes lookup worked, without asking me to approve Notes.", command: "notes", args: ["recent", "-l", "5"] },
 ];
 
@@ -53,5 +54,6 @@ export function validateSmokeResult(scenario, result) {
   if (scenario.id === "web_fetch") return data.status_code === 200 && /example domain/i.test(data.body_text || data.text || data.answer_text || "");
   if (scenario.id === "web_search") return Array.isArray(data.results) && data.results.length > 0 && (data.search_health ?? "ok") === "ok";
   if (scenario.id === "claude") return data.authenticated === true;
+  if (scenario.id === "whatsapp_chats") return data.action === "whatsapp_chats" && Array.isArray(data.chats) && data.chats.length > 0;
   return false;
 }

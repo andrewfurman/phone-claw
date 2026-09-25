@@ -4,7 +4,7 @@ import { CLI_COMMAND_CATALOG } from "../shared/cli-command-catalog.mjs";
 import { loadCliPrograms, programEnvironment } from "./cli-programs.mjs";
 import { executeCli } from "../shared/cli-process.mjs";
 
-export const UNIVERSAL_CLI_VERSION = "2026-09-25.1";
+export const UNIVERSAL_CLI_VERSION = "2026-09-25.2";
 const confirmedValue = value => value === true || value === "true";
 
 const HELP_TOKENS = new Set(["help", "--help", "-h"]);

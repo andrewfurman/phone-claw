@@ -374,6 +374,46 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "whatsapp chats",
+    "legacy_path": "/cli/whatsapp/chats",
+    "parameters": [
+      "query",
+      "limit",
+      "unread"
+    ]
+  },
+  {
+    "command": "whatsapp messages",
+    "legacy_path": "/cli/whatsapp/messages",
+    "parameters": [
+      "chat",
+      "limit",
+      "after",
+      "before"
+    ]
+  },
+  {
+    "command": "whatsapp search",
+    "legacy_path": "/cli/whatsapp/search",
+    "parameters": [
+      "query",
+      "chat",
+      "limit",
+      "after",
+      "before"
+    ]
+  },
+  {
+    "command": "whatsapp send",
+    "legacy_path": "/cli/whatsapp/send",
+    "parameters": [
+      "to",
+      "text",
+      "message",
+      "previewed"
+    ]
+  },
+  {
     "command": "imessage send",
     "legacy_path": "/cli/imessage/send",
     "parameters": [
