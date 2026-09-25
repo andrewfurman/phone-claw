@@ -1,0 +1,15 @@
+#!/bin/bash
+# Thin SSH wrapper: imsg (iMessage) CLI on the Mac. Raw sends are blocked for
+# run_cli by GENERIC_CLI_PROGRAMS_PATH blockedArgs; the only send path is the
+# confirmed `phoneclaw imessage send` command (fastify-app/imessage-tools.mjs).
+set -euo pipefail
+ALIAS="${MAC_SSH_ALIAS:-macincloud}"
+REMOTE_PREFIX='export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; exec imsg'
+if [[ $# -eq 0 ]]; then
+  exec ssh -o BatchMode=yes -o ConnectTimeout=25 "$ALIAS" "$REMOTE_PREFIX"
+fi
+quoted=()
+for arg in "$@"; do
+  quoted+=("$(printf '%q' "$arg")")
+done
+exec ssh -o BatchMode=yes -o ConnectTimeout=25 "$ALIAS" "$REMOTE_PREFIX ${quoted[*]}"

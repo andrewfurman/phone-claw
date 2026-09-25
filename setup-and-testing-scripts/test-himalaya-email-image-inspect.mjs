@@ -201,7 +201,7 @@ test("catalog and adapters expose himalaya email-image-inspect as a read", async
   assert.ok(entry);
   assert.equal(entry.legacy_path, "/cli/himalaya/email-image-inspect");
   assert.equal(typeof commandAdapters["himalaya email-image-inspect"], "function");
-  assert.equal(UNIVERSAL_CLI_VERSION, "2026-09-17.5");
+  assert.equal(UNIVERSAL_CLI_VERSION, "2026-09-25.1");
   const help = await runUniversalCli({
     command: "phoneclaw",
     args: ["himalaya", "email-image-inspect", "--help"],

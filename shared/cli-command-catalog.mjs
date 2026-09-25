@@ -374,6 +374,17 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "imessage send",
+    "legacy_path": "/cli/imessage/send",
+    "parameters": [
+      "to",
+      "text",
+      "message",
+      "service",
+      "previewed"
+    ]
+  },
+  {
     "command": "sendgrid email-send",
     "legacy_path": "/cli/sendgrid/email-send",
     "parameters": [
