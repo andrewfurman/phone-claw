@@ -6,14 +6,14 @@
 //
 //   PHONECLAW_RUN_CLI_URL  default https://webhooks.aifurman.com/cli/run
 //                          (on EC2: http://127.0.0.1:8000/cli/run)
-//   COMMAND_BRIDGE_TOKEN or WEB_SEARCH_TOKEN
+//   CLI_BRIDGE_TOKEN (bridge), or COMMAND_BRIDGE_TOKEN / WEB_SEARCH_TOKEN (Worker)
 const url = process.env.PHONECLAW_RUN_CLI_URL
   || `${process.env.PHONECLAW_WORKER_BASE_URL || "https://webhooks.aifurman.com"}/cli/run`;
-const token = process.env.COMMAND_BRIDGE_TOKEN || process.env.WEB_SEARCH_TOKEN;
+const token = process.env.CLI_BRIDGE_TOKEN || process.env.COMMAND_BRIDGE_TOKEN || process.env.WEB_SEARCH_TOKEN;
 const sendTo = process.env.IMESSAGE_TEST_TO || "";
 const reallySend = process.env.IMESSAGE_TEST_SEND === "1" && sendTo;
 if (!token) {
-  console.error("Missing COMMAND_BRIDGE_TOKEN or WEB_SEARCH_TOKEN.");
+  console.error("Missing CLI_BRIDGE_TOKEN, COMMAND_BRIDGE_TOKEN or WEB_SEARCH_TOKEN.");
   process.exit(1);
 }
 
@@ -21,8 +21,10 @@ const stamp = new Date().toISOString().replace(/\.\d+Z$/, "Z");
 const text = `PhoneClaw iMessage test ${stamp} (#140)`;
 const payload = JSON.stringify({ to: sendTo || "+15555550123", text, previewed: true });
 const checks = {};
+const responses = {};
 
 const preview = await runCli({ command: "phoneclaw", args: ["imessage", "send", "--json", JSON.stringify({ to: sendTo || "+15555550123", text })], confirmed: false });
+responses.preview = preview;
 checks.preview_required = preview.data?.action === "imessage_send_preview_required" && preview.data?.preview?.text === text;
 
 const selfConfirm = await runCli({ command: "phoneclaw", args: ["imessage", "send", "--json", JSON.stringify({ to: sendTo || "+15555550123", text, previewed: true, confirmed: true })], confirmed: false });
@@ -50,6 +52,7 @@ if (reallySend) {
 
 const ok = Object.values(checks).every(Boolean);
 console.log(JSON.stringify({ ok, url, really_sent: Boolean(reallySend), to: reallySend ? sendTo : null, checks }, null, 2));
+if (!ok) console.error(JSON.stringify(responses, null, 2).slice(0, 2000));
 process.exit(ok ? 0 : 1);
 
 async function runCli(body) {
