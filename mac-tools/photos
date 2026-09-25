@@ -52,8 +52,15 @@ def connect() -> sqlite3.Connection:
     path = os.path.join(LIBRARY, "database", "Photos.sqlite")
     if not os.path.exists(path):
         raise UsageError("Photos library not found on this Mac.")
-    uri = "file:" + path.replace("?", "%3F").replace("#", "%23") + "?mode=ro&immutable=1"
-    return sqlite3.connect(uri, uri=True)
+    uri = "file:" + path.replace("?", "%3F").replace("#", "%23") + "?mode=ro"
+    # immutable=1 ignores the write-ahead log. That is fastest when Photos has
+    # checkpointed, but while iCloud is still syncing most of the library lives
+    # in Photos.sqlite-wal and an immutable read sees a torn database. Then read
+    # through the WAL instead (still mode=ro: nothing is ever written).
+    wal = path + "-wal"
+    if os.path.exists(wal) and os.path.getsize(wal) > 0:
+        return sqlite3.connect(uri, uri=True)
+    return sqlite3.connect(uri + "&immutable=1", uri=True)
 
 
 def album_join(db: sqlite3.Connection) -> tuple[str, str, str] | None:
