@@ -7,7 +7,7 @@ const DEFAULT_MAX_TEXT_CHARS = 30_000;
 const MAX_TEXT_CHARS = 120_000;
 const DEFAULT_EXCERPT_CHARS = 320;
 const DEFAULT_CACHE_SECONDS = 900;
-const DEFAULT_TIMEOUT_MS = 12_000;
+const DEFAULT_TIMEOUT_MS = 20_000; // the feed server has taken 12-20 s when refreshing (issue #148); stays under the voice tool's 25 s deadline
 
 const feedCache = new Map();
 
