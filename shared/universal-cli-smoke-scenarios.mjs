@@ -52,7 +52,8 @@ export function validateSmokeResult(scenario, result) {
     try { const value=JSON.parse(result.stdout); return value.ok===true && value.action===scenario.id && (scenario.id==='notes_read' ? typeof value.note?.text==='string' : Array.isArray(value.notes)); } catch { return false; }
   }
   if (scenario.id.startsWith('imessage_')) {
-    try { return String(result.stdout || '').split('\n').filter(Boolean).every(line=>JSON.parse(line) && typeof JSON.parse(line)==='object'); } catch { return false; }
+    if (typeof result.stdout !== 'string') return false;
+    try { return result.stdout.split('\n').filter(Boolean).every(line=>{const row=JSON.parse(line);return row!==null && typeof row==='object' && !Array.isArray(row);}); } catch { return false; }
   }
   if (scenario.id === "photos_recent") return result.status !== "confirmation_required" && /Recent photos with Emma/.test(result.stdout || "");
   if (!data || data.ok !== true || result.data_truncated) return false;
