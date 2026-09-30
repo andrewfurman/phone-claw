@@ -9,14 +9,14 @@ function run(argv) {
     var matches=items.filter(function(n){return n.id===o.id;});
     if(matches.length!==1)return JSON.stringify({ok:false,status:matches.length?'ambiguous_note':'note_not_found'});
     var item=matches[0], note=app.notes.byId(item.native_id);
-    item.text=note.plaintext().slice(0,12000);item.text_truncated=note.plaintext().length>12000;
+    var text=note.plaintext();item.text=text.slice(0,12000);item.text_truncated=text.length>12000;
     return JSON.stringify({ok:true,action:'notes_read',note:item});
   }
   items.sort(function(a,b){return b.modified_at.localeCompare(a.modified_at);});
   if(o.folder) items=items.filter(function(n){return app.notes.byId(n.native_id).container().name()===o.folder;});
   if(o.action==='search') {
-    var query=o.query.toLowerCase();
-    items=items.filter(function(n){return n.title.toLowerCase().indexOf(query)>=0 || app.notes.byId(n.native_id).plaintext().toLowerCase().indexOf(query)>=0;});
+    var matches=app.notes.whose({_or:[{name:{_contains:o.query}},{plaintext:{_contains:o.query}}]}).id();
+    items=items.filter(function(n){return matches.indexOf(n.native_id)>=0;});
   }
   return JSON.stringify({ok:true,action:'notes_'+o.action,notes:items.slice(0,o.limit),total_matches:items.length});
 }
