@@ -1,0 +1,13 @@
+#!/bin/bash
+# Apple Notes CLI over the existing configured Mac SSH connection.
+set -euo pipefail
+ALIAS="${MAC_SSH_ALIAS:-macincloud}"
+REMOTE_PREFIX='export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; exec notes'
+if [[ $# -eq 0 ]]; then
+  exec ssh -o BatchMode=yes -o ConnectTimeout=25 "$ALIAS" "$REMOTE_PREFIX"
+fi
+quoted=()
+for arg in "$@"; do
+  quoted+=("$(printf '%q' "$arg")")
+done
+exec ssh -o BatchMode=yes -o ConnectTimeout=25 "$ALIAS" "$REMOTE_PREFIX ${quoted[*]}"

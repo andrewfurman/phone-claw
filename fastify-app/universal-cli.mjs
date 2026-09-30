@@ -4,7 +4,7 @@ import { CLI_COMMAND_CATALOG } from "../shared/cli-command-catalog.mjs";
 import { loadCliPrograms, programEnvironment } from "./cli-programs.mjs";
 import { executeCli } from "../shared/cli-process.mjs";
 
-export const UNIVERSAL_CLI_VERSION = "2026-09-25.2";
+export const UNIVERSAL_CLI_VERSION = "2026-09-30.153";
 const confirmedValue = value => value === true || value === "true";
 
 const HELP_TOKENS = new Set(["help", "--help", "-h"]);
@@ -39,14 +39,19 @@ export function isNotesSafeReadArgs(args) {
   if (args[0] !== "search") return false;
   let i = 1;
   let query = null;
+  const seen = new Set();
   while (i < args.length) {
     const tok = args[i];
     if (tok === "-l" || tok === "--limit") {
+      if (seen.has("limit")) return false;
+      seen.add("limit");
       if (i + 1 >= args.length || !NOTES_SAFE_LIMITS.has(args[i + 1])) return false;
       i += 2;
       continue;
     }
     if (tok === "-f" || tok === "--folder") {
+      if (seen.has("folder")) return false;
+      seen.add("folder");
       if (i + 1 >= args.length || !isNotesQueryToken(args[i + 1])) return false;
       i += 2;
       continue;
@@ -57,6 +62,35 @@ export function isNotesSafeReadArgs(args) {
     i += 1;
   }
   return query !== null;
+}
+
+// imsg `read` marks a chat as read; use `history` to inspect incoming messages.
+// Require an explicit small limit and reject alternate DB paths, attachment
+// conversion, unknown flags and duplicate options before invoking the Mac.
+export function isImessageSafeReadArgs(args) {
+  if (!Array.isArray(args) || args.length < 1 || args.length > 12) return false;
+  if (!args.every(a => typeof a === "string" && a.length > 0 && a.length <= 120 && !/[\0\r\n]/.test(a))) return false;
+  const [command, ...rest] = args;
+  if (!["chats", "history", "search"].includes(command)) return false;
+  const flags = new Map();
+  for (let i = 0; i < rest.length; i++) {
+    const flag = rest[i];
+    if (flags.has(flag)) return false;
+    if (flag === "--json") { flags.set(flag, true); continue; }
+    const value = rest[++i];
+    if (typeof value !== "string") return false;
+    if (flag === "--limit" && NOTES_SAFE_LIMITS.has(value)) flags.set(flag, value);
+    else if (command === "history" && flag === "--chat-id" && isNotesNumericId(value)) flags.set(flag, value);
+    else if (command === "search" && flag === "--query" && isNotesQueryToken(value)) flags.set(flag, value);
+    else if (command === "search" && flag === "--match" && ["exact", "contains"].includes(value)) flags.set(flag, value);
+    else if (command === "history" && ["--start", "--end"].includes(flag) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value))) flags.set(flag, value);
+    else return false;
+  }
+  if (!flags.has("--limit")) return false;
+  if (command === "history" && !flags.has("--chat-id")) return false;
+  if (command === "search" && !flags.has("--query")) return false;
+  if (flags.has("--start") && flags.has("--end") && Date.parse(flags.get("--start")) >= Date.parse(flags.get("--end"))) return false;
+  return true;
 }
 
 
@@ -127,9 +161,11 @@ export async function runUniversalCli({ command, args, cwd, confirmed, env, time
       if (blocked) return { ...metadata, ...failure("command_blocked", "This command can expose credentials or bypass a protected workflow. Use the corresponding phoneclaw command.") };
       const notesProgram = command === "notes" || command === "mac-notes";
       const photosProgram = command === "photos" || command === "mac-photos";
+      const imessageProgram = command === "imsg" || command === "mac-imsg";
       const readOnly = isHelpOnlyArgs(args)
         || (notesProgram && isNotesSafeReadArgs(args))
         || (photosProgram && isPhotosSafeReadArgs(args))
+        || (imessageProgram && isImessageSafeReadArgs(args))
         || (spec.readOnlyArgs || []).some(allowed => allowed.length === args.length && allowed.every((arg, i) => args[i] === arg));
       if (!readOnly && !confirmedValue(confirmed)) return { ...metadata, ...failure("confirmation_required", "Confirm the exact executable and arguments before setting confirmed=true. For existing read operations, use the phoneclaw commands in the command guide.") };
       const ran = await executeCli(spec.executable, args, { cwd: directory.cwd, env: programEnvironment(spec, env), timeoutMs: timeout });
