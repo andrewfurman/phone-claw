@@ -1,0 +1,22 @@
+function run(argv) {
+  var o = JSON.parse(argv[0]), app = Application('Notes');
+  if (o.action === 'folders') return JSON.stringify({ok:true,action:'notes_folders',folders:app.folders.name().slice(0,o.limit)});
+  var ids=app.notes.id(), names=app.notes.name(), dates=app.notes.modificationDate();
+  if(o.action==='stats') return JSON.stringify({ok:true,action:'notes_stats',note_count:ids.length});
+  function numeric(id) { var m=/\/p([1-9][0-9]*)$/.exec(id);return m?m[1]:null; }
+  var items=ids.map(function(id,i){return {id:numeric(id),native_id:id,title:names[i],modified_at:dates[i].toISOString()};});
+  if (o.action === 'read') {
+    var matches=items.filter(function(n){return n.id===o.id;});
+    if(matches.length!==1)return JSON.stringify({ok:false,status:matches.length?'ambiguous_note':'note_not_found'});
+    var item=matches[0], note=app.notes.byId(item.native_id);
+    item.text=note.plaintext().slice(0,12000);item.text_truncated=note.plaintext().length>12000;
+    return JSON.stringify({ok:true,action:'notes_read',note:item});
+  }
+  items.sort(function(a,b){return b.modified_at.localeCompare(a.modified_at);});
+  if(o.folder) items=items.filter(function(n){return app.notes.byId(n.native_id).container().name()===o.folder;});
+  if(o.action==='search') {
+    var query=o.query.toLowerCase();
+    items=items.filter(function(n){return n.title.toLowerCase().indexOf(query)>=0 || app.notes.byId(n.native_id).plaintext().toLowerCase().indexOf(query)>=0;});
+  }
+  return JSON.stringify({ok:true,action:'notes_'+o.action,notes:items.slice(0,o.limit),total_matches:items.length});
+}
