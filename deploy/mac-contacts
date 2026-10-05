@@ -1,0 +1,11 @@
+#!/bin/bash
+# Thin SSH wrapper: read-only Apple Contacts lookups (mac-tools/contacts) on the Mac. Install the Mac side at
+# ~/.local/bin/contacts. Used by `phoneclaw contacts search` and to resolve iMessage recipients by name.
+set -euo pipefail
+ALIAS="${MAC_SSH_ALIAS:-macincloud}"
+REMOTE_PREFIX='export PATH="$HOME/.local/bin:/usr/bin:/bin:$PATH"; exec contacts'
+quoted=()
+for arg in "$@"; do
+  quoted+=("$(printf '%q' "$arg")")
+done
+exec ssh -o BatchMode=yes -o ConnectTimeout=25 "$ALIAS" "$REMOTE_PREFIX ${quoted[*]}"

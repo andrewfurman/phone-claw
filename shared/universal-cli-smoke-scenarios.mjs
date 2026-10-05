@@ -17,6 +17,8 @@ export const UNIVERSAL_SMOKE_SCENARIOS = [
   { id: "imessage_search", phrase: 'Please use run CLI with command I M S G, spelled i m s g, for iMessage, with arguments search, dash dash query, dinner, dash dash limit, three, dash dash json. Report whether the search worked, without reading messages.', command: 'imsg', args: ['search','--query','dinner','--limit','3','--json'] },
   { id: "notes_search", phrase: 'Please use run CLI with command notes and arguments search, trader, dash L three. Just report whether the search worked, without reading note contents.', command: 'notes', args: ['search','trader','-l','3'] },
   { id: "notes_read", phrase: `Please use run CLI with command notes and arguments read, ${process.env.PHONECLAW_TEST_NOTE_ID || '1'}. Just report whether reading the note worked, without reading its contents aloud.`, command: 'notes', args: ['read',process.env.PHONECLAW_TEST_NOTE_ID || '1'] },
+  { id: "contacts_search", phrase: "Please use the phoneclaw contacts search command to look up Kate Furman. Just tell me whether you found her and the label of her phone number, without reading the number.", builtin: "contacts search", options: { query: "Kate Furman" } },
+  { id: "photos_faces", phrase: `Please use the phoneclaw photos faces command for photo id ${(process.env.PHONECLAW_TEST_PHOTO_ID || "01308B40").split("").join(" ")}. Tell me who is tagged in it.`, builtin: "photos faces", options: { id: process.env.PHONECLAW_TEST_PHOTO_ID || "01308B40" } },
   { id: "notes_recent", phrase: "Please use run CLI with command notes and arguments recent dash L five. Briefly say whether the notes lookup worked, without asking me to approve Notes.", command: "notes", args: ["recent", "-l", "5"] },
 ];
 
@@ -38,6 +40,8 @@ export function matchesSmokeCall(scenario, params) {
   if (scenario.id === "github") return options.action === "issue_list" && options.repo === "andrewfurman/phone-claw";
   if (scenario.id === "history") return typeof options.query === "string" && /cli/i.test(options.query);
   if (scenario.id === "claude") return options.action === "auth_status";
+  if (scenario.id === "contacts_search") return /kate/i.test(options.query || options.name || "");
+  if (scenario.id === "photos_faces") return String(options.id || "").toUpperCase() === scenario.options.id;
   if (scenario.id === "web_fetch") { try { return new URL(options.url).hostname === "example.com"; } catch { return false; } }
   if (scenario.id === "web_search") return /python/i.test(options.query || "");
   return true;
@@ -65,6 +69,8 @@ export function validateSmokeResult(scenario, result) {
   if (scenario.id === "web_fetch") return data.status_code === 200 && /example domain/i.test(data.body_text || data.text || data.answer_text || "");
   if (scenario.id === "web_search") return Array.isArray(data.results) && data.results.length > 0 && (data.search_health ?? "ok") === "ok";
   if (scenario.id === "claude") return data.authenticated === true;
+  if (scenario.id === "contacts_search") return data.action === "contacts_search" && data.matches?.some(m => /kate furman/i.test(m.name));
+  if (scenario.id === "photos_faces") return data.action === "photos_faces" && Array.isArray(data.people) && data.face_count >= 1;
   if (scenario.id === "whatsapp_chats") return data.action === "whatsapp_chats" && Array.isArray(data.chats) && data.chats.length > 0;
   return false;
 }

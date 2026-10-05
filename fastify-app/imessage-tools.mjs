@@ -1,4 +1,5 @@
 import { executeCli } from "../shared/cli-process.mjs";
+import { looksLikeName, resolveRecipient } from "./contacts-tools.mjs";
 
 // Confirmed iMessage send (#140). Runs `imsg send` on the Mac over the mac-imsg
 // SSH wrapper. Raw `imsg send` stays blocked for run_cli; this is the only send
@@ -8,6 +9,8 @@ const DEFAULT_WRAPPER = "/home/phoneclaw/bin/mac-imsg";
 const MAX_TEXT_CHARS = 1000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SERVICES = new Set(["imessage", "sms", "auto"]);
+
+export const sendPreviewTarget = (to, name) => (name ? `${name} at ${to}` : to);
 
 export function normalizeRecipient(value) {
   const raw = String(value ?? "").trim();
@@ -23,12 +26,20 @@ export function normalizeRecipient(value) {
 export async function imessageSend(options = {}, deps = {}) {
   const env = deps.env || process.env;
   const run = deps.executeCli || executeCli;
-  const to = normalizeRecipient(options.to);
+  let to = normalizeRecipient(options.to);
+  let contactName = null;
   const text = String(options.text ?? "").trim();
   const service = String(options.service || "imessage").toLowerCase();
 
+  // A spoken name is resolved through Contacts (#151); ambiguity returns candidates instead of guessing.
+  if (!to && looksLikeName(options.to)) {
+    const resolved = await (deps.resolveRecipient || resolveRecipient)(String(options.to), deps);
+    if (!resolved.ok) return resolved;
+    to = normalizeRecipient(resolved.to);
+    contactName = resolved.name;
+  }
   if (!to) {
-    return fail("invalid_recipient", "Give a phone number (like +15551234567) or an iMessage email address.", "to");
+    return fail("invalid_recipient", "Give a contact name, a phone number (like +15551234567) or an iMessage email address.", "to");
   }
   if (!text) return fail("missing_field", "Say what the message should say.", "text");
   if (text.length > MAX_TEXT_CHARS) {
@@ -40,7 +51,8 @@ export async function imessageSend(options = {}, deps = {}) {
     return fail("recipient_not_allowed", `${to} is not on the iMessage recipient allowlist.`, "to");
   }
 
-  const preview = { to, text, service };
+  const preview = { to, ...(contactName ? { name: contactName } : {}), text, service };
+  const who = contactName ? `${contactName} at ${to}` : to;
   if (!options.previewed) {
     return {
       ok: false,
@@ -49,8 +61,8 @@ export async function imessageSend(options = {}, deps = {}) {
       requires_preview: true,
       requires_confirmation: true,
       preview,
-      message: `Read this aloud exactly: "Text ${to}: ${text}". Ask "Do you want me to send this message now?" Only after Andrew says yes, call again with previewed=true and confirmed=true.`,
-      answer_text: `Read the message to ${to} aloud and confirm with Andrew before sending.`,
+      message: `Read this aloud exactly: "Text ${who}: ${text}". Ask "Do you want me to send this message now?" Only after Andrew says yes, call again with previewed=true and confirmed=true.`,
+      answer_text: `Read the message to ${who} aloud and confirm with Andrew before sending.`,
     };
   }
   if (!options.confirmed) {

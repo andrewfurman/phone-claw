@@ -173,3 +173,21 @@ and `expected_modified_at` from the preview; the Mac refuses the save if the not
 Edits splice only the affected HTML element, so the rest of the note is kept byte-for-byte. Offline tests:
 `setup-and-testing-scripts/test-notes-edit.mjs` (policy) and `test_notes_edit.py` (HTML line edits). Install
 `mac-tools/notes` and `notes.jxa` into `~/.local/bin` on the Mac that `MAC_SSH_ALIAS` points to.
+
+## Contacts, photo faces, analysis, edits and photo iMessages (#151)
+
+- `phoneclaw contacts search` (read): `mac-tools/contacts` reads the AddressBook SQLite stores read-only, so it needs no
+  Contacts automation permission. Same-name cards that share a phone or email (iCloud + Google) are merged.
+- `imessage send` / `imessage send-photo` accept a contact name in `to`. Exactly one person with one mobile number (or
+  one handle) resolves; several people (`ambiguous_contact`) or several numbers (`ambiguous_number`) return candidates.
+- `phoneclaw photos faces` (read): tagged people and the number of unnamed faces in one photo.
+- `phoneclaw photos analyze` (read): exports that one photo (local preview, at most 6 MB) and asks the AI Gateway vision
+  model (`AI_GATEWAY_API_KEY`, `PHONECLAW_VISION_MODEL`) a question of up to 300 characters.
+- `phoneclaw photos edit` (write): `photos set-meta --dry-run` preview, then `previewed` + outer `confirmed`; the Mac sets
+  the title/description through Photos' AppleScript dictionary and reads it back (`photos_meta_mismatch` otherwise).
+  Needs the one-time macOS Automation approval for Photos on the Mac (the call times out until granted).
+- `phoneclaw imessage send-photo` (write): preview with the resolved name and number, then `photos export-file` writes
+  the JPEG to `~/Pictures/PhoneClaw` on the Mac and `imsg send --file` sends it.
+- Raw `photos set-meta`, `photos export-file` and `photos export` stay blocked in `cli-programs.json`. Install
+  `mac-tools/contacts` and the updated `mac-tools/photos` in `~/.local/bin` on the Mac and `deploy/mac-contacts` in
+  `/home/phoneclaw/bin` on the bridge. Offline tests: `npm run apple:151:test`.

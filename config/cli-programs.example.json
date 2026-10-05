@@ -296,6 +296,12 @@
     "blockedArgs": [
       [
         "export"
+      ],
+      [
+        "set-meta"
+      ],
+      [
+        "export-file"
       ]
     ]
   },
@@ -333,6 +339,12 @@
     "blockedArgs": [
       [
         "export"
+      ],
+      [
+        "set-meta"
+      ],
+      [
+        "export-file"
       ]
     ]
   },

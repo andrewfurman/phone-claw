@@ -374,6 +374,41 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "photos faces",
+    "legacy_path": "/cli/photos/faces",
+    "parameters": [
+      "id"
+    ]
+  },
+  {
+    "command": "photos analyze",
+    "legacy_path": "/cli/photos/analyze",
+    "parameters": [
+      "id",
+      "question"
+    ]
+  },
+  {
+    "command": "photos edit",
+    "legacy_path": "/cli/photos/edit",
+    "parameters": [
+      "id",
+      "title",
+      "description",
+      "caption",
+      "previewed"
+    ]
+  },
+  {
+    "command": "contacts search",
+    "legacy_path": "/cli/contacts/search",
+    "parameters": [
+      "query",
+      "name",
+      "limit"
+    ]
+  },
+  {
     "command": "whatsapp chats",
     "legacy_path": "/cli/whatsapp/chats",
     "parameters": [
@@ -436,6 +471,16 @@ export const CLI_COMMAND_CATALOG = [
       "text",
       "message",
       "service",
+      "previewed"
+    ]
+  },
+  {
+    "command": "imessage send-photo",
+    "legacy_path": "/cli/imessage/send-photo",
+    "parameters": [
+      "to",
+      "id",
+      "text",
       "previewed"
     ]
   },

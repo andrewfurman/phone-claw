@@ -27,7 +27,10 @@ test("normalizeRecipient accepts phones and emails, rejects junk", () => {
 test("validation fails before touching the Mac", async () => {
   const { calls, run } = stubRun();
   const deps = { env: {}, executeCli: run };
-  assert.equal((await imessageSend({ to: "mom", text: "hi", previewed: true, confirmed: true }, deps)).status, "invalid_recipient");
+  assert.equal((await imessageSend({ to: "12345", text: "hi", previewed: true, confirmed: true }, deps)).status, "invalid_recipient");
+  // A name goes to Contacts (#151); an unknown name must not reach imsg.
+  const unknown = await imessageSend({ to: "mom", text: "hi", previewed: true, confirmed: true }, { ...deps, resolveRecipient: async () => ({ ok: false, status: "contact_not_found" }) });
+  assert.equal(unknown.status, "contact_not_found");
   assert.equal((await imessageSend({ to: "+15551234567", text: "  ", previewed: true, confirmed: true }, deps)).status, "missing_field");
   assert.equal((await imessageSend({ to: "+15551234567", text: "x".repeat(1001), previewed: true, confirmed: true }, deps)).status, "text_too_long");
   assert.equal((await imessageSend({ to: "+15551234567", text: "hi", service: "carrier-pigeon", previewed: true, confirmed: true }, deps)).status, "invalid_service");

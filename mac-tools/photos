@@ -17,6 +17,12 @@ Usage:
   photos albums [-l N]
   photos stats
   photos export <id>        (bridge-internal: one photo as JSON + base64 JPEG)
+  photos faces <id>         people tagged in one photo, plus how many faces are unnamed (JSON)
+  photos meta <id>          title and caption/description (JSON)
+  photos export-file <id>   (bridge-internal) write a JPEG to ~/Pictures/PhoneClaw for an iMessage attachment
+  photos set-meta <id> [--title TEXT] [--description TEXT] [--dry-run]
+                            (bridge-internal, #151) change the title/caption through Photos' AppleScript
+                            dictionary, then read it back; the only write, used after a spoken confirmation
 """
 from __future__ import annotations
 
@@ -247,7 +253,106 @@ def export_photo(db: sqlite3.Connection, ident: str) -> dict:
     }
 
 
+def resolve(db: sqlite3.Connection, ident: str) -> tuple[int, str]:
+    if not re.fullmatch(r"[0-9A-Fa-f]{8}", ident):
+        raise UsageError("Photo id must be the 8-character id from a photos listing.")
+    rows = db.execute(f"select a.Z_PK, a.ZUUID from ZASSET a where {VISIBLE} and a.ZUUID like ?", (ident.upper() + "%",)).fetchall()
+    if not rows:
+        raise UsageError("No photo with that id.")
+    if len(rows) > 1:
+        raise UsageError("That id matches more than one photo; use a longer id.")
+    return rows[0]
+
+
+def faces(db: sqlite3.Connection, ident: str) -> dict:
+    pk, uuid = resolve(db, ident)
+    rows = db.execute(
+        f"select {PERSON_NAME}, f.ZQUALITY from ZDETECTEDFACE f left join ZPERSON p on p.Z_PK = f.ZPERSONFORFACE "
+        f"where f.ZASSETFORFACE = ? and coalesce(f.ZHIDDEN, 0) = 0", (pk,)).fetchall()
+    named = sorted({r[0] for r in rows if r[0]})
+    return {"ok": True, "action": "photos_faces", "id": uuid[:8], "face_count": len(rows), "people": named,
+            "unnamed_faces": sum(1 for r in rows if not r[0])}
+
+
+def meta(db: sqlite3.Connection, ident: str) -> dict:
+    pk, uuid = resolve(db, ident)
+    row = photo_rows(db, "a.Z_PK = ?", (pk,), 1)[0]
+    return {"ok": True, "action": "photos_meta", "id": uuid[:8], "uuid": uuid, "taken": row[2],
+            "title": (row[5] or "").strip(), "description": (row[6] or "").strip(), "people": row[7] or ""}
+
+
+def osa(script: str, *args: str) -> str:
+    try:
+        r = subprocess.run(["/usr/bin/osascript", "-e", script, *args], capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        raise UsageError("Photos did not respond. Approve the one-time Automation prompt for Photos on the Mac "
+                         "(System Settings > Privacy & Security > Automation) and try again.")
+    if r.returncode:
+        raise UsageError("Photos automation failed: " + (r.stderr.strip()[:160] or "unknown error"))
+    return r.stdout.rstrip("\n")
+
+
+READ_META = 'on run argv\ntell application "Photos" to set m to media item id (item 1 of argv)\ntell application "Photos" to return (name of m as text) & linefeed & "|||" & linefeed & (description of m as text)\nend run'
+WRITE_META = ('on run argv\ntell application "Photos"\nset m to media item id (item 1 of argv)\n'
+              'if item 2 of argv is "1" then set name of m to (item 3 of argv)\n'
+              'if item 4 of argv is "1" then set description of m to (item 5 of argv)\nend tell\nend run')
+
+
+def apple_meta(uuid: str) -> dict:
+    out = osa(READ_META, f"{uuid}/L0/001")
+    title, _, desc = out.partition("\n|||\n")
+    clean = lambda v: "" if v.strip() == "missing value" else v.strip()
+    return {"title": clean(title), "description": clean(desc)}
+
+
+def set_meta(db: sqlite3.Connection, ident: str, title: str | None, desc: str | None, dry_run: bool) -> dict:
+    if title is None and desc is None:
+        raise UsageError("Give --title and/or --description.")
+    for v in (title, desc):
+        if v is not None and (len(v) > 500 or "\x00" in v):
+            raise UsageError("Title and description must be under 500 characters.")
+    current = meta(db, ident)
+    before = {"title": current["title"], "description": current["description"]}
+    after = {"title": before["title"] if title is None else title, "description": before["description"] if desc is None else desc}
+    base = {"id": current["id"], "taken": current["taken"], "people": current["people"], "before": before, "after": after}
+    if dry_run:
+        return {"ok": True, "action": "photos_meta_preview", "dry_run": True, **base}
+    osa(WRITE_META, f"{current['uuid']}/L0/001", "1" if title is not None else "0", title or "",
+        "1" if desc is not None else "0", desc or "")
+    readback = apple_meta(current["uuid"])
+    ok = readback == after
+    return {"ok": ok, "action": "photos_meta_updated" if ok else "photos_meta_mismatch", **base, "read_back": readback}
+
+
+def export_file(db: sqlite3.Connection, ident: str) -> dict:
+    photo = export_photo(db, ident)
+    folder = os.path.expanduser("~/Pictures/PhoneClaw")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"photo-{photo['id']}.jpg")
+    with open(path, "wb") as fh:
+        fh.write(base64.b64decode(photo.pop("jpeg_base64")))
+    return {**photo, "path": path}
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["set-meta"]:
+        try:
+            if len(argv) < 2:
+                raise UsageError("set-meta needs a photo id.")
+            ident, rest, opts = argv[1], argv[2:], {}
+            while rest:
+                tok = rest.pop(0)
+                if tok == "--dry-run":
+                    opts["dry_run"] = True
+                elif tok in ("--title", "--description") and rest and tok not in opts:
+                    opts[tok] = rest.pop(0)
+                else:
+                    raise UsageError(f"Unknown or duplicate option {tok}.")
+            print(json.dumps(set_meta(connect(), ident, opts.get("--title"), opts.get("--description"), opts.get("dry_run", False))))
+            return 0
+        except UsageError as e:
+            print(json.dumps({"ok": False, "status": "photos_meta_failed", "message": str(e)}))
+            return 2
     try:
         cmd, pos, opts = parse(argv)
         if cmd == "help":
@@ -297,6 +402,8 @@ def main(argv: list[str]) -> int:
             print(f"Top {len(rows)} albums by size:")
             for title, n in rows:
                 print(f"- {title}: {n or 0:,} items")
+        elif cmd in ("faces", "meta", "export-file") and len(pos) == 1:
+            print(json.dumps({"faces": faces, "meta": meta, "export-file": export_file}[cmd](db, pos[0])))
         elif cmd == "export" and len(pos) == 1:
             print(json.dumps(export_photo(db, pos[0])))
         elif cmd == "stats" and not pos:
@@ -309,7 +416,7 @@ def main(argv: list[str]) -> int:
             people = db.execute(
                 f"select count(*) from ZPERSON p where p.ZFACECOUNT > 0 and {PERSON_NAME} is not null"
             ).fetchone()[0]
-            span = [dt.datetime.utcfromtimestamp(v + APPLE_EPOCH).year for v in (first, last)]
+            span = [dt.datetime.fromtimestamp(v + APPLE_EPOCH, dt.timezone.utc).year for v in (first, last)]
             print(f"Photos library: {total:,} items ({total - (videos or 0):,} photos, {videos or 0:,} videos), "
                   f"{favs or 0:,} favorites, {people} named people, from {span[0]} to {span[1]}.")
         else:
