@@ -17,3 +17,6 @@ dist/
 # Commit cloudflare-worker/wrangler.example.toml instead.
 wrangler.toml
 .wrangler/
+
+__pycache__/
+*.pyc
