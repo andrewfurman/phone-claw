@@ -172,8 +172,8 @@ test("live call assertions require the requested operation and successful struct
     assert.equal(matchesSmokeCall(scenario, request), true);
     assert.equal(matchesSmokeCall(scenario, { ...request, confirmed: true }), false);
     assert.equal(matchesSmokeCall(scenario, { command: "pwd" }), false);
-    // Native allowlisted reads (gws agenda / notes) may accept answer_text-only success.
-    const answerOnlyOk = scenario.id === "gws_agenda" || scenario.id === "notes_recent";
+    // Notes/iMessage require native structured output, not an agent's assurance.
+    const answerOnlyOk = scenario.id === "gws_agenda";
     assert.equal(validateSmokeResult(scenario, { ok: true, answer_text: "It worked" }), answerOnlyOk);
     assert.equal(validateSmokeResult(scenario, { ok: false, data: { ok: true } }), false);
   }
@@ -182,4 +182,11 @@ test("live call assertions require the requested operation and successful struct
   assert.equal(validateSmokeResult(github, result), true);
   assert.equal(validateSmokeResult(github, { ...result, data_truncated: true }), false);
   assert.equal(matchesSmokeCall(github, { command: "phoneclaw", args: ["github", "common", "--json", '{"action":"issue_list","repo":"someone/else"}'] }), false);
+  const messages = UNIVERSAL_SMOKE_SCENARIOS.find(s => s.id === "imessage_search");
+  assert.equal(validateSmokeResult(messages, {ok:true, stdout:''}), true);
+  assert.equal(validateSmokeResult(messages, {ok:true, stdout:'null'}), false);
+  assert.equal(validateSmokeResult(messages, {ok:true, stdout:'not JSON'}), false);
+  const notes = UNIVERSAL_SMOKE_SCENARIOS.find(s => s.id === "notes_recent");
+  assert.equal(validateSmokeResult(notes, {ok:true, stdout:JSON.stringify({ok:true,action:'notes_recent',notes:[]})}), true);
+  assert.equal(validateSmokeResult(notes, {ok:true, stdout:JSON.stringify({ok:true,action:'notes_search',notes:[]})}), false);
 });

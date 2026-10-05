@@ -157,3 +157,7 @@ ElevenLabs PATCH. Never commit the private agent backup: it can contain tool aut
 The old `elevenlabs:github:configure` command delegates to the new configure script
 and previews by default. Older live tests that assert specialized tool names test
 the compatibility configuration; use the universal scenarios for the new agent.
+
+## Apple message reads (#153)
+
+`imsg` / `mac-imsg` supports bounded `chats`, `history --chat-id N`, and `search --query TEXT` reads without confirmation. Require `--limit` 1/2/3/5/10/20; optional `--json`. History permits ISO `--start`/`--end`; search permits `--match exact|contains`. Unknown/duplicate flags, alternate database paths and attachment conversion cannot bypass confirmation. `read` is a state-changing mark-read command and stays blocked; sends use the protected preview/confirmation workflow. Notes duplicate limit/folder options are rejected. Both iMessage and Notes read-policy regressions run in `test:offline`.

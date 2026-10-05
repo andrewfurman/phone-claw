@@ -12,6 +12,11 @@ export const UNIVERSAL_SMOKE_SCENARIOS = [
   { id: "gws_agenda", phrase: "Please use run CLI with command G W S and arguments calendar plus agenda. Briefly say whether today's agenda lookup worked, without asking me to approve Google Workspace.", command: "gws", args: ["calendar", "+agenda"] },
   { id: "photos_recent", phrase: "Please use run CLI with command photos and arguments person Emma dash L two. Briefly say the date of the newest photo, without asking me to approve Photos.", command: "photos", args: ["person", "Emma", "-l", "2"] },
   { id: "whatsapp_chats", phrase: "Please use the phoneclaw WhatsApp chats command to list my three most recent WhatsApp chats. Just tell me how many chats it returned, without reading names.", builtin: "whatsapp chats", options: { limit: 3 } },
+  { id: "imessage_chats", phrase: 'Please use run CLI with command I M S G, spelled i m s g, for iMessage, with arguments chats, dash dash limit, three, dash dash json. Just report whether the lookup worked, without reading names.', command: 'imsg', args: ['chats','--limit','3','--json'] },
+  { id: "imessage_history", phrase: `Please use run CLI with command I M S G, spelled i m s g, for iMessage, with arguments history, dash dash chat id, ${process.env.PHONECLAW_TEST_CHAT_ID || '1'}, dash dash limit, three, dash dash json. Report whether message history worked without reading private messages.`, command: 'imsg', args: ['history','--chat-id',process.env.PHONECLAW_TEST_CHAT_ID || '1','--limit','3','--json'] },
+  { id: "imessage_search", phrase: 'Please use run CLI with command I M S G, spelled i m s g, for iMessage, with arguments search, dash dash query, dinner, dash dash limit, three, dash dash json. Report whether the search worked, without reading messages.', command: 'imsg', args: ['search','--query','dinner','--limit','3','--json'] },
+  { id: "notes_search", phrase: 'Please use run CLI with command notes and arguments search, trader, dash L three. Just report whether the search worked, without reading note contents.', command: 'notes', args: ['search','trader','-l','3'] },
+  { id: "notes_read", phrase: `Please use run CLI with command notes and arguments read, ${process.env.PHONECLAW_TEST_NOTE_ID || '1'}. Just report whether reading the note worked, without reading its contents aloud.`, command: 'notes', args: ['read',process.env.PHONECLAW_TEST_NOTE_ID || '1'] },
   { id: "notes_recent", phrase: "Please use run CLI with command notes and arguments recent dash L five. Briefly say whether the notes lookup worked, without asking me to approve Notes.", command: "notes", args: ["recent", "-l", "5"] },
 ];
 
@@ -43,7 +48,13 @@ export function validateSmokeResult(scenario, result) {
   const data = result.data;
   if (scenario.id === "native_cli") return /gh version \d/.test(result.stdout || "");
   if (scenario.id === "gws_agenda") return result.status !== "confirmation_required" && typeof (result.stdout || result.answer_text || "") === "string";
-  if (scenario.id === "notes_recent") return result.status !== "confirmation_required" && typeof (result.stdout || result.answer_text || "") === "string";
+  if (scenario.id.startsWith('notes_')) {
+    try { const value=JSON.parse(result.stdout); return value.ok===true && value.action===scenario.id && (scenario.id==='notes_read' ? typeof value.note?.text==='string' : Array.isArray(value.notes)); } catch { return false; }
+  }
+  if (scenario.id.startsWith('imessage_')) {
+    if (typeof result.stdout !== 'string') return false;
+    try { return result.stdout.split('\n').filter(Boolean).every(line=>{const row=JSON.parse(line);return row!==null && typeof row==='object' && !Array.isArray(row);}); } catch { return false; }
+  }
   if (scenario.id === "photos_recent") return result.status !== "confirmation_required" && /Recent photos with Emma/.test(result.stdout || "");
   if (!data || data.ok !== true || result.data_truncated) return false;
   if (scenario.id === "github") return data.action === "issue_list" && Array.isArray(data.parsed_json);

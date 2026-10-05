@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""Bounded Apple Notes reads through the supported Notes scripting dictionary."""
+import json, pathlib, subprocess, sys
+LIMITS={1,2,3,5,10,20}
+def parse(args):
+    if not args or args[0] in ('help','--help','-h'): return {'action':'help'}
+    action,*args=args
+    if action not in ('recent','search','read','folders','stats'): raise ValueError('Unknown Notes read operation')
+    options={'action':action,'limit':5}; positional=[]
+    while args:
+        arg=args.pop(0)
+        key={'-l':'limit','--limit':'limit','-f':'folder','--folder':'folder'}.get(arg)
+        if key:
+            if not args or key in options and key!='limit' or options.get('_'+key): raise ValueError('Missing or duplicate option')
+            options['_'+key]=True; options[key]=args.pop(0)
+        elif arg.startswith('-'): raise ValueError('Unknown flag')
+        else: positional.append(arg)
+    options['limit']=int(options['limit'])
+    if options['limit'] not in LIMITS: raise ValueError('Limit must be 1/2/3/5/10/20')
+    if action=='read':
+        if len(positional)!=1 or not positional[0].isdigit() or int(positional[0])<1: raise ValueError('Read requires a positive note id')
+        options['id']=positional[0]
+    elif action=='search':
+        if len(positional)!=1 or not 1<=len(positional[0])<=120: raise ValueError('Search requires a bounded query')
+        options['query']=positional[0]
+    elif positional: raise ValueError('Unexpected positional argument')
+    return options
+if __name__=='__main__':
+    try:
+        options=parse(sys.argv[1:])
+        if options['action']=='help': print('notes recent|search QUERY|read ID|folders|stats [-l 1/2/3/5/10/20] [-f FOLDER]'); sys.exit(0)
+        result=subprocess.run(['/usr/bin/osascript','-l','JavaScript',str(pathlib.Path(__file__).with_name('notes.jxa')),json.dumps(options)],capture_output=True,text=True,timeout=45)
+        if result.returncode: raise RuntimeError('Apple Notes automation failed; check macOS Automation permission and Notes account sync')
+        data=json.loads(result.stdout); print(json.dumps(data,ensure_ascii=False));sys.exit(0 if data.get('ok') else 1)
+    except (ValueError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as error:
+        print(json.dumps({'ok':False,'status':'notes_read_failed','message':str(error)}));sys.exit(1)
