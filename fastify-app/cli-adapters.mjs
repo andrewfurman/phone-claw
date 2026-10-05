@@ -2,7 +2,8 @@ import { claudeCodeTool } from "./claude-code-tools.mjs";
 import { conversationHistoryGet, conversationHistorySearch } from "./conversation-history.mjs";
 import { githubCliCommon, himalayaCreateForwardDraft, himalayaCreateReplyAllDraft, himalayaDraftCreate, himalayaDraftReply, himalayaEmailArchive, himalayaEmailImageInspect, himalayaEmailImages, phoneclawImageInspect, himalayaEmailForward, himalayaEmailList, himalayaEmailRead, himalayaEmailSend, otterSpeechGet, otterSpeechSearch, otterSpeechesList, urlFetch } from "./cli-tools.mjs";
 import { sendgridEmailSend } from "./sendgrid-tools.mjs";
-import { photosEmail } from "./photos-tools.mjs";
+import { photosEmail, photosFaces, photosAnalyze, photosEdit, imessageSendPhoto } from "./photos-tools.mjs";
+import { contactsSearch } from "./contacts-tools.mjs";
 import { imessageSend } from "./imessage-tools.mjs";
 import { notesEdit } from "./notes-tools.mjs";
 import { whatsappChats, whatsappMessages, whatsappSearch, whatsappSend } from "./whatsapp-tools.mjs";
@@ -214,6 +215,16 @@ export const commandAdapters = {
     id: body.id || body.photo_id || body.photoId,
     confirmed: context.confirmed,
   }),
+  "photos faces": body => photosFaces({ id: body.id || body.photo_id || body.photoId }),
+  "photos analyze": body => photosAnalyze({ id: body.id || body.photo_id || body.photoId, question: body.question || body.prompt }),
+  "photos edit": (body, context) => photosEdit({
+    id: body.id || body.photo_id || body.photoId,
+    title: body.title,
+    description: body.description ?? body.caption,
+    previewed: body.previewed,
+    confirmed: context.confirmed,
+  }),
+  "contacts search": body => contactsSearch({ query: body.query || body.name, limit: body.limit }),
   "whatsapp chats": body => whatsappChats({
     query: body.query || body.name,
     limit: body.limit || body.max_results,
@@ -255,6 +266,13 @@ export const commandAdapters = {
     to: body.to || body.recipient || body.phone,
     text: body.text || body.message || body.body,
     service: body.service,
+    previewed: body.previewed,
+    confirmed: context.confirmed,
+  }),
+  "imessage send-photo": (body, context) => imessageSendPhoto({
+    to: body.to || body.recipient || body.phone,
+    id: body.id || body.photo_id || body.photoId,
+    text: body.text || body.message,
     previewed: body.previewed,
     confirmed: context.confirmed,
   }),
