@@ -1,11 +1,26 @@
 #!/usr/bin/env python3
-"""Bounded Apple Notes reads through the supported Notes scripting dictionary."""
-import json, pathlib, subprocess, sys
+"""Apple Notes CLI for PhoneClaw: bounded reads, plus line-level create/edit (#150).
+
+Reads:  notes recent|search QUERY|read ID|folders|stats [-l 1/2/3/5/10/20] [-f FOLDER]
+Writes (PhoneClaw only calls these through `phoneclaw notes edit` after a spoken preview and a yes):
+  notes edit ID --add LINE [--add LINE ...]   append lines, matching the note's list style
+  notes edit ID --remove LINE                 remove the one line that matches
+  notes edit ID --replace OLD --with NEW      rewrite the one line that matches
+  notes create --title TITLE [--line LINE ...] [-f FOLDER]
+  Write options: --dry-run (preview only, nothing saved), --expect MODIFIED_AT (refuse if the note changed since
+  the preview). Edits touch only the matched or added line; the title line is never edited and the rest of the
+  note's HTML is kept byte-for-byte.
+"""
+import html, json, pathlib, re, subprocess, sys
 LIMITS={1,2,3,5,10,20}
+MAX_LINE=200
+JXA=str(pathlib.Path(__file__).with_name('notes.jxa'))
+
 def parse(args):
     if not args or args[0] in ('help','--help','-h'): return {'action':'help'}
     action,*args=args
-    if action not in ('recent','search','read','folders','stats'): raise ValueError('Unknown Notes read operation')
+    if action in ('edit','create'): return parse_write(action,args)
+    if action not in ('recent','search','read','folders','stats'): raise ValueError('Unknown Notes operation')
     options={'action':action,'limit':5}; positional=[]
     while args:
         arg=args.pop(0)
@@ -25,12 +40,126 @@ def parse(args):
         options['query']=positional[0]
     elif positional: raise ValueError('Unexpected positional argument')
     return options
+
+def clean_line(value):
+    if not isinstance(value,str) or not value.strip() or len(value)>MAX_LINE or re.search(r'[\r\n\0]',value): raise ValueError('Each line must be 1-200 characters on one line')
+    return value.strip()
+
+def parse_write(action,args):
+    o={'action':action,'add':[],'line':[],'dry_run':False}
+    if action=='edit':
+        if not args or not args[0].isdigit() or int(args[0])<1: raise ValueError('Edit requires a positive note id')
+        o['id']=args.pop(0)
+    single={'--remove':'remove','--replace':'replace','--with':'with','--expect':'expect','--title':'title','-f':'folder','--folder':'folder'}
+    while args:
+        arg=args.pop(0)
+        if arg=='--dry-run': o['dry_run']=True; continue
+        if arg in ('--add','--line') or arg in single:
+            if not args: raise ValueError('Missing value for '+arg)
+            value=args.pop(0)
+            if arg=='--add': o['add'].append(clean_line(value))
+            elif arg=='--line': o['line'].append(clean_line(value))
+            else:
+                key=single[arg]
+                if key in o: raise ValueError('Duplicate '+arg)
+                o[key]=value if key in ('expect','folder') else clean_line(value)
+            continue
+        raise ValueError('Unknown or positional argument: '+arg[:40])
+    if len(o['add'])>10 or len(o['line'])>10: raise ValueError('At most 10 lines at a time')
+    if action=='edit':
+        ops=[k for k in ('add','remove','replace') if o.get(k)]
+        if len(ops)!=1: raise ValueError('Edit needs exactly one of --add, --remove or --replace')
+        if o['line'] or 'title' in o or 'folder' in o: raise ValueError('--line/--title/--folder are only for create')
+        if ('replace' in o)!=('with' in o): raise ValueError('--replace needs --with')
+        o['op']=ops[0]
+    else:
+        if 'title' not in o: raise ValueError('Create needs --title')
+        if o['add'] or any(k in o for k in ('remove','replace','with','expect')): raise ValueError('Create takes --title, --line and --folder only')
+    return o
+
+def jxa(payload):
+    r=subprocess.run(['/usr/bin/osascript','-l','JavaScript',JXA,json.dumps(payload)],capture_output=True,text=True,timeout=45)
+    if r.returncode: raise RuntimeError('Apple Notes automation failed; check macOS Automation permission and Notes account sync')
+    return json.loads(r.stdout)
+
+BLOCK=re.compile(r'<(div|li|h1|h2|h3)\b[^>]*>(.*?)</\1>',re.S|re.I)
+def text_of(inner): return re.sub(r'\s+',' ',html.unescape(re.sub(r'<[^>]+>','',inner))).strip()
+def norm(t): return re.sub(r'^[-•*]\s*','',t).strip().lower()
+
+def blocks(body):
+    out=[]
+    for m in BLOCK.finditer(body):
+        t=text_of(m.group(2))
+        if t: out.append({'tag':m.group(1).lower(),'start':m.start(),'end':m.end(),'inner':m.group(2),'text':t})
+    return out
+
+def find_one(items,needle):
+    want=norm(needle)
+    exact=[b for b in items[1:] if norm(b['text'])==want]
+    if len(exact)==1: return exact[0]
+    if len(exact)>1: raise LookupError('ambiguous_line',[b['text'] for b in exact])
+    part=[b for b in items[1:] if want and want in norm(b['text'])]
+    if len(part)==1: return part[0]
+    if part: raise LookupError('ambiguous_line',[b['text'] for b in part[:5]])
+    raise LookupError('line_not_found',[b['text'] for b in items[1:21]])
+
+def esc(t): return html.escape(t,quote=False)
+
+def apply_edit(body,o):
+    items=blocks(body)
+    if not items: raise LookupError('empty_note',[])
+    if o['op']=='add':
+        content=items[1:]
+        dash=sum(1 for b in content if b['tag']=='div' and b['text'].startswith('- '))
+        tail=re.search(r'(\s*(<div>\s*<br\s*/?>\s*</div>\s*)*)$',body)
+        cut=tail.start() if tail else len(body)
+        head=body[:cut]
+        if content and content[-1]['tag']=='li' and head.rstrip().endswith('</ul>'):
+            pos=head.rstrip().rfind('</ul>')
+            new=head[:pos]+''.join('<li>%s</li>'%esc(x) for x in o['add'])+head[pos:]
+        else:
+            prefix='- ' if dash and dash*2>=len([b for b in content if b['tag']=='div']) else ''
+            new=head+''.join('<div>%s</div>'%esc(prefix+x) for x in o['add'])
+        return new+body[cut:],{'added':o['add']}
+    target=find_one(items,o.get('remove') or o.get('replace'))
+    if o['op']=='remove':
+        new=body[:target['start']]+body[target['end']:]
+        new=re.sub(r'<ul>\s*</ul>','',new)
+        return new,{'removed':target['text']}
+    prefix=re.match(r'^([-•*]\s*)',target['text'])
+    replacement=(prefix.group(1) if prefix and not re.match(r'^[-•*]\s',o['with']) else '')+o['with']
+    open_tag=body[target['start']:target['start']+len(body[target['start']:].split('>',1)[0])+1]
+    new=body[:target['start']]+open_tag+esc(replacement)+'</%s>'%target['tag']+body[target['end']:]
+    return new,{'replaced':target['text'],'with':replacement}
+
+def lines(body): return [b['text'] for b in blocks(body)]
+
+def write(o):
+    if o['action']=='create':
+        body='<div><h1>%s</h1></div>'%esc(o['title'])+''.join('<div>%s</div>'%esc(x) for x in o['line'])
+        preview={'title':o['title'],'folder':o.get('folder'),'after_lines':lines(body)}
+        if o['dry_run']: return {'ok':True,'action':'notes_create_preview','dry_run':True,**preview}
+        r=jxa({'action':'create','body':body,'folder':o.get('folder')})
+        if not r.get('ok'): return r
+        return {'ok':True,'action':'notes_created','id':r['id'],'modified_at':r['modified_at'],**preview}
+    note=jxa({'action':'get_body','id':o['id']})
+    if not note.get('ok'): return note
+    if o['dry_run'] is False and o.get('expect') and o['expect']!=note['modified_at']:
+        return {'ok':False,'status':'note_changed','message':'The note changed since the preview; preview again.','modified_at':note['modified_at']}
+    try: new,change=apply_edit(note['body'],o)
+    except LookupError as e: return {'ok':False,'status':e.args[0],'id':o['id'],'title':note['title'],'candidates':e.args[1]}
+    result={'id':o['id'],'title':note['title'],'op':o['op'],**change,'before_lines':lines(note['body']),'after_lines':lines(new)}
+    if o['dry_run']: return {'ok':True,'action':'notes_edit_preview','dry_run':True,'modified_at':note['modified_at'],**result}
+    if not o.get('expect'): return {'ok':False,'status':'expect_required','message':'Pass --expect with modified_at from the preview.'}
+    r=jxa({'action':'set_body','native_id':note['native_id'],'body':new,'expect':o['expect']})
+    if not r.get('ok'): return r
+    return {'ok':True,'action':'notes_updated','modified_at':r['modified_at'],**result,'after_lines':r.get('lines') or result['after_lines']}
+
 if __name__=='__main__':
     try:
         options=parse(sys.argv[1:])
-        if options['action']=='help': print('notes recent|search QUERY|read ID|folders|stats [-l 1/2/3/5/10/20] [-f FOLDER]'); sys.exit(0)
-        result=subprocess.run(['/usr/bin/osascript','-l','JavaScript',str(pathlib.Path(__file__).with_name('notes.jxa')),json.dumps(options)],capture_output=True,text=True,timeout=45)
-        if result.returncode: raise RuntimeError('Apple Notes automation failed; check macOS Automation permission and Notes account sync')
-        data=json.loads(result.stdout); print(json.dumps(data,ensure_ascii=False));sys.exit(0 if data.get('ok') else 1)
+        if options['action']=='help': print(__doc__.strip()); sys.exit(0)
+        data=write(options) if options['action'] in ('edit','create') else jxa(options)
+        print(json.dumps(data,ensure_ascii=False)); sys.exit(0 if data.get('ok') else 1)
     except (ValueError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as error:
-        print(json.dumps({'ok':False,'status':'notes_read_failed','message':str(error)}));sys.exit(1)
+        print(json.dumps({'ok':False,'status':'notes_failed','message':str(error)})); sys.exit(1)

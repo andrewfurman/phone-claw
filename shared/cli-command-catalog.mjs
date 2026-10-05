@@ -414,6 +414,21 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "notes edit",
+    "legacy_path": "/cli/notes/edit",
+    "parameters": [
+      "op",
+      "id",
+      "line",
+      "lines",
+      "with",
+      "title",
+      "folder",
+      "expected_modified_at",
+      "previewed"
+    ]
+  },
+  {
     "command": "imessage send",
     "legacy_path": "/cli/imessage/send",
     "parameters": [

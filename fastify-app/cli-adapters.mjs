@@ -4,6 +4,7 @@ import { githubCliCommon, himalayaCreateForwardDraft, himalayaCreateReplyAllDraf
 import { sendgridEmailSend } from "./sendgrid-tools.mjs";
 import { photosEmail } from "./photos-tools.mjs";
 import { imessageSend } from "./imessage-tools.mjs";
+import { notesEdit } from "./notes-tools.mjs";
 import { whatsappChats, whatsappMessages, whatsappSearch, whatsappSend } from "./whatsapp-tools.mjs";
 import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSearchEntries, rssListConfiguredFeeds, rssRefreshConfiguredFeeds } from "./rss-feed-tools.mjs";
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
@@ -234,6 +235,19 @@ export const commandAdapters = {
   "whatsapp send": (body, context) => whatsappSend({
     to: body.to || body.recipient || body.chat || body.jid,
     text: body.text || body.message || body.body,
+    previewed: body.previewed,
+    confirmed: context.confirmed,
+  }),
+  "notes edit": (body, context) => notesEdit({
+    op: body.op || body.action,
+    id: body.id || body.note_id,
+    line: body.line || body.target,
+    lines: body.lines,
+    text: body.text,
+    with: body.with || body.new_text || body.replacement,
+    title: body.title,
+    folder: body.folder,
+    expected_modified_at: body.expected_modified_at,
     previewed: body.previewed,
     confirmed: context.confirmed,
   }),
