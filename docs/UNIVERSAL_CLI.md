@@ -161,3 +161,15 @@ the compatibility configuration; use the universal scenarios for the new agent.
 ## Apple message reads (#153)
 
 `imsg` / `mac-imsg` supports bounded `chats`, `history --chat-id N`, and `search --query TEXT` reads without confirmation. Require `--limit` 1/2/3/5/10/20; optional `--json`. History permits ISO `--start`/`--end`; search permits `--match exact|contains`. Unknown/duplicate flags, alternate database paths and attachment conversion cannot bypass confirmation. `read` is a state-changing mark-read command and stays blocked; sends use the protected preview/confirmation workflow. Notes duplicate limit/folder options are rejected. Both iMessage and Notes read-policy regressions run in `test:offline`.
+
+## Apple Notes edits (#150)
+
+`phoneclaw notes edit` is the only Notes write path; raw `notes edit/create/delete/index` stay blocked in
+`cli-programs.json`. Ops: `add` (1-10 lines, matching the note's dash or bullet-list style), `remove` / `replace` (one
+line, matched exactly or by a unique substring, ignoring case and a leading dash; the title line is never touched), and
+`create` (title, up to 10 lines, optional folder). Each call first runs `mac-tools/notes` with `--dry-run` to resolve the
+note and line and returns the exact change to read aloud. Saving needs `previewed=true`, the outer `confirmed=true`,
+and `expected_modified_at` from the preview; the Mac refuses the save if the note changed in between (`note_changed`).
+Edits splice only the affected HTML element, so the rest of the note is kept byte-for-byte. Offline tests:
+`setup-and-testing-scripts/test-notes-edit.mjs` (policy) and `test_notes_edit.py` (HTML line edits). Install
+`mac-tools/notes` and `notes.jxa` into `~/.local/bin` on the Mac that `MAC_SSH_ALIAS` points to.

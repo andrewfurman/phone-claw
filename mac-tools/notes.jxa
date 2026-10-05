@@ -1,5 +1,29 @@
 function run(argv) {
   var o = JSON.parse(argv[0]), app = Application('Notes');
+  function numericId(id) { var m=/\/p([1-9][0-9]*)$/.exec(id);return m?m[1]:null; }
+  function lineList(n) { return n.plaintext().split('\n').map(function(t){return t.trim();}).filter(function(t){return t;}); }
+  // Writes (#150): the Python wrapper builds the new HTML; these only fetch, save and create.
+  if (o.action === 'get_body' || o.action === 'set_body') {
+    var native=o.native_id;
+    if (!native) {
+      var all=app.notes.id().filter(function(id){return numericId(id)===o.id;});
+      if (all.length!==1) return JSON.stringify({ok:false,status:all.length?'ambiguous_note':'note_not_found',id:o.id});
+      native=all[0];
+    }
+    var note=app.notes.byId(native);
+    if (o.action==='get_body') return JSON.stringify({ok:true,native_id:native,id:numericId(native),title:note.name(),body:note.body(),modified_at:note.modificationDate().toISOString()});
+    if (note.modificationDate().toISOString()!==o.expect) return JSON.stringify({ok:false,status:'note_changed',message:'The note changed since the preview; preview again.'});
+    note.body=o.body;
+    return JSON.stringify({ok:true,modified_at:note.modificationDate().toISOString(),lines:lineList(note)});
+  }
+  if (o.action === 'create') {
+    var folder=o.folder?app.folders.whose({name:o.folder})():[app.defaultAccount().defaultFolder()];
+    if (folder.length!==1) return JSON.stringify({ok:false,status:'folder_not_found',folder:o.folder});
+    var made=app.Note({body:o.body}); folder[0].notes.push(made);
+    var created=folder[0].notes.whose({name:made.name()})().filter(function(n){return true;});
+    var newest=created.sort(function(a,b){return b.creationDate()-a.creationDate();})[0];
+    return JSON.stringify({ok:true,id:numericId(newest.id()),native_id:newest.id(),modified_at:newest.modificationDate().toISOString()});
+  }
   if (o.action === 'folders') return JSON.stringify({ok:true,action:'notes_folders',folders:app.folders.name().slice(0,o.limit)});
   var ids=app.notes.id(), names=app.notes.name(), dates=app.notes.modificationDate();
   if(o.action==='stats') return JSON.stringify({ok:true,action:'notes_stats',note_count:ids.length});
