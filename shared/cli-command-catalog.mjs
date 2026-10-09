@@ -741,6 +741,163 @@ export const CLI_COMMAND_CATALOG = [
       "max_tool_items",
       "maxToolItems"
     ]
+  },
+  {
+    "command": "slack auth",
+    "legacy_path": "/cli/slack/auth",
+    "parameters": [
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "slack conversations",
+    "legacy_path": "/cli/slack/conversations",
+    "parameters": [
+      "types",
+      "limit",
+      "max_results",
+      "maxResults",
+      "exclude_archived",
+      "excludeArchived",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "slack read",
+    "legacy_path": "/cli/slack/read",
+    "parameters": [
+      "channel",
+      "conversation",
+      "permalink",
+      "thread_ts",
+      "limit",
+      "max_results",
+      "maxResults",
+      "exclude_replies",
+      "exclude_self",
+      "oldest",
+      "latest",
+      "fields",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "slack thread",
+    "legacy_path": "/cli/slack/thread",
+    "parameters": [
+      "channel",
+      "conversation",
+      "permalink",
+      "thread_ts",
+      "limit",
+      "max_results",
+      "maxResults",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "slack search",
+    "legacy_path": "/cli/slack/search",
+    "parameters": [
+      "query",
+      "search_query",
+      "searchQuery",
+      "in",
+      "in_channel",
+      "from",
+      "limit",
+      "max_results",
+      "maxResults",
+      "sort",
+      "sort_dir",
+      "sortDir",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "slack unread",
+    "legacy_path": "/cli/slack/unread",
+    "parameters": [
+      "types",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "slack user-info",
+    "legacy_path": "/cli/slack/user-info",
+    "parameters": [
+      "user",
+      "id",
+      "handle",
+      "email",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "slack send",
+    "legacy_path": "/cli/slack/send",
+    "parameters": [
+      "to",
+      "recipient",
+      "channel",
+      "user",
+      "text",
+      "message",
+      "body",
+      "thread_ts",
+      "permalink",
+      "emoji",
+      "previewed",
+      "confirmation_id",
+      "confirm_id",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "slack reply",
+    "legacy_path": "/cli/slack/reply",
+    "parameters": [
+      "to",
+      "recipient",
+      "channel",
+      "text",
+      "message",
+      "body",
+      "thread_ts",
+      "permalink",
+      "emoji",
+      "previewed",
+      "confirmation_id",
+      "confirm_id",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "slack react",
+    "legacy_path": "/cli/slack/react",
+    "parameters": [
+      "emoji",
+      "channel_id",
+      "channel",
+      "timestamp",
+      "ts",
+      "message_ts",
+      "permalink",
+      "previewed",
+      "confirmation_id",
+      "confirm_id",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
   }
 ];
 export const LEGACY_TOOL_PATHS = CLI_COMMAND_CATALOG.map(item => item.legacy_path);

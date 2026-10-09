@@ -259,6 +259,45 @@ npm run elevenlabs:claude-steering:test
 
 See [Automated call and functionality testing](docs/AUTOMATED_CALL_TESTING.md) for PR validation, isolated live previews, and real Twilio calls.
 
+## Slack CLI (bridge-backed)
+
+The EC2 bridge has `slackcli` installed at `/usr/local/bin/slackcli` and authenticated (browser-session tokens) to the CoverNode workspace under the `phoneclaw` user. The protected `phoneclaw slack ...` commands wire Slack reads and two-step-gated sends into the universal CLI.
+
+Reads (no confirmation needed):
+
+```bash
+cd /opt/phoneclaw
+export PHONECLAW_CLI_URL=http://127.0.0.1:8000
+export CLI_BRIDGE_TOKEN=...   # already set for the service; export it in your shell
+
+node bin/phoneclaw.mjs slack auth
+node bin/phoneclaw.mjs slack conversations --json '{"limit":10}'
+node bin/phoneclaw.mjs slack read --json '{"channel":"#all-covernode","limit":5}'
+node bin/phoneclaw.mjs slack thread --json '{"channel":"#all-covernode","thread_ts":"1234567890.123456"}'
+node bin/phoneclaw.mjs slack search --json '{"query":"deploy","limit":10}'
+node bin/phoneclaw.mjs slack unread
+node bin/phoneclaw.mjs slack user-info --json '{"user":"@andrew"}'
+```
+
+Safe send test to a DM with yourself (two-step preview → confirm):
+
+```bash
+cd /opt/phoneclaw
+export PHONECLAW_CLI_URL=http://127.0.0.1:8000
+export CLI_BRIDGE_TOKEN=...
+
+# 1) Preview only — prints confirmation_id and does NOT send
+PREVIEW_ID=$(node bin/phoneclaw.mjs slack send --json '{"to":"@andrew","text":"PhoneClaw Slack CLI test (#158)"}' | jq -r '.confirmation_id')
+echo "Preview id: $PREVIEW_ID"
+
+# 2) Confirm with the same content and that id — actually sends
+node bin/phoneclaw.mjs slack send --json "{\"to\":\"@andrew\",\"text\":\"PhoneClaw Slack CLI test (#158)\",\"previewed\":true,\"confirmation_id\":\"$PREVIEW_ID\"}" --confirmed
+```
+
+Notes:
+- The preview expires after ~2 minutes or if the content changes. Any change requires a new preview.
+- The bridge invokes SlackCLI with `HOME=/home/phoneclaw`. Never print or log Slack tokens.
+
 ## PR And Merge Policy
 
 All non-trivial changes should go through a pull request before merging to `main`.
