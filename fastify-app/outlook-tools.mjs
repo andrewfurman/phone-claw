@@ -40,11 +40,11 @@ export async function outlookStatus({ account } = {}) {
   const targets = await resolveAccounts(account);
   const summaries = [];
   for (const target of targets) {
-    const token = await safeGetGraphToken(target).catch(() => null);
+    const auth = await safeGetBestToken(target, "mail").catch(() => null);
     summaries.push({
       account: target.label,
-      ok: Boolean(token),
-      status: token ? "signed_in" : "needs_sign_in",
+      ok: Boolean(auth?.token),
+      status: auth?.token ? "signed_in" : "needs_sign_in",
     });
   }
   const signedInCount = summaries.filter((s) => s.ok).length;
@@ -73,8 +73,8 @@ export async function outlookMessages({
   const boundedLimit = clampInteger(limit, 1, MAX_LIST_LIMIT, DEFAULT_LIST_LIMIT);
   const queries = [];
   for (const target of targets) {
-    const token = await safeGetGraphToken(target);
-    if (!token) {
+    const auth = await safeGetBestToken(target, "mail");
+    if (!auth?.token) {
       queries.push({
         ok: false,
         account: target.label,
@@ -84,8 +84,8 @@ export async function outlookMessages({
       });
       continue;
     }
-    const claims = decodeJwtClaims(token);
-    const first = preferredApiForToken(claims);
+    const token = auth.token;
+    const first = auth.api || preferredApiForToken(decodeJwtClaims(token));
     const attempt = async (api) => {
       if (api === "graph") {
         const url = new URL("/v1.0/me/mailFolders/Inbox/messages", ensureTrailingSlash(GRAPH_BASE));
@@ -182,10 +182,11 @@ export async function outlookRead({
   const targets = await resolveAccounts(account);
   // If "all", prefer the first account that can read the id; attempt sequentially.
   for (const target of targets) {
-    const token = await safeGetGraphToken(target);
-    if (!token) continue;
+    const auth = await safeGetBestToken(target, "mail");
+    if (!auth?.token) continue;
+    const token = auth.token;
     const claims = decodeJwtClaims(token);
-    const first = preferredApiForToken(claims);
+    const first = auth.api || preferredApiForToken(claims);
     const attempt = async (api) => {
       if (api === "graph") {
         const url = new URL(`/v1.0/me/messages/${encodeURIComponent(messageId)}`, ensureTrailingSlash(GRAPH_BASE));
@@ -251,8 +252,8 @@ export async function outlookSearch({
   const boundedLimit = clampInteger(limit, 1, MAX_LIST_LIMIT, DEFAULT_LIST_LIMIT);
   const lists = [];
   for (const target of targets) {
-    const token = await safeGetGraphToken(target);
-    if (!token) {
+    const auth = await safeGetBestToken(target, "mail");
+    if (!auth?.token) {
       lists.push({
         ok: false,
         account: target.label,
@@ -262,8 +263,8 @@ export async function outlookSearch({
       });
       continue;
     }
-    const claims = decodeJwtClaims(token);
-    const first = preferredApiForToken(claims);
+    const token = auth.token;
+    const first = auth.api || preferredApiForToken(decodeJwtClaims(token));
     const attempt = async (api) => {
       if (api === "graph") {
         const url = new URL("/v1.0/me/messages", ensureTrailingSlash(GRAPH_BASE));
@@ -325,8 +326,8 @@ export async function outlookAgenda({
   const boundedLimit = clampInteger(limit, 1, 200, 50);
   const lists = [];
   for (const target of targets) {
-    const token = await safeGetGraphToken(target);
-    if (!token) {
+    const auth = await safeGetBestToken(target, "calendar");
+    if (!auth?.token) {
       lists.push({
         ok: false,
         account: target.label,
@@ -336,8 +337,8 @@ export async function outlookAgenda({
       });
       continue;
     }
-    const claims = decodeJwtClaims(token);
-    const first = preferredApiForToken(claims);
+    const token = auth.token;
+    const first = auth.api || preferredApiForToken(decodeJwtClaims(token));
     const attempt = async (api) => {
       if (api === "graph") {
         const url = new URL("/v1.0/me/calendarView", ensureTrailingSlash(GRAPH_BASE));
@@ -424,18 +425,18 @@ function graphHeaders(token, { needsConsistencyLevel = false, preferOutlookTz } 
   return headers;
 }
 
-async function safeGetGraphToken(target) {
+async function safeGetBestToken(target, purpose /* "mail" | "calendar" */) {
   // Allow test override without CDP
   const envOverride =
     (target.label === "covernode" && process.env.OUTLOOK_TEST_TOKEN_COVERNODE) ||
     (target.label === "adga" && process.env.OUTLOOK_TEST_TOKEN_ADGA) ||
     process.env.OUTLOOK_TEST_TOKEN ||
     "";
-  if (normalizeString(envOverride)) return envOverride;
-  return await getGraphTokenViaCdp(target);
+  if (normalizeString(envOverride)) return { token: envOverride, api: preferredApiForToken(decodeJwtClaims(envOverride)) };
+  return await getBestTokenViaCdp(target, purpose);
 }
 
-async function getGraphTokenViaCdp({ cdpPort, mainUrl, label }) {
+async function getBestTokenViaCdp({ cdpPort, mainUrl, label }, purpose) {
   const base = `http://127.0.0.1:${cdpPort}`;
   const listUrl = `${base}/json/list`;
   let targets;
@@ -488,36 +489,31 @@ async function getGraphTokenViaCdp({ cdpPort, mainUrl, label }) {
     setTimeout(() => resolve(false), 2000);
   });
   if (!open) return null;
-  try {
+  async function scanOnce() {
     const expr = `
 (function() {
   try {
-    var tokenCandidate = null;
+    var out = [];
     for (var i = 0; i < localStorage.length; i++) {
-      var k = localStorage.key(i);
-      if (!k) continue;
-      if (k.startsWith("accesstoken-")) {
-        try {
-          var obj = JSON.parse(localStorage.getItem(k) || "{}");
-          if (obj && (obj.secret || obj.accessToken || obj.credential)) {
-            return { ok: true, source: "msal_v2", key: k, token: obj.secret || obj.accessToken || obj.credential, scopes: obj.target || obj.scopes || null, expiresOn: obj.expiresOn || obj.expires_on || null };
-          }
-        } catch (e) {}
+      var k = localStorage.key(i) || "";
+      var raw = null;
+      try { raw = localStorage.getItem(k) || ""; } catch(e) {}
+      if (!raw) continue;
+      try {
+        var obj = JSON.parse(raw);
+        if (k.startsWith("msal.3|") && obj && obj.credentialType === "AccessToken" && typeof obj.secret === "string") {
+          out.push({ key: k, source: "msal_v3", target: String(obj.target||""), expiresOn: Number(obj.expiresOn||0), token: obj.secret });
+          continue;
+        }
+        if (k.startsWith("accesstoken-") && (obj.secret || obj.accessToken || obj.credential)) {
+          out.push({ key: k, source: "msal_v2", target: String(obj.target||obj.scopes||""), expiresOn: Number(obj.expiresOn||obj.expires_on||0), token: obj.secret || obj.accessToken || obj.credential });
+          continue;
+        }
+      } catch (e) {
+        // ignore parse errors
       }
     }
-    // Fallback: scan values for JSON with access token hints (best-effort)
-    for (var i = 0; i < localStorage.length; i++) {
-      var k2 = localStorage.key(i);
-      try {
-        var raw = localStorage.getItem(k2) || "";
-        if (raw.indexOf('"accessToken"') >= 0 || raw.indexOf('"secret"') >= 0) {
-          var obj2 = JSON.parse(raw);
-          var t = obj2 && (obj2.secret || obj2.accessToken || (obj2.credential && obj2.credential.accessToken));
-          if (t && typeof t === "string" && t.length > 100) return { ok: true, source: "msal_guess", key: k2, token: t };
-        }
-      } catch (e2) {}
-    }
-    return { ok: false, status: "token_not_found" };
+    return { ok: true, tokens: out };
   } catch (e3) {
     return { ok: false, status: "token_probe_failed" };
   }
@@ -536,12 +532,22 @@ async function getGraphTokenViaCdp({ cdpPort, mainUrl, label }) {
       })
     );
     const reply = await once(evalId);
-    try { ws.close(); } catch {}
     const value = reply.result?.result?.value || {};
-    if (value && value.ok && typeof value.token === "string") {
-      return value.token;
+    return (value && value.ok && Array.isArray(value.tokens)) ? value.tokens : [];
+  }
+  try {
+    let tokens = await scanOnce();
+    let best = pickBestToken(tokens, purpose);
+    if (!best) {
+      // Ask the page to reload and try again once to allow MSAL to refresh silently
+      const reloadId = nextId();
+      ws.send(JSON.stringify({ id: reloadId, method: "Page.reload", params: { ignoreCache: true } }));
+      await new Promise(r => setTimeout(r, 1500));
+      tokens = await scanOnce();
+      best = pickBestToken(tokens, purpose);
     }
-    return null;
+    try { ws.close(); } catch {}
+    return best ? { token: best.token, api: best.api } : null;
   } catch {
     try { ws.close(); } catch {}
     return null;
@@ -716,8 +722,9 @@ function normalizeDateRangeEt({ today, tomorrow, start_date, end_date }) {
 
 function normalizeEtLocalRange({ today, tomorrow, start_date, end_date }) {
   // Return ET-local wall times as YYYY-MM-DDTHH:mm:ss strings for API calls that honor Prefer: outlook.timezone
+  const nowMs = Number(process.env.OUTLOOK_TEST_NOW_MS || 0) || Date.now();
   const ymd = (offset) => {
-    const now = new Date();
+    const now = new Date(nowMs);
     const parts = new Intl.DateTimeFormat("en-CA", { timeZone: ET_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
     let year = Number(parts.find((p) => p.type === "year")?.value);
     let month = Number(parts.find((p) => p.type === "month")?.value);
@@ -830,6 +837,30 @@ function shouldFallback(res) {
 
 function ensureTrailingSlash(base) {
   return base.endsWith("/") ? base : base + "/";
+}
+
+function pickBestToken(tokens, purpose) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const margin = 60;
+  const need = purpose === "calendar" ? "Calendars.Read" : "Mail.Read";
+  const filtered = tokens
+    .map(t => ({ ...t, target: String(t.target || ""), expiresOn: Number(t.expiresOn || 0) }))
+    .filter(t => t.token && t.token.length > 100);
+  const valid = filtered.filter(t => t.expiresOn > nowSec + margin);
+  const byPref = (domain) =>
+    valid
+      .filter(t => t.target.includes(domain) && t.target.includes(need))
+      .sort((a, b) => b.expiresOn - a.expiresOn)[0];
+  const outlook = byPref("outlook.office.com");
+  if (outlook) return { token: outlook.token, api: "outlook_rest", target: outlook.target, expiresOn: outlook.expiresOn };
+  const graph = byPref("graph.microsoft.com");
+  if (graph) return { token: graph.token, api: "graph", target: graph.target, expiresOn: graph.expiresOn };
+  return null;
+}
+
+// Test hook for msal.3 parsing/selection
+export function __test_selectBestTokenFromMsalEntries(entries, purpose) {
+  return pickBestToken(entries, purpose);
 }
 
 function toIsoUtcString(input, { assumeEtMidnight = false, endOfDay = false } = {}) {

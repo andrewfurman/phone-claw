@@ -36,11 +36,11 @@ async function getTokenViaCdp({ port, mainUrl }) {
   });
   const open = await new Promise((resolve) => { ws.addEventListener("open", () => resolve(true)); ws.addEventListener("error", () => resolve(false)); setTimeout(() => resolve(false), 2000); });
   if (!open) return null;
-  const expr = `(function(){try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i)||'';if(k.startsWith('accesstoken-')){try{var v=JSON.parse(localStorage.getItem(k)||'{}');var t=v.secret||v.accessToken||v.credential;if(t && typeof t==='string' && t.length>100) return {ok:true,token:t};}catch(e){}}}return {ok:false};}catch(e){return {ok:false}}})()`;
+  const expr = `(function(){try{var out=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i)||'';var raw=null;try{raw=localStorage.getItem(k)||'';}catch(e){};if(!raw) continue;try{var obj=JSON.parse(raw);if(k.startsWith('msal.3|') && obj && obj.credentialType==='AccessToken' && typeof obj.secret==='string'){out.push({key:k,source:'msal_v3',target:String(obj.target||''),expiresOn:Number(obj.expiresOn||0),token:obj.secret});continue;} if(k.startsWith('accesstoken-') && (obj.secret||obj.accessToken||obj.credential)){out.push({key:k,source:'msal_v2',target:String(obj.target||obj.scopes||''),expiresOn:Number(obj.expiresOn||obj.expires_on||0),token:obj.secret||obj.accessToken||obj.credential});continue;}}catch(e){} } return {ok:true,tokens:out};}catch(e){return {ok:false}})()`;
   const enable = nextId(); ws.send(JSON.stringify({ id: enable, method: "Runtime.enable" })); await once(enable);
   const evalId = nextId(); ws.send(JSON.stringify({ id: evalId, method: "Runtime.evaluate", params: { expression: expr, returnByValue: true, awaitPromise: true } })); const reply = await once(evalId); try { ws.close(); } catch {}
   const value = reply.result?.result?.value || {};
-  return value.ok ? value.token : null;
+  return value.ok ? value.tokens : [];
 }
 
 async function headStatus(url, token) {
@@ -51,13 +51,21 @@ async function headStatus(url, token) {
   } catch { return 0; }
 }
 
-const result = { ok: true, status: "ok", account, cdp_port: config.port, aud: "", scp: "", upstream: {} };
+const result = { ok: true, status: "ok", account, cdp_port: config.port, aud: "", scp: "", upstream: {}, candidates: [], chosen: {} };
 try {
-  const token = await getTokenViaCdp(config);
-  if (!token) { result.ok = false; result.status = "needs_sign_in"; console.log(JSON.stringify(result, null, 2)); process.exit(0); }
+  const tokens = await getTokenViaCdp(config);
+  if (!tokens.length) { result.ok = false; result.status = "needs_sign_in"; console.log(JSON.stringify(result, null, 2)); process.exit(0); }
+  const nowSec = Math.floor(Date.now()/1000);
+  result.candidates = tokens.map(t => ({ source: t.source, target_prefix: String(t.target||'').slice(0,120), expires_on: t.expiresOn, expired: Number(t.expiresOn||0) <= nowSec, domain: (String(t.target||'').includes('outlook.office.com')?'outlook':'graph') }));
+  // Prefer Outlook REST Mail.Read
+  const need = 'Mail.Read';
+  let chosen = tokens.find(t => String(t.target||'').includes('outlook.office.com') && String(t.target||'').includes(need) && Number(t.expiresOn||0) > nowSec+60);
+  if (!chosen) chosen = tokens.find(t => String(t.target||'').includes('graph.microsoft.com') && String(t.target||'').includes(need) && Number(t.expiresOn||0) > nowSec+60);
+  const token = chosen ? chosen.token : tokens[0].token;
   const claims = decodeClaims(token);
   result.aud = String(claims.aud || "");
   result.scp = String(claims.scp || claims.roles || "");
+  result.chosen = { domain: (result.aud.includes('outlook.office.com')?'outlook':'graph'), scp_prefix: result.scp.slice(0,120) };
   result.upstream.graph_inbox = await headStatus("https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$top=1", token);
   result.upstream.outlook_rest_inbox = await headStatus("https://outlook.office.com/api/v2.0/me/messages?$top=1", token);
   console.log(JSON.stringify(result, null, 2));

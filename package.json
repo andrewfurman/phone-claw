@@ -59,7 +59,7 @@
     "elevenlabs:generic-cli:test": "node --env-file-if-exists=.env setup-and-testing-scripts/test-elevenlabs-generic-cli.mjs",
     "generic-cli:preview": "node setup-and-testing-scripts/serve-generic-cli-preview.mjs",
     "test:offline": "npm run generic-cli:test && npm run generic-cli:http:test && npm run sendgrid:email-send:validation:test && npm run load-env-file:test && npm run conversations:history:test && npm run web-search:fallbacks:test && npm run universal-cli:test && npm run photos:readonly:test && npm run imessage:send:test && npm run whatsapp:test && npm run opencode:engine:test && npm run bridge:twilio-routes:test && npm run himalaya:email-image-inspect:test && npm run rss:feed-tools:test && npm run imessage:readonly:test && node --test setup-and-testing-scripts/test-notes-readonly.mjs && npm run notes:edit:test && npm run apple:151:test && npm run outlook:test && npm run slack:test",
-    "outlook:test": "node --test setup-and-testing-scripts/test-outlook-tools.mjs",
+    "outlook:test": "node --test setup-and-testing-scripts/test-outlook-tools.mjs && node --test setup-and-testing-scripts/test-outlook-msal3-parse.mjs",
     "slack:test": "node --test setup-and-testing-scripts/test-slack-tools.mjs",
     "twilio:call:test": "node --env-file-if-exists=.env setup-and-testing-scripts/test-twilio-call.mjs",
     "cli": "node bin/phoneclaw.mjs",
