@@ -280,7 +280,6 @@ export async function outlookSearch({
         const url = new URL("/api/v2.0/me/messages", ensureTrailingSlash(OUTLOOK_REST_BASE));
         const params = new URLSearchParams();
         params.set("$select", "Id,Subject,From,ReceivedDateTime,IsRead,ConversationId,WebLink");
-        params.set("$orderby", "ReceivedDateTime desc");
         params.set("$top", String(boundedLimit));
         params.set("$search", `"${normalizeString(query)}"`); // best-effort; some tenants may not support it
         url.search = params.toString();
@@ -309,6 +308,7 @@ export async function outlookSearch({
       merged.length === 0
         ? "No results."
         : `Found ${merged.length} result${merged.length === 1 ? "" : "s"}.`,
+    accounts: lists,
   };
 }
 
@@ -723,16 +723,14 @@ function normalizeDateRangeEt({ today, tomorrow, start_date, end_date }) {
 function normalizeEtLocalRange({ today, tomorrow, start_date, end_date }) {
   // Return ET-local wall times as YYYY-MM-DDTHH:mm:ss strings for API calls that honor Prefer: outlook.timezone
   const nowMs = Number(process.env.OUTLOOK_TEST_NOW_MS || 0) || Date.now();
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: ET_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" });
   const ymd = (offset) => {
-    const now = new Date(nowMs);
-    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: ET_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
-    let year = Number(parts.find((p) => p.type === "year")?.value);
-    let month = Number(parts.find((p) => p.type === "month")?.value);
-    let day = Number(parts.find((p) => p.type === "day")?.value) + offset;
-    // Build a date in ET by adjusting UTC parts; we just need the Y-M-D string, not a Date.
-    const d = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
-    const again = new Intl.DateTimeFormat("en-CA", { timeZone: ET_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
-    return `${again.find(p=>p.type==="year")?.value}-${again.find(p=>p.type==="month")?.value}-${again.find(p=>p.type==="day")?.value}`;
+    const d = new Date(nowMs + (offset || 0) * 24 * 60 * 60 * 1000);
+    const parts = fmt.formatToParts(d);
+    const y = parts.find(p => p.type === "year")?.value;
+    const m = parts.find(p => p.type === "month")?.value;
+    const da = parts.find(p => p.type === "day")?.value;
+    return `${y}-${m}-${da}`;
   };
   if (toBoolean(today)) {
     const d = ymd(0);
