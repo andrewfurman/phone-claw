@@ -10,6 +10,7 @@ import { whatsappChats, whatsappMessages, whatsappSearch, whatsappSend } from ".
 import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSearchEntries, rssListConfiguredFeeds, rssRefreshConfiguredFeeds } from "./rss-feed-tools.mjs";
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
+import { slackAuthStatus, slackConversationsList, slackRead, slackSearchMessages, slackUnreadSummary, slackUserInfo, slackMessageSend, slackReact } from "./slack-tools.mjs";
 import { outlookAgenda, outlookMessages, outlookRead, outlookSearch, outlookStatus } from "./outlook-tools.mjs";
 
 // Existing domain behavior behind the phoneclaw CLI, including caches and async jobs.
@@ -395,6 +396,82 @@ export const commandAdapters = {
     maxTranscriptTurns: body.max_transcript_turns || body.maxTranscriptTurns,
     maxToolItems: body.max_tool_items || body.maxToolItems,
   }),
+  // Slack CLI-backed tools (#158)
+  "slack auth": (body, context) => slackAuthStatus({
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+  "slack conversations": (body, context) => slackConversationsList({
+    types: body.types,
+    limit: body.limit || body.max_results || body.maxResults,
+    excludeArchived: body.exclude_archived ?? body.excludeArchived ?? true,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+  "slack read": (body, context) => slackRead({
+    channel: body.channel || body.conversation,
+    conversation: body.conversation,
+    permalink: body.permalink,
+    thread_ts: body.thread_ts,
+    limit: body.limit || body.max_results || body.maxResults,
+    exclude_replies: body.exclude_replies,
+    exclude_self: body.exclude_self,
+    oldest: body.oldest,
+    latest: body.latest,
+    fields: body.fields,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+  "slack thread": (body, context) => slackRead({
+    channel: body.channel || body.conversation,
+    permalink: body.permalink,
+    thread_ts: body.thread_ts,
+    limit: body.limit || body.max_results || body.maxResults,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+  "slack search": (body, context) => slackSearchMessages({
+    query: body.query || body.search_query || body.searchQuery,
+    in_: body.in || body.in_channel,
+    from: body.from,
+    limit: body.limit || body.max_results || body.maxResults,
+    sort: body.sort,
+    sort_dir: body.sort_dir || body.sortDir,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+  "slack unread": (body, context) => slackUnreadSummary({
+    types: body.types,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+  "slack user-info": (body, context) => slackUserInfo({
+    user: body.user || body.id || body.handle || body.email,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+  "slack send": (body, context) => slackMessageSend({
+    to: body.to || body.recipient || body.channel || body.user,
+    text: body.text || body.message || body.body,
+    thread_ts: body.thread_ts,
+    permalink: body.permalink,
+    emoji: body.emoji,
+    previewed: body.previewed,
+    confirmation_id: body.confirmation_id || body.confirm_id,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }, { confirmed: context.confirmed }),
+  "slack reply": (body, context) => slackMessageSend({
+    to: body.to || body.recipient || body.channel,
+    text: body.text || body.message || body.body,
+    thread_ts: body.thread_ts,
+    permalink: body.permalink,
+    emoji: body.emoji,
+    previewed: body.previewed,
+    confirmation_id: body.confirmation_id || body.confirm_id,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }, { confirmed: context.confirmed }),
+  "slack react": (body, context) => slackReact({
+    emoji: body.emoji,
+    channel_id: body.channel_id || body.channel,
+    timestamp: body.timestamp || body.ts || body.message_ts,
+    permalink: body.permalink,
+    previewed: body.previewed,
+    confirmation_id: body.confirmation_id || body.confirm_id,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }, { confirmed: context.confirmed }),
   // Outlook (read-only) – backed by signed-in Chrome sessions on the bridge VM
   "outlook status": (body, context) => outlookStatus({
     account: body.account,
