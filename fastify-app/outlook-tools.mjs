@@ -32,8 +32,9 @@ const ACCOUNT_CONFIG = {
 };
 
 const GRAPH_BASE =
-  normalizeUrl(process.env.OUTLOOK_GRAPH_BASE_URL) ||
-  "https://graph.microsoft.com";
+  normalizeUrl(process.env.OUTLOOK_GRAPH_BASE_URL) || "https://graph.microsoft.com";
+const OUTLOOK_REST_BASE =
+  normalizeUrl(process.env.OUTLOOK_REST_BASE_URL) || "https://outlook.office.com";
 
 export async function outlookStatus({ account } = {}) {
   const targets = await resolveAccounts(account);
@@ -83,55 +84,91 @@ export async function outlookMessages({
       });
       continue;
     }
-    const url = new URL(
-      "/v1.0/me/mailFolders/Inbox/messages",
-      GRAPH_BASE.endsWith("/") ? GRAPH_BASE : GRAPH_BASE + "/"
-    );
-    const params = new URLSearchParams();
-    params.set(
-      "$select",
-      "id,subject,from,receivedDateTime,isRead,conversationId,webLink"
-    );
-    params.set("$orderby", "receivedDateTime desc");
-    params.set("$top", String(boundedLimit));
-    // search and filter are not allowed together on Graph message list; prefer $search when provided.
-    let usedSearch = false;
-    if (normalizeString(search)) {
-      params.set("$search", `"${normalizeString(search)}"`);
-      usedSearch = true;
-    } else {
-      const filters = [];
-      if (toBoolean(unread)) filters.push("isRead eq false");
-      const sender = normalizeString(from);
-      if (sender) filters.push(`from/emailAddress/address eq '${escapeODataLiteral(sender)}'`);
-      const sinceIso = toIsoUtcString(since, { assumeEtMidnight: true });
-      if (sinceIso) filters.push(`receivedDateTime ge ${sinceIso}`);
-      if (filters.length) params.set("$filter", filters.join(" and "));
+    const claims = decodeJwtClaims(token);
+    const first = preferredApiForToken(claims);
+    const attempt = async (api) => {
+      if (api === "graph") {
+        const url = new URL("/v1.0/me/mailFolders/Inbox/messages", ensureTrailingSlash(GRAPH_BASE));
+        const params = new URLSearchParams();
+        params.set("$select", "id,subject,from,receivedDateTime,isRead,conversationId,webLink");
+        params.set("$orderby", "receivedDateTime desc");
+        params.set("$top", String(boundedLimit));
+        let usedSearch = false;
+        if (normalizeString(search)) {
+          params.set("$search", `"${normalizeString(search)}"`);
+          usedSearch = true;
+        } else {
+          const filters = [];
+          if (toBoolean(unread)) filters.push("isRead eq false");
+          const sender = normalizeString(from);
+          if (sender) filters.push(`from/emailAddress/address eq '${escapeODataLiteral(sender)}'`);
+          const sinceIso = toIsoUtcString(since, { assumeEtMidnight: true });
+          if (sinceIso) filters.push(`receivedDateTime ge ${sinceIso}`);
+          if (filters.length) params.set("$filter", filters.join(" and "));
+        }
+        url.search = params.toString();
+        const headers = graphHeaders(token, { needsConsistencyLevel: Boolean(params.get("$search")) });
+        return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "graph" });
+      } else {
+        const url = new URL("/api/v2.0/me/messages", ensureTrailingSlash(OUTLOOK_REST_BASE));
+        const params = new URLSearchParams();
+        params.set("$select", "Id,Subject,From,ReceivedDateTime,IsRead,ConversationId,WebLink");
+        params.set("$orderby", "ReceivedDateTime desc");
+        params.set("$top", String(boundedLimit));
+        // Outlook REST v2.0 supports $filter; $search support varies, prefer $filter when possible.
+        const filters = [];
+        if (toBoolean(unread)) filters.push("IsRead eq false");
+        const sender = normalizeString(from);
+        if (sender) filters.push(`From/EmailAddress/Address eq '${escapeODataLiteral(sender)}'`);
+        const sinceIso = toIsoUtcString(since, { assumeEtMidnight: true });
+        if (sinceIso) filters.push(`ReceivedDateTime ge ${sinceIso}`);
+        if (filters.length) params.set("$filter", filters.join(" and "));
+        if (!filters.length && normalizeString(search)) params.set("$search", `"${normalizeString(search)}"`);
+        url.search = params.toString();
+        const headers = { authorization: `Bearer ${token}`, accept: "application/json" };
+        return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "outlook_rest" });
+      }
+    };
+    let res = await attempt(first);
+    if (!res.ok && shouldFallback(res)) {
+      const second = first === "graph" ? "outlook_rest" : "graph";
+      const res2 = await attempt(second);
+      res = res2;
     }
-    url.search = params.toString();
-    const headers = graphHeaders(token, { needsConsistencyLevel: usedSearch });
-    const json = await httpJson(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS });
-    const items = Array.isArray(json.value) ? json.value : [];
-    queries.push({
-      ok: true,
-      account: target.label,
-      status: "ok",
-      returned_count: items.length,
-      items: items.map((m) => compactGraphMessage(m, target.label)),
-    });
+    if (!res.ok) {
+      queries.push({
+        ok: false,
+        account: target.label,
+        status: "upstream_error",
+        upstream_http_status: res.status,
+        upstream_error: res.error || "",
+        returned_count: 0,
+        items: [],
+      });
+      continue;
+    }
+    const isGraph = res.api === "graph";
+    const rows = Array.isArray(res.body?.value) ? res.body.value : [];
+    const items = rows.map((m) => (isGraph ? compactGraphMessage(m, target.label) : compactOutlookRestMessage(m, target.label)));
+    queries.push({ ok: true, account: target.label, status: "ok", returned_count: items.length, items });
   }
   // Merge results for "all"
   const merged = mergeAccountLists(queries);
+  const anyError = queries.some((q) => !q.ok);
+  const allFailed = queries.every((q) => !q.ok);
   return {
-    ok: true,
-    status: "ok",
+    ok: !allFailed,
+    status: allFailed ? "upstream_error" : "ok",
     scope: accountScopeLabel(account),
     returned_count: merged.length,
     items: merged,
     answer_text:
-      merged.length === 0
+      merged.length === 0 && anyError
+        ? "The Outlook upstream call failed."
+        : merged.length === 0
         ? "No messages matched."
         : `Found ${merged.length} message${merged.length === 1 ? "" : "s"}.`,
+    accounts: queries,
   };
 }
 
@@ -147,21 +184,37 @@ export async function outlookRead({
   for (const target of targets) {
     const token = await safeGetGraphToken(target);
     if (!token) continue;
-    const url = new URL(
-      `/v1.0/me/messages/${encodeURIComponent(messageId)}`,
-      GRAPH_BASE.endsWith("/") ? GRAPH_BASE : GRAPH_BASE + "/"
-    );
-    const params = new URLSearchParams();
-    params.set("$select", "id,subject,from,receivedDateTime,body,webLink");
-    url.search = params.toString();
-    const headers = graphHeaders(token);
-    const json = await httpJson(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS });
-    if (json.error?.code === "ErrorItemNotFound") continue; // try next account
-    if (json.error) return graphError(json.error, target.label, "message_read_failed");
-    const compact = compactGraphMessage(json, target.label, {
+    const claims = decodeJwtClaims(token);
+    const first = preferredApiForToken(claims);
+    const attempt = async (api) => {
+      if (api === "graph") {
+        const url = new URL(`/v1.0/me/messages/${encodeURIComponent(messageId)}`, ensureTrailingSlash(GRAPH_BASE));
+        const params = new URLSearchParams();
+        params.set("$select", "id,subject,from,receivedDateTime,body,webLink");
+        url.search = params.toString();
+        const headers = graphHeaders(token);
+        return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "graph" });
+      } else {
+        const url = new URL(`/api/v2.0/me/messages/${encodeURIComponent(messageId)}`, ensureTrailingSlash(OUTLOOK_REST_BASE));
+        const params = new URLSearchParams();
+        params.set("$select", "Id,Subject,From,ReceivedDateTime,Body,WebLink");
+        url.search = params.toString();
+        const headers = { authorization: `Bearer ${token}`, accept: "application/json" };
+        return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "outlook_rest" });
+      }
+    };
+    let res = await attempt(first);
+    if (!res.ok && shouldFallback(res)) res = await attempt(first === "graph" ? "outlook_rest" : "graph");
+    if (!res.ok) return { ok: false, status: "message_read_failed", account: target.label, id: messageId, upstream_http_status: res.status, answer_text: "The Outlook upstream call failed." };
+    const isGraph = res.api === "graph";
+    const raw = res.body || {};
+    const compact = (isGraph ? compactGraphMessage(raw, target.label, {
       includeBody: true,
       maxBodyChars: clampInteger(maxBodyChars, 2000, MAX_READ_MAX_BODY_CHARS, DEFAULT_READ_MAX_BODY_CHARS),
-    });
+    }) : compactOutlookRestMessage(raw, target.label, {
+      includeBody: true,
+      maxBodyChars: clampInteger(maxBodyChars, 2000, MAX_READ_MAX_BODY_CHARS, DEFAULT_READ_MAX_BODY_CHARS),
+    }));
     return {
       ok: true,
       status: "ok",
@@ -209,35 +262,45 @@ export async function outlookSearch({
       });
       continue;
     }
-    const url = new URL(
-      "/v1.0/me/messages",
-      GRAPH_BASE.endsWith("/") ? GRAPH_BASE : GRAPH_BASE + "/"
-    );
-    const params = new URLSearchParams();
-    params.set("$select", "id,subject,from,receivedDateTime,isRead,conversationId,webLink");
-    params.set("$search", `"${normalizeString(query)}"`);
-    params.set("$orderby", "receivedDateTime desc");
-    params.set("$top", String(boundedLimit));
-    url.search = params.toString();
-    const headers = graphHeaders(token, { needsConsistencyLevel: true });
-    const json = await httpJson(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS });
-    if (json.error) {
-      lists.push(graphError(json.error, target.label, "search_failed"));
+    const claims = decodeJwtClaims(token);
+    const first = preferredApiForToken(claims);
+    const attempt = async (api) => {
+      if (api === "graph") {
+        const url = new URL("/v1.0/me/messages", ensureTrailingSlash(GRAPH_BASE));
+        const params = new URLSearchParams();
+        params.set("$select", "id,subject,from,receivedDateTime,isRead,conversationId,webLink");
+        params.set("$search", `"${normalizeString(query)}"`);
+        params.set("$orderby", "receivedDateTime desc");
+        params.set("$top", String(boundedLimit));
+        url.search = params.toString();
+        const headers = graphHeaders(token, { needsConsistencyLevel: true });
+        return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "graph" });
+      } else {
+        const url = new URL("/api/v2.0/me/messages", ensureTrailingSlash(OUTLOOK_REST_BASE));
+        const params = new URLSearchParams();
+        params.set("$select", "Id,Subject,From,ReceivedDateTime,IsRead,ConversationId,WebLink");
+        params.set("$orderby", "ReceivedDateTime desc");
+        params.set("$top", String(boundedLimit));
+        params.set("$search", `"${normalizeString(query)}"`); // best-effort; some tenants may not support it
+        url.search = params.toString();
+        const headers = { authorization: `Bearer ${token}`, accept: "application/json" };
+        return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "outlook_rest" });
+      }
+    };
+    let res = await attempt(first);
+    if (!res.ok && shouldFallback(res)) res = await attempt(first === "graph" ? "outlook_rest" : "graph");
+    if (!res.ok) {
+      lists.push({ ok: false, account: target.label, status: "search_failed", upstream_http_status: res.status, upstream_error: res.error || "", returned_count: 0, items: [] });
       continue;
     }
-    const items = Array.isArray(json.value) ? json.value : [];
-    lists.push({
-      ok: true,
-      account: target.label,
-      status: "ok",
-      returned_count: items.length,
-      items: items.map((m) => compactGraphMessage(m, target.label)),
-    });
+    const isGraph = res.api === "graph";
+    const items = Array.isArray(res.body?.value) ? res.body.value : [];
+    lists.push({ ok: true, account: target.label, status: "ok", returned_count: items.length, items: items.map((m) => (isGraph ? compactGraphMessage(m, target.label) : compactOutlookRestMessage(m, target.label))) });
   }
   const merged = mergeAccountLists(lists);
   return {
-    ok: true,
-    status: "ok",
+    ok: lists.some(l => l.ok),
+    status: lists.some(l => l.ok) ? "ok" : "search_failed",
     scope: accountScopeLabel(account),
     returned_count: merged.length,
     items: merged,
@@ -258,7 +321,7 @@ export async function outlookAgenda({
   limit = 50,
 } = {}) {
   const targets = await resolveAccounts(account);
-  const { startIso, endIso } = normalizeDateRangeEt({ today, tomorrow, start_date, end_date });
+  const { startLocal, endLocal } = normalizeEtLocalRange({ today, tomorrow, start_date, end_date });
   const boundedLimit = clampInteger(limit, 1, 200, 50);
   const lists = [];
   for (const target of targets) {
@@ -273,41 +336,50 @@ export async function outlookAgenda({
       });
       continue;
     }
-    const url = new URL(
-      "/v1.0/me/calendarView",
-      GRAPH_BASE.endsWith("/") ? GRAPH_BASE : GRAPH_BASE + "/"
-    );
-    const params = new URLSearchParams();
-    params.set("startDateTime", startIso);
-    params.set("endDateTime", endIso);
-    params.set("$top", String(boundedLimit));
-    params.set("$orderby", "start/dateTime asc");
-    params.set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink");
-    url.search = params.toString();
-    const headers = graphHeaders(token, {
-      preferOutlookTz: ET_TIMEZONE,
-    });
-    const json = await httpJson(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS });
-    if (json.error) {
-      lists.push(graphError(json.error, target.label, "agenda_failed"));
+    const claims = decodeJwtClaims(token);
+    const first = preferredApiForToken(claims);
+    const attempt = async (api) => {
+      if (api === "graph") {
+        const url = new URL("/v1.0/me/calendarView", ensureTrailingSlash(GRAPH_BASE));
+        const params = new URLSearchParams();
+        params.set("startDateTime", startLocal);
+        params.set("endDateTime", endLocal);
+        params.set("$top", String(boundedLimit));
+        params.set("$orderby", "start/dateTime asc");
+        params.set("$select", "id,subject,start,end,location,organizer,isAllDay,webLink");
+        url.search = params.toString();
+        const headers = graphHeaders(token, { preferOutlookTz: ET_TIMEZONE });
+        return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "graph" });
+      } else {
+        const url = new URL("/api/v2.0/me/calendarview", ensureTrailingSlash(OUTLOOK_REST_BASE));
+        const params = new URLSearchParams();
+        params.set("startDateTime", startLocal);
+        params.set("endDateTime", endLocal);
+        params.set("$top", String(boundedLimit));
+        params.set("$orderby", "Start/DateTime asc");
+        params.set("$select", "Id,Subject,Start,End,Location,Organizer,IsAllDay,WebLink");
+        url.search = params.toString();
+        const headers = { authorization: `Bearer ${token}`, accept: "application/json", prefer: `outlook.timezone="${ET_TIMEZONE}"` };
+        return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "outlook_rest" });
+      }
+    };
+    let res = await attempt(first);
+    if (!res.ok && shouldFallback(res)) res = await attempt(first === "graph" ? "outlook_rest" : "graph");
+    if (!res.ok) {
+      lists.push({ ok: false, account: target.label, status: "agenda_failed", upstream_http_status: res.status, upstream_error: res.error || "", returned_count: 0, items: [] });
       continue;
     }
-    const items = Array.isArray(json.value) ? json.value : [];
-    lists.push({
-      ok: true,
-      account: target.label,
-      status: "ok",
-      returned_count: items.length,
-      items: items.map((e) => compactGraphEvent(e, target.label)),
-    });
+    const isGraph = res.api === "graph";
+    const values = Array.isArray(res.body?.value) ? res.body.value : [];
+    lists.push({ ok: true, account: target.label, status: "ok", returned_count: values.length, items: values.map((e) => (isGraph ? compactGraphEvent(e, target.label) : compactOutlookRestEvent(e, target.label))) });
   }
   // Return a per-account map; do not merge calendar events across accounts into one list by default
   const result = {
     ok: true,
     status: "ok",
     scope: accountScopeLabel(account),
-    start_date: startIso,
-    end_date: endIso,
+    start_date: startLocal,
+    end_date: endLocal,
     accounts: lists.map((list) => ({
       account: list.account,
       ok: list.ok,
@@ -526,6 +598,54 @@ function compactGraphEvent(evt, account) {
   };
 }
 
+function compactOutlookRestMessage(msg, account, { includeBody = false, maxBodyChars = DEFAULT_READ_MAX_BODY_CHARS } = {}) {
+  // Outlook REST uses PascalCase fields
+  const id = String(msg.Id || "");
+  const from = {
+    name: String(msg.From?.EmailAddress?.Name || ""),
+    address: String(msg.From?.EmailAddress?.Address || ""),
+  };
+  const receivedUtc = String(msg.ReceivedDateTime || "");
+  const receivedEt = toEtLocalString(receivedUtc);
+  const base = {
+    account,
+    id,
+    subject: trimTo(String(msg.Subject || ""), 400),
+    from,
+    is_unread: msg.IsRead === false,
+    received_datetime: receivedUtc,
+    received_at: receivedEt,
+    web_link: String(msg.WebLink || ""),
+    conversation_id: String(msg.ConversationId || ""),
+  };
+  if (includeBody) {
+    const bodyType = String(msg.Body?.ContentType || "").toLowerCase();
+    const raw = String(msg.Body?.Content || "");
+    const text = bodyType === "text" ? raw : htmlToText(raw || "", { wordwrap: 120, selectors: [{ selector: "a", options: { hideLinkHrefIfSameAsText: true } }] });
+    base.body_text = trimTo(text, maxBodyChars);
+  }
+  return base;
+}
+
+function compactOutlookRestEvent(evt, account) {
+  const start = { dateTime: String(evt.Start?.DateTime || ""), timeZone: String(evt.Start?.TimeZone || ET_TIMEZONE) };
+  const end = { dateTime: String(evt.End?.DateTime || ""), timeZone: String(evt.End?.TimeZone || ET_TIMEZONE) };
+  return {
+    account,
+    id: String(evt.Id || ""),
+    subject: trimTo(String(evt.Subject || ""), 400),
+    is_all_day: Boolean(evt.IsAllDay),
+    location: String(evt.Location?.DisplayName || ""),
+    organizer: {
+      name: String(evt.Organizer?.EmailAddress?.Name || ""),
+      address: String(evt.Organizer?.EmailAddress?.Address || ""),
+    },
+    start,
+    end,
+    web_link: String(evt.WebLink || ""),
+  };
+}
+
 function graphError(error, account, code = "graph_error") {
   const message = String(error?.message || "Graph error");
   return {
@@ -569,6 +689,14 @@ async function httpJson(url, { headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS } = 
   return json;
 }
 
+async function fetchJsonDetailed(url, { headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS, api } = {}) {
+  const response = await fetch(url, { method: "GET", headers, redirect: "error", signal: AbortSignal.timeout(timeoutMs) });
+  const text = await response.text().catch(() => "");
+  let body;
+  try { body = JSON.parse(text); } catch { body = null; }
+  return { ok: response.ok, status: response.status, body, error: !response.ok ? (body?.error?.message || String(text).slice(0, 200)) : "", api: api || (String(url).includes("graph.microsoft.com") ? "graph" : "outlook_rest") };
+}
+
 function normalizeDateRangeEt({ today, tomorrow, start_date, end_date }) {
   if (toBoolean(today)) {
     const { start, end } = etDayBounds(0);
@@ -584,6 +712,36 @@ function normalizeDateRangeEt({ today, tomorrow, start_date, end_date }) {
   // Default: today
   const { start, end } = etDayBounds(0);
   return { startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
+function normalizeEtLocalRange({ today, tomorrow, start_date, end_date }) {
+  // Return ET-local wall times as YYYY-MM-DDTHH:mm:ss strings for API calls that honor Prefer: outlook.timezone
+  const ymd = (offset) => {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: ET_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+    let year = Number(parts.find((p) => p.type === "year")?.value);
+    let month = Number(parts.find((p) => p.type === "month")?.value);
+    let day = Number(parts.find((p) => p.type === "day")?.value) + offset;
+    // Build a date in ET by adjusting UTC parts; we just need the Y-M-D string, not a Date.
+    const d = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+    const again = new Intl.DateTimeFormat("en-CA", { timeZone: ET_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+    return `${again.find(p=>p.type==="year")?.value}-${again.find(p=>p.type==="month")?.value}-${again.find(p=>p.type==="day")?.value}`;
+  };
+  if (toBoolean(today)) {
+    const d = ymd(0);
+    return { startLocal: `${d}T00:00:00`, endLocal: `${d}T23:59:59` };
+  }
+  if (toBoolean(tomorrow)) {
+    const d = ymd(1);
+    return { startLocal: `${d}T00:00:00`, endLocal: `${d}T23:59:59` };
+  }
+  const s = normalizeString(start_date);
+  const e = normalizeString(end_date);
+  const startLocal = s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00` : s || "";
+  const endLocal = e && /^\d{4}-\d{2}-\d{2}$/.test(e) ? `${e}T23:59:59` : e || "";
+  if (startLocal && endLocal) return { startLocal, endLocal };
+  const d = ymd(0);
+  return { startLocal: `${d}T00:00:00`, endLocal: `${d}T23:59:59` };
 }
 
 function etDayBounds(offsetDays) {
@@ -645,6 +803,33 @@ function asEtIso(g) {
   const tz = g.timeZone || ET_TIMEZONE;
   const dt = String(g.dateTime || "");
   return { dateTime: dt, timeZone: tz };
+}
+
+function decodeJwtClaims(token) {
+  try {
+    const [, payload] = String(token).split(".");
+    if (!payload) return {};
+    const b64 = payload.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payload.length + 3) % 4);
+    const json = Buffer.from(b64, "base64").toString("utf8");
+    return JSON.parse(json);
+  } catch {
+    return {};
+  }
+}
+
+function preferredApiForToken(claims) {
+  const aud = String(claims?.aud || "").toLowerCase();
+  if (aud.includes("graph.microsoft.com") || aud === "00000003-0000-0000-c000-000000000000") return "graph";
+  if (aud.includes("outlook.office.com") || aud === "00000002-0000-0ff1-ce00-000000000000" || aud.includes("substrate.office.com")) return "outlook_rest";
+  return "graph"; // default
+}
+
+function shouldFallback(res) {
+  return !res.ok && (res.status === 401 || res.status === 403 || res.status === 404);
+}
+
+function ensureTrailingSlash(base) {
+  return base.endsWith("/") ? base : base + "/";
 }
 
 function toIsoUtcString(input, { assumeEtMidnight = false, endOfDay = false } = {}) {
