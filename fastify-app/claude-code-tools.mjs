@@ -41,6 +41,8 @@ function authFailureStatus(auth) {
 }
 
 const runningJobs = new Map();
+// Grace window for brand-new jobs before their first status/read completes on slow filesystems.
+const recentJobStarts = new Map(); // job_id -> startedAtMs
 
 export async function claudeCodeTool({
   action = "submit_task",
@@ -190,6 +192,9 @@ export async function claudeCodeTool({
     timeout: null,
   });
   await writeJob(job);
+  // Record a short-lived start marker to smooth over rare race conditions between
+  // the initial write and the first status check on some Node/runtime combos.
+  recentJobStarts.set(normalizedJobId, Date.now());
 
   const startJob = job.engine === "opencode" ? startOpencodeJob : startClaudeJob;
   startJob({
@@ -410,6 +415,19 @@ async function claudeJobStatus(jobId) {
 
   const job = await readJob(jobId).catch(() => null);
   if (!job) {
+    // If the job was just started and the job file is not readable yet, report
+    // a transient running state instead of a hard job_not_found. This lets callers
+    // that poll (e.g. tests) continue until the initial write closes.
+    const startedAt = recentJobStarts.get(jobId) || 0;
+    if (startedAt && Date.now() - startedAt < 2000) {
+      return {
+        ok: true,
+        status: "running",
+        job_id: jobId,
+        output_preview: "",
+        answer_text: `${engineLabel()} job ${jobId} is starting.`,
+      };
+    }
     return {
       ok: false,
       status: "job_not_found",
