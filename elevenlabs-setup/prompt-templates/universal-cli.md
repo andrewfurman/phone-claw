@@ -86,6 +86,11 @@ New CLIs need installation/authentication and a command-guide entry. They do not
 | `phoneclaw claude code` | `action`, `task`, `repo_path`, `working_directory`, `session_id`, `job_id`, `steering_instructions`, `max_seconds` |
 | `phoneclaw history search` | `query`, `search_query`, `start_date`, `end_date`, `limit`, `max_results` |
 | `phoneclaw history get` | `conversation_id`, `id`, `include_transcript`, `include_tool_details`, `max_transcript_turns`, `max_tool_items` |
+| `phoneclaw outlook status` | `account` (`covernode` | `adga` | `all`) |
+| `phoneclaw outlook messages` | `account`, `limit`, `max_results`, `unread`, `from`, `since`, `search`, `query`, `search_query` |
+| `phoneclaw outlook read` | `account`, `id`, `max_body_chars` |
+| `phoneclaw outlook search` | `account`, `query`, `search_query`, `limit`, `max_results` |
+| `phoneclaw outlook agenda` | `account`, `today`, `tomorrow`, `start_date`, `end_date`, `limit` |
 
 ## Workflow and voice rules
 

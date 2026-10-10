@@ -184,6 +184,46 @@ Use SendGrid for dedicated assistant emails from `aifurman.com`. Himalaya remain
 - Safety: `SENDGRID_OWNER_EMAIL` (`aifurman@gmail.com`) must appear in To or CC on every send; if missing, the bridge auto-adds it to CC and notes that in the response.
 - Requires verbal preview plus `previewed=true` and `confirmed=true` before the API call (not emergency-only).
 
+## Outlook (read-only, via signed-in browser sessions)
+
+The bridge exposes read-only Outlook access through two already-signed-in Chrome sessions on the EC2 VM (Xvfb :1):
+
+- CoverNode: DevTools `http://127.0.0.1:9230`, Outlook tab at `https://outlook.cloud.microsoft/mail/`
+- ADGA: DevTools `http://127.0.0.1:9231`, Outlook tab at `https://outlook.cloud.microsoft/mail/andrew@ad-ga.com/`
+
+A cron job soft-reloads those tabs every ~20 minutes (`/usr/local/bin/outlook-refresh.mjs`). The CLI never navigates away from the main tab; it reads a short-lived Graph token from the page's MSAL cache via CDP and queries Microsoft Graph. No tokens are logged or printed. All commands are strictly read-only.
+
+PhoneClaw CLI examples (JSON by default):
+
+```bash
+# Status check (signed in vs needs_sign_in)
+phoneclaw outlook status --json '{"account":"adga"}'
+
+# List recent Inbox messages (limit, unread, from, since, search)
+phoneclaw outlook messages --json '{"account":"covernode","limit":5}'
+phoneclaw outlook messages --json '{"account":"adga","unread":true}'
+phoneclaw outlook messages --json '{"account":"adga","search":"invoice"}'
+
+# Read one message body by id (plain text extraction)
+phoneclaw outlook read --json '{"account":"adga","id":"<message-id>"}'
+
+# Search mail
+phoneclaw outlook search --json '{"account":"covernode","query":"meeting notes"}'
+
+# Calendar agenda in America/New_York
+phoneclaw outlook agenda --json '{"account":"covernode","today":true}'
+phoneclaw outlook agenda --json '{"account":"adga","start_date":"2026-10-01","end_date":"2026-10-07"}'
+```
+
+On-VM verification (bridge host, as `phoneclaw`):
+
+```bash
+sudo -u phoneclaw node /opt/phoneclaw/bin/phoneclaw.mjs outlook status --json '{"account":"adga"}'
+sudo -u phoneclaw node /opt/phoneclaw/bin/phoneclaw.mjs outlook messages --json '{"account":"covernode","limit":5}'
+sudo -u phoneclaw node /opt/phoneclaw/bin/phoneclaw.mjs outlook read --json '{"account":"adga","id":"<message-id>"}'
+sudo -u phoneclaw node /opt/phoneclaw/bin/phoneclaw.mjs outlook agenda --json '{"account":"covernode","today":true}'
+```
+
 ## URL Fetching
 
 `url_fetch` is for exact URLs, not general search. It is useful when the agent needs to inspect a link from an email, fetch a full webpage, verify whether an unsubscribe/preference page loaded, or submit a simple confirmed form POST without a browser.

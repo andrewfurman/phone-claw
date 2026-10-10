@@ -11,6 +11,7 @@ import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSe
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
 import { slackAuthStatus, slackConversationsList, slackRead, slackSearchMessages, slackUnreadSummary, slackUserInfo, slackMessageSend, slackReact } from "./slack-tools.mjs";
+import { outlookAgenda, outlookMessages, outlookRead, outlookSearch, outlookStatus } from "./outlook-tools.mjs";
 
 // Existing domain behavior behind the phoneclaw CLI, including caches and async jobs.
 // Native CLIs do not need entries here: install/configure them and use run_cli args.
@@ -471,4 +472,35 @@ export const commandAdapters = {
     confirmation_id: body.confirmation_id || body.confirm_id,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   }, { confirmed: context.confirmed }),
+  // Outlook (read-only) – backed by signed-in Chrome sessions on the bridge VM
+  "outlook status": (body, context) => outlookStatus({
+    account: body.account,
+  }),
+  "outlook messages": (body, context) => outlookMessages({
+    account: body.account,
+    limit: body.limit || body.max_results || body.maxResults,
+    unread: body.unread,
+    from: body.from || body.sender || body.from_email || body.fromEmail,
+    since: body.since || body.start_date || body.startDate,
+    search: body.search || body.query || body.search_query || body.searchQuery,
+    maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
+  }),
+  "outlook read": (body, context) => outlookRead({
+    account: body.account,
+    id: body.id || body.message_id || body.messageId,
+    maxBodyChars: body.max_body_chars || body.maxBodyChars,
+  }),
+  "outlook search": (body, context) => outlookSearch({
+    account: body.account,
+    query: body.query || body.search || body.search_query || body.searchQuery,
+    limit: body.limit || body.max_results || body.maxResults,
+  }),
+  "outlook agenda": (body, context) => outlookAgenda({
+    account: body.account,
+    today: body.today,
+    tomorrow: body.tomorrow,
+    start_date: body.start_date || body.startDate,
+    end_date: body.end_date || body.endDate,
+    limit: body.limit || body.max_results || body.maxResults,
+  }),
 };

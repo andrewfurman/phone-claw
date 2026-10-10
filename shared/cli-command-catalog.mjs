@@ -898,6 +898,79 @@ export const CLI_COMMAND_CATALOG = [
       "max_raw_bytes",
       "maxRawBytes"
     ]
+  },
+  {
+    "command": "outlook status",
+    "legacy_path": "/cli/outlook/status",
+    "parameters": [
+      "account"
+    ]
+  },
+  {
+    "command": "outlook messages",
+    "legacy_path": "/cli/outlook/messages",
+    "parameters": [
+      "account",
+      "limit",
+      "max_results",
+      "maxResults",
+      "unread",
+      "from",
+      "sender",
+      "from_email",
+      "fromEmail",
+      "since",
+      "start_date",
+      "startDate",
+      "search",
+      "query",
+      "search_query",
+      "searchQuery",
+      "max_raw_bytes",
+      "maxRawBytes"
+    ]
+  },
+  {
+    "command": "outlook read",
+    "legacy_path": "/cli/outlook/read",
+    "parameters": [
+      "account",
+      "id",
+      "message_id",
+      "messageId",
+      "max_body_chars",
+      "maxBodyChars"
+    ]
+  },
+  {
+    "command": "outlook search",
+    "legacy_path": "/cli/outlook/search",
+    "parameters": [
+      "account",
+      "query",
+      "search",
+      "search_query",
+      "searchQuery",
+      "limit",
+      "max_results",
+      "maxResults"
+    ]
+  },
+  {
+    "command": "outlook agenda",
+    "legacy_path": "/cli/outlook/agenda",
+    "parameters": [
+      "account",
+      "today",
+      "tomorrow",
+      "start_date",
+      "startDate",
+      "end_date",
+      "endDate",
+      "limit",
+      "max_results",
+      "maxResults"
+    ]
   }
 ];
 export const LEGACY_TOOL_PATHS = CLI_COMMAND_CATALOG.map(item => item.legacy_path);
