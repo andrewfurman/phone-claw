@@ -8,7 +8,7 @@ const DEFAULT_MAX_RAW_BYTES = 120_000;
 const MAX_RAW_BYTES = 250_000;
 const DEFAULT_LIST_LIMIT = 200;
 const MAX_LIST_LIMIT = 500;
-const DEFAULT_READ_LIMIT = 100;
+const DEFAULT_READ_LIMIT = 10;
 const MAX_READ_LIMIT = 500;
 const DEFAULT_SEARCH_LIMIT = 20;
 const MAX_SEARCH_LIMIT = 100;
@@ -99,6 +99,8 @@ export async function slackRead({
   const args = ["conversations", "read"];
   if (/^https?:\/\//.test(target)) args.push("--permalink", target);
   else args.push(target);
+  // Honor caller-provided limit and keep output voice-friendly by default.
+  args.push("--limit", String(bounded));
   if (thread_ts) args.push("--thread-ts", String(thread_ts));
   if (toBoolean(exclude_replies ?? exclude_replies_bool)) args.push("--exclude-replies");
   if (toBoolean(exclude_self ?? exclude_self_bool)) args.push("--exclude-self");
@@ -113,18 +115,20 @@ export async function slackRead({
   const body = result.parsed_json || {};
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const withTimes = messages.map((m) => addNyTime(m));
+  // Trim to compact, voice-friendly objects and defensively enforce the limit.
+  const users = Array.isArray(body.users) ? body.users : [];
+  const trimmed = trimSlackMessages(withTimes.slice(0, bounded), users);
   return {
     ...compactSlackResult(result),
     ok: true,
     status: "ok",
     action: thread_ts ? "slack_thread_read" : "slack_read",
     provider: "slackcli",
-    returned_count: withTimes.length,
+    returned_count: trimmed.length,
     time_zone: "America/New_York",
-    messages: withTimes,
+    messages: trimmed,
     next_oldest: body.next_oldest ?? null,
     has_more: Boolean(body.has_more),
-    users: Array.isArray(body.users) ? body.users : undefined,
     answer_text: withTimes.length
       ? `${withTimes.length} Slack message${withTimes.length === 1 ? "" : "s"} returned.`
       : "No Slack messages matched.",
@@ -533,6 +537,41 @@ function addNyTime(message) {
   const ts = String(message?.ts || "");
   const ny = ts ? formatNyTime(ts) : "";
   return ny ? { ...message, time_ny: ny } : message;
+}
+
+function trimSlackMessages(messages, users) {
+  const userIndex = indexSlackUsers(users);
+  return messages.map(m => {
+    const name =
+      m?.user_profile?.real_name ||
+      m?.user_profile?.name ||
+      userIndex.get(String(m?.user || "")) ||
+      String(m?.username || "");
+    const base = {
+      user_name: name || undefined,
+      text: String(m?.text ?? ""),
+      time_ny: String(m?.time_ny || ""),
+      ts: m?.ts ? String(m.ts) : undefined,
+    };
+    if (m?.thread_ts) base.thread_ts = String(m.thread_ts);
+    if (typeof m?.reply_count === "number") base.reply_count = m.reply_count;
+    return base;
+  });
+}
+
+function indexSlackUsers(users) {
+  const map = new Map();
+  for (const u of Array.isArray(users) ? users : []) {
+    const id = String(u?.id || "");
+    const name =
+      u?.profile?.real_name ||
+      u?.real_name ||
+      u?.profile?.display_name ||
+      u?.name ||
+      "";
+    if (id && name) map.set(id, String(name));
+  }
+  return map;
 }
 
 function formatNyTime(slackTs) {
