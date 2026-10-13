@@ -779,7 +779,7 @@ async function handleTwilioCall(request, env, direction) {
     return xml(twiml);
   } catch (error) {
     console.error(error);
-    return xml(sayTwiml("The voice agent connection failed. Please try again later."));
+    return xml(sayTwiml(error?.name === "TimeoutError" ? "PhoneClaw's voice service, Eleven Labs, is not responding right now. Please try again in a few minutes." : "The voice agent connection failed. Please try again later."));
   }
 }
 
@@ -790,6 +790,8 @@ async function registerElevenLabsTwilioCall(
   const apiBase = env.ELEVENLABS_API_BASE || "https://api.elevenlabs.io";
   const response = await fetch(`${apiBase}/v1/convai/twilio/register-call`, {
     method: "POST",
+    // Twilio waits 15s for TwiML; answer with a spoken message instead of a 502 when ElevenLabs hangs (2026-10-13 outage).
+    signal: AbortSignal.timeout(Number(env.ELEVENLABS_REGISTER_TIMEOUT_MS) || 9000),
     headers: {
       "content-type": "application/json",
       "xi-api-key": env.ELEVENLABS_API_KEY,
