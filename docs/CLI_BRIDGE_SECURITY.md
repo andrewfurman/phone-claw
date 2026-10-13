@@ -79,7 +79,7 @@ The cause was an ElevenLabs partial outage that began at 09:21 UTC, "Multiple US
 
 At first this was put down to Cloudflare's Ashburn (IAD) maintenance at the same time. That was wrong: automated test calls passed at 09:41 and 09:43 only because the outage was intermittent.
 
-The Worker now aborts `register-call` after `ELEVENLABS_REGISTER_TIMEOUT_MS`, default 9000. Twilio allows 15 s, and the recent-context fetch can take up to 1.5 s more. When the timeout fires, the caller hears "PhoneClaw's voice service, Eleven Labs, is not responding right now" instead of a Twilio error. To diagnose a failed call, check status.elevenlabs.io as well as Twilio Monitor alerts.
+The Worker now aborts `register-call` after `ELEVENLABS_REGISTER_TIMEOUT_MS`, default 9000. Twilio allows 15 s, and the recent-context fetch can take up to 1.5 s more. When the timeout fires, the caller hears "Eleven Labs is currently down. Please check the Eleven Labs status page." (Andrew's wording; also on a register-call 5xx or 429) instead of a Twilio error. To diagnose a failed call, check status.elevenlabs.io as well as Twilio Monitor alerts.
 
 The PhoneClaw number now has:
 - **Voice URL:** the same URL as before, plus Twilio [connection overrides](https://www.twilio.com/docs/usage/webhooks/webhooks-connection-overrides) `#rc=2&rp=all&ct=4000`, which retry twice on any error or a 4 s connect timeout. The fragment is never sent to the Worker, so token checks are unchanged.

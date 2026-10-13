@@ -720,6 +720,7 @@ function base64UrlDecode(value) {
   return atob(padded);
 }
 
+const ELEVENLABS_DOWN_MESSAGE = "Eleven Labs is currently down. Please check the Eleven Labs status page.";  // Andrew, 2026-10-13
 async function handleTwilioCall(request, env, direction) {
   try {
     if (!isValidTwilioWebhookRequest(request, env)) {
@@ -779,7 +780,7 @@ async function handleTwilioCall(request, env, direction) {
     return xml(twiml);
   } catch (error) {
     console.error(error);
-    return xml(sayTwiml(error?.name === "TimeoutError" ? "PhoneClaw's voice service, Eleven Labs, is not responding right now. Please try again in a few minutes." : "The voice agent connection failed. Please try again later."));
+    return xml(sayTwiml(error?.name === "TimeoutError" || error?.elevenLabsDown ? ELEVENLABS_DOWN_MESSAGE : "The voice agent connection failed. Please try again later."));
   }
 }
 
@@ -818,9 +819,9 @@ async function registerElevenLabsTwilioCall(
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(
-      `ElevenLabs register-call failed (${response.status}): ${text.slice(0, 800)}`
-    );
+    const failure = new Error(`ElevenLabs register-call failed (${response.status}): ${text.slice(0, 800)}`);
+    failure.elevenLabsDown = response.status >= 500 || response.status === 429;
+    throw failure;
   }
 
   return attachStreamStatusCallback(
