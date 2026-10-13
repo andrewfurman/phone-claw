@@ -71,6 +71,16 @@ Three independent gates; keep all of them on.
 2. **The bridge's own Twilio call routes are off** (#138). `cli-bridge.aifurman.com` is public through the tunnel; its `/twilio/inbound|outbound|stream-status|call-status` routes exist only with `PHONECLAW_BRIDGE_TWILIO_ROUTES=true`, because that code path has no token or allowlist on the bridge. `/health` reports `bridge_twilio_routes_enabled`.
 3. **The ElevenLabs agent requires authorization** (`platform_settings.auth.enable_auth: true`). The agent id is in this public repo, so without this anyone could open a conversation (and use its tools) directly through ElevenLabs. With it, a public connection closes with "This agent requires conversations to be authorized"; Twilio `register-call` (server-side, API key) and the live test scripts (signed URLs) keep working. A backup of the previous platform settings is at `/var/lib/phoneclaw/agent-backups/` on the bridge.
 
+### Webhook retries and fallback (2026-10-13)
+
+On 2026-10-13 at 09:23 UTC, three calls from Andrew's cell failed with Twilio error 11200. Twilio got HTTP 502 from `webhooks.aifurman.com/twilio/inbound`. That 502 came from the Cloudflare edge, not the Worker. The Worker's inbound handler catches its own errors and always returns TwiML. The cause was Cloudflare's Ashburn (IAD) incident, a third-party circuit maintenance running until 10:00 UTC. Twilio's US1 webhooks go through IAD. The Worker had not been redeployed since 2026-09-18.
+
+The PhoneClaw number now has:
+- **Voice URL:** the same URL as before, plus Twilio [connection overrides](https://www.twilio.com/docs/usage/webhooks/webhooks-connection-overrides) `#rc=2&rp=all&ct=4000`, which retry twice on any error or a 4 s connect timeout. The fragment is never sent to the Worker, so token checks are unchanged.
+- **Voice fallback URL:** the same Worker on its second custom domain, `phoneclaw.aifurman.com/twilio/inbound?token=…`, with the same overrides.
+
+Both still pass the Worker's token and allowlist gates. To diagnose a failed call, check Twilio Monitor alerts (`monitor.twilio.com/v1/Alerts`) together with [cloudflarestatus.com](https://www.cloudflarestatus.com).
+
 Re-verify after any Worker, agent, or tunnel change: unauthenticated POST to both hostnames' `/twilio/inbound` (expect 403/404), the public agent WebSocket (expect close code 3000), then `npm run twilio:call:test -- --universal --place-call`.
 
 ## Lockdown Checklist
