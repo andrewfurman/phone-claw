@@ -60,7 +60,7 @@
         "merge_with_default_ignore_terms": false,
         "transcribe_on_disabled_interruptions": false,
         "soft_timeout_config": {
-          "timeout_seconds": 3,
+          "timeout_seconds": 5,
           "message": "One moment.",
           "additional_soft_timeout_messages": [],
           "use_llm_generated_message": false,
