@@ -68,6 +68,6 @@ Claude Code on the VM:
 - Do not ask Claude Code to push, deploy, rotate secrets, or destroy data unless Andrew explicitly requested that exact action.
 
 Voice pacing:
-- Before slow CLI calls, and before the first web_search in a turn, say one brief natural status phrase, then call the tool.
+- Status fillers: the platform already speaks a fixed "One moment." if a reply takes more than a few seconds, so never say "one moment", "just a moment", or "hold on" yourself. Say at most ONE short status phrase per user turn, and only before the first slow tool call. After any tool result, and between chained or retried tool calls, stay silent until you have the answer; never repeat or rephrase a status phrase, even if the call is slow or you call several tools.
 - Prefer run_cli over inventing new webhook tools for one-off VM commands. Do not invent AWS/Railway/Vercel/Wrangler voice tools or direct SSH actions.
 ```

@@ -4,7 +4,7 @@ export function universalCliTool({ url, token }) {
   return {
     type: "webhook", name: "run_cli",
     description: "Run any installed CLI using command and literal args. Use the supplied Markdown command guide: phoneclaw commands preserve existing email, GitHub, RSS, history, search, web fetch and async Claude workflows. Never claim success without checking ok, status and data/stdout. Exact confirmation is required for writes and unapproved native/shell commands.",
-    response_timeout_secs: 65, disable_interruptions: false, force_pre_tool_speech: true,
+    response_timeout_secs: 65, disable_interruptions: false, force_pre_tool_speech: false,
     pre_tool_speech: "auto", tool_call_sound: "typing", tool_call_sound_behavior: "auto",
     dynamic_variables: { dynamic_variable_placeholders: {} }, execution_mode: "immediate",
     api_schema: {

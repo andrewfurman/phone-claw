@@ -112,7 +112,7 @@ Attach or refresh the live ElevenLabs tool definitions with:
 npm run elevenlabs:github:configure
 ```
 
-The configured webhook tools use ElevenLabs' `typing` tool-call sound with `pre_tool_speech=auto` for slower search, GitHub, email, and Otter operations. The agent prompt also tells the model to say a brief status phrase before slow calls.
+The configured webhook tools use ElevenLabs' `typing` tool-call sound with `pre_tool_speech=auto` for slower search, GitHub, email, and Otter operations. The agent prompt tells the model to say at most one brief status phrase per user turn (never "one moment", which the soft-timeout filler already covers) and to stay silent between chained tool calls.
 
 Export a public-safe snapshot of the live agent and tools with:
 

@@ -4,6 +4,12 @@ Changes to the ElevenLabs agent's voice (TTS) and turn-timing settings, which li
 rather than in code. The repo snapshot is `elevenlabs-setup/andrew-assistant-agent.config.json`; refresh it with
 `setup-and-testing-scripts/export-elevenlabs-agent-config.mjs` after dashboard edits.
 
+## 2026-10-15: stop repeated "One moment" fillers (#171)
+
+**Cause.** Three stacked sources: (1) `run_cli` was provisioned with `force_pre_tool_speech: true` (shared/universal-cli-agent.mjs), so the LLM had to speak before every tool call, including chained and retried ones; (2) the prompt said to give a status phrase "before slow CLI calls"; (3) `turn.soft_timeout_config` fires "One moment." after 3 s of silence on every generation, and each tool result starts a new generation.
+
+**Fix.** Prompt allows one status phrase per user turn and forbids "one moment" wording; `force_pre_tool_speech` is now `false`; soft timeout raised 3 s to 5 s in the repo snapshot. Live step still needed: set `turn.soft_timeout_config.timeout_seconds` to `5` in the dashboard, then run `npm run elevenlabs:tools:configure -- --apply` to sync the prompt and tool.
+
 ## 2026-10-05: back to Flash v2, fixed "One moment." filler after 3 seconds
 
 **Why.** Andrew switched the agent to Eleven v4 in the dashboard (no commit) and heard "uh/um" fillers and echoey
