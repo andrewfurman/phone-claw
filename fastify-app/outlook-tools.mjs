@@ -402,8 +402,30 @@ export async function outlookAgenda({
 // Helpers
 // ------------------------------
 
+// Maps spoken/typed account names, labels and email domains to a work account key.
+// Returns "covernode", "adga", or null when the value is not a work account
+// (e.g. empty, "all", or a Gmail/Himalaya account name).
+export function resolveWorkAccountAlias(value) {
+  const raw = normalizeString(typeof value === "string" ? value : "").toLowerCase();
+  if (!raw) return null;
+  const compact = raw.replace(/^.*@/, "").replace(/[^a-z0-9]/g, "");
+  const full = raw.replace(/[^a-z0-9]/g, "");
+  for (const candidate of [full, compact]) {
+    if (["covernode", "covernodeio", "covernodeoutlook", "covernodework"].includes(candidate)) return "covernode";
+    if (["adga", "adgacom", "adgaoutlook", "adgawork"].includes(candidate)) return "adga";
+  }
+  return null;
+}
+
+export function listWorkAccounts() {
+  return [
+    { account: "covernode", email_domain: "covernode.io", provider: "outlook", access: "read-only" },
+    { account: "adga", email_domain: "ad-ga.com", provider: "outlook", access: "read-only" },
+  ];
+}
+
 async function resolveAccounts(scope) {
-  const s = normalizeString(scope);
+  const s = normalizeString(scope).toLowerCase() === "all" ? "all" : (resolveWorkAccountAlias(scope) || normalizeString(scope));
   if (!s || s === "all") return [ACCOUNT_CONFIG.covernode, ACCOUNT_CONFIG.adga];
   const conf = ACCOUNT_CONFIG[s];
   if (!conf) throw new Error(`Unknown account '${scope}'. Use covernode, adga, or all.`);

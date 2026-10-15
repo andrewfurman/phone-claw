@@ -224,6 +224,19 @@ sudo -u phoneclaw node /opt/phoneclaw/bin/phoneclaw.mjs outlook read --json '{"a
 sudo -u phoneclaw node /opt/phoneclaw/bin/phoneclaw.mjs outlook agenda --json '{"account":"covernode","today":true}'
 ```
 
+### Work accounts through the generic email commands
+
+`phoneclaw himalaya email-list` and `email-read` accept `account` values that route to the Outlook backend above instead of Himalaya/Gmail: `covernode` or `adga`, plus aliases such as `cover node`, `AD-GA`, `covernode.io`, `ad-ga.com` or the full address. Omitting `account` still means personal Gmail. `phoneclaw himalaya accounts` lists the available accounts.
+
+```bash
+phoneclaw himalaya accounts
+phoneclaw himalaya email-list --json '{"account":"covernode","unread":true,"limit":5}'
+phoneclaw himalaya email-list --json '{"account":"adga","query":"invoice"}'
+phoneclaw himalaya email-read --json '{"account":"adga","id":"<message-id>"}'
+```
+
+Work accounts are read-only: send, forward, draft, archive, image and mark-as-read commands with a work `account` return `work_account_read_only` and never fall back to Gmail. Write actions for work accounts are deliberately not implemented. Outlook work tenants generally block IMAP/basic auth, so no Himalaya IMAP account is configured.
+
 ## URL Fetching
 
 `url_fetch` is for exact URLs, not general search. It is useful when the agent needs to inspect a link from an email, fetch a full webpage, verify whether an unsubscribe/preference page loaded, or submit a simple confirmed form POST without a browser.

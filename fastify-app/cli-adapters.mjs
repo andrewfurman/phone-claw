@@ -11,10 +11,28 @@ import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSe
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
 import { slackAuthStatus, slackConversationsList, slackRead, slackSearchMessages, slackUnreadSummary, slackUserInfo, slackMessageSend, slackReact } from "./slack-tools.mjs";
-import { outlookAgenda, outlookMessages, outlookRead, outlookSearch, outlookStatus } from "./outlook-tools.mjs";
+import { listWorkAccounts, outlookAgenda, outlookMessages, outlookRead, outlookSearch, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
 
 // Existing domain behavior behind the phoneclaw CLI, including caches and async jobs.
 // Native CLIs do not need entries here: install/configure them and use run_cli args.
+// Work accounts (CoverNode / AD-GA Outlook) are read-only and served by the Outlook
+// browser-session backend. Himalaya write/media commands must never silently fall
+// through to the default Gmail account when a work account is named.
+const WORK_ACCOUNT_BLOCKED_STATUS = "work_account_read_only";
+function workAccountBlocked(body) {
+  const key = resolveWorkAccountAlias(body?.account);
+  if (!key) return null;
+  return {
+    ok: false,
+    status: WORK_ACCOUNT_BLOCKED_STATUS,
+    account: key,
+    answer_text: `The ${key} work account is read-only. I can list, search and read its email, but not send, forward, draft, archive or mark messages.`,
+  };
+}
+function guardWorkAccount(adapter) {
+  return (body, context) => workAccountBlocked(body) || adapter(body, context);
+}
+
 export const commandAdapters = {
   "web search": (body, context) => basicWebSearch({ query: body.query || body.search_query || body.searchQuery, maxResults: body.max_results || body.maxResults || 5, provider: process.env.WEB_SEARCH_PROVIDER, tavilyApiKey: process.env.TAVILY_API_KEY, tavilySearchDepth: process.env.TAVILY_SEARCH_DEPTH }),
   "github summary": (body, context) => githubSummaryGh({
@@ -64,7 +82,25 @@ export const commandAdapters = {
       confirmed: context.confirmed,
       maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
     }),
-  "himalaya email-list": (body, context) => himalayaEmailList({
+  "himalaya accounts": () => ({
+    ok: true,
+    status: "ok",
+    accounts: [
+      { account: "default", provider: "gmail", access: "read/draft (Himalaya)", note: "Omit account for Andrew's personal Gmail." },
+      ...listWorkAccounts(),
+    ],
+    answer_text: "Accounts: personal Gmail (default), covernode (read-only Outlook work email), adga (read-only Outlook work email). Pass account=covernode or account=adga to himalaya email-list / email-read.",
+  }),
+  "himalaya email-list": (body, context) => {
+    const work = resolveWorkAccountAlias(body.account);
+    if (work) {
+      const query = body.query || body.search_query || body.searchQuery;
+      const limit = body.page_size || body.pageSize || body.max_results || body.maxResults || body.limit;
+      return query
+        ? outlookSearch({ account: work, query, limit })
+        : outlookMessages({ account: work, limit, unread: body.unread, from: body.from, since: body.since, maxRawBytes: body.max_raw_bytes || body.maxRawBytes });
+    }
+    return himalayaEmailList({
     query: body.query || body.search_query || body.searchQuery,
     folder: body.folder,
     account: body.account,
@@ -74,8 +110,14 @@ export const commandAdapters = {
     maxPages: body.max_pages || body.maxPages,
     maxItems: body.max_items || body.maxItems,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
-  }),
-  "himalaya email-read": (body, context) => himalayaEmailRead({
+    });
+  },
+  "himalaya email-read": (body, context) => {
+    const work = resolveWorkAccountAlias(body.account);
+    if (work) {
+      return outlookRead({ account: work, id: body.id || body.envelope_id || body.envelopeId, maxBodyChars: body.max_body_chars || body.maxBodyChars });
+    }
+    return himalayaEmailRead({
     id: body.id || body.envelope_id || body.envelopeId,
     folder: body.folder,
     account: body.account,
@@ -84,7 +126,8 @@ export const commandAdapters = {
     includeRaw: body.include_raw ?? body.includeRaw,
     maxBodyChars: body.max_body_chars || body.maxBodyChars,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
-  }),
+    });
+  },
     "image inspect": (body, context) => phoneclawImageInspect({
     id: body.id || body.envelope_id || body.envelopeId,
     envelopeId: body.envelope_id || body.envelopeId,
@@ -504,3 +547,11 @@ export const commandAdapters = {
     limit: body.limit || body.max_results || body.maxResults,
   }),
 };
+
+for (const name of [
+  "himalaya email-image-inspect", "himalaya email-images", "himalaya email-archive", "himalaya draft-create",
+  "himalaya draft-reply", "himalaya email-forward", "himalaya reply-all-draft", "himalaya forward-draft",
+  "himalaya email-send", "image inspect",
+]) {
+  if (commandAdapters[name]) commandAdapters[name] = guardWorkAccount(commandAdapters[name]);
+}
