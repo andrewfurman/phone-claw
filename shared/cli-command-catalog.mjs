@@ -99,9 +99,18 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "himalaya accounts",
+    "legacy_path": "/cli/himalaya/accounts",
+    "parameters": []
+  },
+  {
     "command": "himalaya email-list",
     "legacy_path": "/cli/himalaya/email-list",
     "parameters": [
+      "unread",
+      "from",
+      "since",
+      "limit",
       "query",
       "search_query",
       "searchQuery",

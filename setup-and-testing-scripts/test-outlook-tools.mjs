@@ -220,6 +220,38 @@ const { outlookAgenda, outlookMessages, outlookRead, outlookSearch, outlookStatu
   assert.match(String(r.end_date), /T23:59:59$/);
 }
 
+// work-account email routing through the generic himalaya email commands
+{
+  const { resolveWorkAccountAlias } = await import("../fastify-app/outlook-tools.mjs");
+  const { commandAdapters } = await import("../fastify-app/cli-adapters.mjs");
+  for (const a of ["covernode", "CoverNode", "cover node", "cover-node", "andrew@covernode.io", "covernode.io"]) assert.equal(resolveWorkAccountAlias(a), "covernode", a);
+  for (const a of ["adga", "AD-GA", "ad ga", "andrew@ad-ga.com", "ad-ga.com"]) assert.equal(resolveWorkAccountAlias(a), "adga", a);
+  for (const a of ["", undefined, "all", "gmail", "default", "andrew@gmail.com"]) assert.equal(resolveWorkAccountAlias(a), null, String(a));
+
+  const accounts = await commandAdapters["himalaya accounts"]({}, {});
+  assert.deepEqual(accounts.accounts.map((a) => a.account), ["default", "covernode", "adga"]);
+
+  const list = await commandAdapters["himalaya email-list"]({ account: "cover node", page_size: 2 }, {});
+  assert.equal(list.ok, true);
+  assert.equal(list.items[0].id, "MSG_A");
+  const found = await commandAdapters["himalaya email-list"]({ account: "AD-GA", query: "x" }, {});
+  assert.equal(found.items[0].id, "MSG_S");
+  const read = await commandAdapters["himalaya email-read"]({ account: "andrew@covernode.io", id: "READ_ID" }, {});
+  assert.equal(read.ok, true);
+  assert.match(read.body_text || "", /Line 1/);
+
+  // aliases also work on the outlook commands themselves
+  const viaAlias = await outlookMessages({ account: "ad-ga", limit: 1 });
+  assert.equal(viaAlias.ok, true);
+
+  // write/media actions on a work account are refused, never sent to Gmail
+  for (const name of ["himalaya email-send", "himalaya email-archive", "himalaya email-forward", "himalaya draft-create", "himalaya reply-all-draft", "himalaya forward-draft", "himalaya email-images"]) {
+    const blocked = await commandAdapters[name]({ account: "covernode", id: "1", to: "a@b.c", subject: "s", body: "b" }, { confirmed: true });
+    assert.equal(blocked.ok, false, name);
+    assert.equal(blocked.status, "work_account_read_only", name);
+  }
+}
+
 server.close();
 
 console.log(JSON.stringify({ ok: true, status: "ok", tests: "outlook-tools", http_port: port }, null, 2));
