@@ -244,11 +244,17 @@ const { outlookAgenda, outlookMessages, outlookRead, outlookSearch, outlookStatu
   const viaAlias = await outlookMessages({ account: "ad-ga", limit: 1 });
   assert.equal(viaAlias.ok, true);
 
-  // write/media actions on a work account are refused, never sent to Gmail
-  for (const name of ["himalaya email-send", "himalaya email-archive", "himalaya email-forward", "himalaya draft-create", "himalaya reply-all-draft", "himalaya forward-draft", "himalaya email-images"]) {
+  // send/forward/archive/media on a work account are refused, never sent to Gmail
+  for (const name of ["himalaya email-send", "himalaya email-archive", "himalaya email-forward", "himalaya forward-draft", "himalaya email-images"]) {
     const blocked = await commandAdapters[name]({ account: "covernode", id: "1", to: "a@b.c", subject: "s", body: "b" }, { confirmed: true });
     assert.equal(blocked.ok, false, name);
     assert.equal(blocked.status, "work_account_read_only", name);
+  }
+
+  // drafts on a work account go to Outlook (and still need confirmation), never to Gmail
+  for (const name of ["himalaya draft-create", "himalaya reply-all-draft", "himalaya draft-reply"]) {
+    const pending = await commandAdapters[name]({ account: "covernode", id: "1", to: "a@b.c", subject: "s", body: "b" }, {});
+    assert.equal(pending.status, "confirmation_required", name);
   }
 }
 

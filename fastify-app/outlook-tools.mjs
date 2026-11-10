@@ -3,7 +3,9 @@ import { htmlToText } from "html-to-text";
 // Read-only Outlook access via two already-signed-in Chrome sessions on the bridge VM.
 // This module talks to the local Chrome DevTools Protocol (CDP) to extract a short-lived
 // Graph access token from the Outlook web app's MSAL cache, then calls Microsoft Graph.
-// No tokens are ever logged. All commands are strictly read-only.
+// No tokens are ever logged. Commands are read-only, except the two draft commands
+// (outlookDraftReply / outlookDraftNew), which save a draft like Outlook web's
+// Reply / Reply all / New message do. Nothing here ever sends mail.
 //
 // Production assumptions from issue #161:
 // - CoverNode account: Chrome DevTools on 127.0.0.1:9230, Outlook tab at https://outlook.cloud.microsoft/mail/
@@ -405,6 +407,195 @@ export async function outlookAgenda({
 // Maps spoken/typed account names, labels and email domains to a work account key.
 // Returns "covernode", "adga", or null when the value is not a work account
 // (e.g. empty, "all", or a Gmail/Himalaya account name).
+// ---------------------------------------------------------------------------
+// Drafts. Mirrors Outlook web: Reply / Reply all create a draft in the thread
+// with the quoted original below your text; New message saves to Drafts.
+// These only create or update drafts. There is deliberately no send path.
+// ---------------------------------------------------------------------------
+
+export async function outlookDraftReply({
+  account,
+  id,
+  body,
+  bodyHtml,
+  replyAll = false,
+  confirmed = false,
+} = {}) {
+  const messageId = normalizeString(id);
+  if (!messageId) return missingField("id", "An Outlook message id is required.");
+  const content = draftContent({ body, bodyHtml });
+  if (!content) return missingField("body", "Draft text is required.");
+  const target = singleWorkAccount(account);
+  if (!target) return missingField("account", "Pick one work account: covernode or adga.");
+  const all = toBoolean(replyAll);
+  if (!toBoolean(confirmed)) {
+    return draftConfirmationRequired(`Confirm that Andrew wants to save a ${all ? "reply-all" : "reply"} draft in ${target.label} Outlook.`);
+  }
+  const auth = await getDraftToken(target);
+  if (!auth) return noDraftToken(target);
+
+  const created = await restWrite(auth.token, "POST", `me/messages/${encodeURIComponent(messageId)}/${all ? "createreplyall" : "createreply"}`, {});
+  if (!created.ok) return draftUpstreamError(target, created, "reply_draft_failed");
+  const draft = created.body || {};
+  const existing = draft.Body || {};
+  const merged = prependToBody(existing, content);
+  const patched = await restWrite(auth.token, "PATCH", `me/messages/${encodeURIComponent(draft.Id)}`, { Body: merged });
+  if (!patched.ok) return draftUpstreamError(target, patched, "reply_draft_failed");
+  return draftResult(target, patched.body || draft, all ? "Reply-all draft saved." : "Reply draft saved.");
+}
+
+export async function outlookDraftNew({
+  account,
+  to,
+  cc,
+  subject,
+  body,
+  bodyHtml,
+  confirmed = false,
+} = {}) {
+  const toList = parseRecipients(to);
+  if (!toList.length) return missingField("to", "At least one recipient is required.");
+  const content = draftContent({ body, bodyHtml });
+  if (!content) return missingField("body", "Draft text is required.");
+  const target = singleWorkAccount(account);
+  if (!target) return missingField("account", "Pick one work account: covernode or adga.");
+  if (!toBoolean(confirmed)) {
+    return draftConfirmationRequired(`Confirm that Andrew wants to save a new draft in ${target.label} Outlook.`);
+  }
+  const auth = await getDraftToken(target);
+  if (!auth) return noDraftToken(target);
+  // POST /me/messages saves the message to Drafts without sending it.
+  const created = await restWrite(auth.token, "POST", "me/messages", {
+    Subject: normalizeString(subject),
+    Body: content,
+    ToRecipients: toList,
+    CcRecipients: parseRecipients(cc),
+  });
+  if (!created.ok) return draftUpstreamError(target, created, "new_draft_failed");
+  return draftResult(target, created.body || {}, "Draft saved.");
+}
+
+function singleWorkAccount(account) {
+  const key = resolveWorkAccountAlias(account);
+  return key && ACCOUNT_CONFIG[key] ? ACCOUNT_CONFIG[key] : null;
+}
+
+async function getDraftToken(target) {
+  const auth = await safeGetBestToken(target, "mail_write").catch(() => null);
+  return auth?.token ? auth : null;
+}
+
+function draftContent({ body, bodyHtml }) {
+  const html = normalizeString(bodyHtml);
+  if (html) return { ContentType: "HTML", Content: html };
+  const text = normalizeString(body);
+  if (!text) return null;
+  return { ContentType: "HTML", Content: textToHtml(text) };
+}
+
+function textToHtml(text) {
+  const esc = String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return esc
+    .split(/\n{2,}/)
+    .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+// Puts the new text above the quoted original, where Outlook web's cursor starts.
+function prependToBody(existing, content) {
+  const current = String(existing?.Content || "");
+  if (String(existing?.ContentType || "").toLowerCase() === "text") {
+    const plain = content.Content.replace(/<br>/g, "\n").replace(/<\/p><p>/g, "\n\n").replace(/<[^>]+>/g, "")
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    return { ContentType: "Text", Content: `${plain}\n\n${current}` };
+  }
+  const block = `<div>${content.Content}</div><br>`;
+  const open = current.match(/<body[^>]*>/i);
+  if (!open) return { ContentType: "HTML", Content: block + current };
+  const at = open.index + open[0].length;
+  return { ContentType: "HTML", Content: current.slice(0, at) + block + current.slice(at) };
+}
+
+function parseRecipients(value) {
+  const items = Array.isArray(value) ? value : String(value || "").split(/[,;]/);
+  return items
+    .map((v) => (typeof v === "object" && v ? v : String(v).trim()))
+    .filter(Boolean)
+    .map((v) => {
+      if (typeof v === "object") {
+        const address = normalizeString(v.address || v.email);
+        return address ? { EmailAddress: { Address: address, Name: normalizeString(v.name) || undefined } } : null;
+      }
+      const m = v.match(/^(.*?)<\s*([^>]+)\s*>$/);
+      const address = (m ? m[2] : v).trim();
+      const name = m ? m[1].replace(/^"|"$/g, "").trim() : "";
+      return /@/.test(address) ? { EmailAddress: { Address: address, ...(name ? { Name: name } : {}) } } : null;
+    })
+    .filter(Boolean);
+}
+
+function recipientsOut(list) {
+  return (list || []).map((r) => ({ name: r?.EmailAddress?.Name || "", address: r?.EmailAddress?.Address || "" }));
+}
+
+function draftResult(target, msg, answer) {
+  return {
+    ok: true,
+    status: "draft_saved",
+    account: target.label,
+    id: String(msg.Id || ""),
+    subject: String(msg.Subject || ""),
+    to: recipientsOut(msg.ToRecipients),
+    cc: recipientsOut(msg.CcRecipients),
+    is_draft: msg.IsDraft !== false,
+    web_link: String(msg.WebLink || ""),
+    answer_text: `${answer} It's in ${target.label} Outlook Drafts and has not been sent.`,
+  };
+}
+
+function draftConfirmationRequired(message) {
+  return { ok: false, status: "confirmation_required", message, answer_text: message };
+}
+
+function noDraftToken(target) {
+  return {
+    ok: false,
+    status: "needs_sign_in",
+    account: target.label,
+    answer_text: `The ${target.label} Outlook session has no token that can save drafts. Sign in again in the bridge browser.`,
+  };
+}
+
+function draftUpstreamError(target, res, status) {
+  return {
+    ok: false,
+    status,
+    account: target.label,
+    upstream_http_status: res.status,
+    upstream_error: String(res.error || "").slice(0, 300),
+    answer_text: "Outlook didn't save the draft.",
+  };
+}
+
+async function restWrite(token, method, path, payload) {
+  if (/\/send(\?|$)/i.test(path)) throw new Error("Refusing to send mail: drafts only.");
+  const url = new URL(`/api/v2.0/${path}`, ensureTrailingSlash(OUTLOOK_REST_BASE));
+  const response = await fetch(url, {
+    method,
+    headers: { authorization: `Bearer ${token}`, accept: "application/json", "content-type": "application/json" },
+    body: JSON.stringify(payload),
+    redirect: "error",
+    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+  });
+  const text = await response.text().catch(() => "");
+  let body;
+  try { body = JSON.parse(text); } catch { body = null; }
+  return { ok: response.ok, status: response.status, body, error: !response.ok ? (body?.error?.message || text.slice(0, 200)) : "" };
+}
+
 export function resolveWorkAccountAlias(value) {
   const raw = normalizeString(typeof value === "string" ? value : "").toLowerCase();
   if (!raw) return null;
@@ -419,8 +610,8 @@ export function resolveWorkAccountAlias(value) {
 
 export function listWorkAccounts() {
   return [
-    { account: "covernode", email_domain: "covernode.io", provider: "outlook", access: "read-only" },
-    { account: "adga", email_domain: "ad-ga.com", provider: "outlook", access: "read-only" },
+    { account: "covernode", email_domain: "covernode.io", provider: "outlook", access: "read + drafts" },
+    { account: "adga", email_domain: "ad-ga.com", provider: "outlook", access: "read + drafts" },
   ];
 }
 
@@ -862,7 +1053,7 @@ function ensureTrailingSlash(base) {
 function pickBestToken(tokens, purpose) {
   const nowSec = Math.floor(Date.now() / 1000);
   const margin = 60;
-  const need = purpose === "calendar" ? "Calendars.Read" : "Mail.Read";
+  const need = purpose === "calendar" ? "Calendars.Read" : purpose === "mail_write" ? "Mail.ReadWrite" : "Mail.Read";
   const filtered = tokens
     .map(t => ({ ...t, target: String(t.target || ""), expiresOn: Number(t.expiresOn || 0) }))
     .filter(t => t.token && t.token.length > 100);
@@ -873,6 +1064,8 @@ function pickBestToken(tokens, purpose) {
       .sort((a, b) => b.expiresOn - a.expiresOn)[0];
   const outlook = byPref("outlook.office.com");
   if (outlook) return { token: outlook.token, api: "outlook_rest", target: outlook.target, expiresOn: outlook.expiresOn };
+  // Drafts are written through the Outlook REST API only.
+  if (purpose === "mail_write") return null;
   const graph = byPref("graph.microsoft.com");
   if (graph) return { token: graph.token, api: "graph", target: graph.target, expiresOn: graph.expiresOn };
   return null;
