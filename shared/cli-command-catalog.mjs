@@ -966,6 +966,40 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "outlook draft-reply",
+    "legacy_path": "/cli/outlook/draft-reply",
+    "parameters": [
+      "account",
+      "id",
+      "message_id",
+      "messageId",
+      "body",
+      "message",
+      "text",
+      "body_html",
+      "bodyHtml",
+      "html",
+      "reply_all",
+      "replyAll"
+    ]
+  },
+  {
+    "command": "outlook draft-new",
+    "legacy_path": "/cli/outlook/draft-new",
+    "parameters": [
+      "account",
+      "to",
+      "cc",
+      "subject",
+      "body",
+      "message",
+      "text",
+      "body_html",
+      "bodyHtml",
+      "html"
+    ]
+  },
+  {
     "command": "outlook agenda",
     "legacy_path": "/cli/outlook/agenda",
     "parameters": [

@@ -224,6 +224,19 @@ sudo -u phoneclaw node /opt/phoneclaw/bin/phoneclaw.mjs outlook read --json '{"a
 sudo -u phoneclaw node /opt/phoneclaw/bin/phoneclaw.mjs outlook agenda --json '{"account":"covernode","today":true}'
 ```
 
+### Work account drafts (save only, never send)
+
+Like Outlook web: Reply / Reply all open a draft in the thread with the quoted original below your text, and New message saves to Drafts. Both need `--confirmed`, use the Outlook session's `Mail.ReadWrite` token, and never call send.
+
+```bash
+# Reply or Reply all to a message id from `outlook messages` / `outlook read`
+phoneclaw outlook draft-reply --json '{"account":"adga","id":"<message-id>","reply_all":true,"body":"Thanks, Halie. All 79 are linked now."}' --confirmed
+# HTML body instead of plain text
+phoneclaw outlook draft-reply --json '{"account":"adga","id":"<message-id>","body_html":"<p>Thanks!</p>"}' --confirmed
+# New message
+phoneclaw outlook draft-new --json '{"account":"covernode","to":"Name <a@b.com>, c@d.com","cc":"e@f.com","subject":"Hi","body":"..."}' --confirmed
+```
+
 ### Work accounts through the generic email commands
 
 `phoneclaw himalaya email-list` and `email-read` accept `account` values that route to the Outlook backend above instead of Himalaya/Gmail: `covernode` or `adga`, plus aliases such as `cover node`, `AD-GA`, `covernode.io`, `ad-ga.com` or the full address. Omitting `account` still means personal Gmail. `phoneclaw himalaya accounts` lists the available accounts.
@@ -235,7 +248,7 @@ phoneclaw himalaya email-list --json '{"account":"adga","query":"invoice"}'
 phoneclaw himalaya email-read --json '{"account":"adga","id":"<message-id>"}'
 ```
 
-Work accounts are read-only: send, forward, draft, archive, image and mark-as-read commands with a work `account` return `work_account_read_only` and never fall back to Gmail. Write actions for work accounts are deliberately not implemented. Outlook work tenants generally block IMAP/basic auth, so no Himalaya IMAP account is configured.
+Work accounts can save drafts but never send: `outlook draft-reply` / `outlook draft-new` (and the generic `himalaya draft-reply`, `reply-all-draft` and `draft-create` with a work `account`) save to that account's Outlook Drafts, like Outlook web's Reply, Reply all and New message. Send, forward, archive, image and mark-as-read commands with a work `account` return `work_account_read_only` and never fall back to Gmail. Outlook work tenants generally block IMAP/basic auth, so no Himalaya IMAP account is configured.
 
 ## URL Fetching
 

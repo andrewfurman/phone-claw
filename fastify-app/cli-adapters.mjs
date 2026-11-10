@@ -11,7 +11,7 @@ import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSe
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
 import { slackAuthStatus, slackConversationsList, slackRead, slackSearchMessages, slackUnreadSummary, slackUserInfo, slackMessageSend, slackReact } from "./slack-tools.mjs";
-import { listWorkAccounts, outlookAgenda, outlookMessages, outlookRead, outlookSearch, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
+import { listWorkAccounts, outlookAgenda, outlookDraftNew, outlookDraftReply, outlookMessages, outlookRead, outlookSearch, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
 
 // Existing domain behavior behind the phoneclaw CLI, including caches and async jobs.
 // Native CLIs do not need entries here: install/configure them and use run_cli args.
@@ -26,11 +26,34 @@ function workAccountBlocked(body) {
     ok: false,
     status: WORK_ACCOUNT_BLOCKED_STATUS,
     account: key,
-    answer_text: `The ${key} work account is read-only. I can list, search and read its email, but not send, forward, draft, archive or mark messages.`,
+    answer_text: `For the ${key} work account I can list, search, read and save drafts, but not send, forward, archive or mark messages.`,
   };
 }
 function guardWorkAccount(adapter) {
   return (body, context) => workAccountBlocked(body) || adapter(body, context);
+}
+
+function workDraftReply(body, context, replyAll) {
+  return outlookDraftReply({
+    account: body.account,
+    id: body.id || body.message_id || body.messageId || body.envelope_id || body.envelopeId,
+    body: body.body || body.message || body.text,
+    bodyHtml: body.body_html || body.bodyHtml || body.html,
+    replyAll,
+    confirmed: context.confirmed,
+  });
+}
+
+function workDraftNew(body, context) {
+  return outlookDraftNew({
+    account: body.account,
+    to: body.to,
+    cc: body.cc,
+    subject: body.subject,
+    body: body.body || body.message || body.text,
+    bodyHtml: body.body_html || body.bodyHtml || body.html,
+    confirmed: context.confirmed,
+  });
 }
 
 export const commandAdapters = {
@@ -182,7 +205,7 @@ export const commandAdapters = {
     confirmed: context.confirmed,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   }),
-  "himalaya draft-create": (body, context) => himalayaDraftCreate({
+  "himalaya draft-create": (body, context) => resolveWorkAccountAlias(body.account) ? workDraftNew(body, context) : himalayaDraftCreate({
     to: body.to,
     cc: body.cc,
     bcc: body.bcc,
@@ -193,7 +216,7 @@ export const commandAdapters = {
     confirmed: context.confirmed,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   }),
-  "himalaya draft-reply": (body, context) => himalayaDraftReply({
+  "himalaya draft-reply": (body, context) => resolveWorkAccountAlias(body.account) ? workDraftReply(body, context, body.reply_all ?? body.replyAll) : himalayaDraftReply({
     id: body.id || body.envelope_id || body.envelopeId,
     folder: body.folder,
     body: body.body || body.message,
@@ -218,7 +241,7 @@ export const commandAdapters = {
       body.max_original_bytes || body.maxOriginalBytes || body.max_raw_bytes || body.maxRawBytes,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   }),
-  "himalaya reply-all-draft": (body, context) => himalayaCreateReplyAllDraft({
+  "himalaya reply-all-draft": (body, context) => resolveWorkAccountAlias(body.account) ? workDraftReply(body, context, true) : himalayaCreateReplyAllDraft({
     id: body.id || body.envelope_id || body.envelopeId,
     folder: body.folder,
     body: body.body || body.message,
@@ -538,6 +561,9 @@ export const commandAdapters = {
     query: body.query || body.search || body.search_query || body.searchQuery,
     limit: body.limit || body.max_results || body.maxResults,
   }),
+  // Drafts only (like Outlook web's Reply / Reply all / New message). Never sends.
+  "outlook draft-reply": (body, context) => workDraftReply(body, context, body.reply_all ?? body.replyAll),
+  "outlook draft-new": (body, context) => workDraftNew(body, context),
   "outlook agenda": (body, context) => outlookAgenda({
     account: body.account,
     today: body.today,
@@ -548,10 +574,10 @@ export const commandAdapters = {
   }),
 };
 
+// Work accounts can save drafts (above) but never send, forward or archive.
 for (const name of [
-  "himalaya email-image-inspect", "himalaya email-images", "himalaya email-archive", "himalaya draft-create",
-  "himalaya draft-reply", "himalaya email-forward", "himalaya reply-all-draft", "himalaya forward-draft",
-  "himalaya email-send", "image inspect",
+  "himalaya email-image-inspect", "himalaya email-images", "himalaya email-archive",
+  "himalaya email-forward", "himalaya forward-draft", "himalaya email-send", "image inspect",
 ]) {
   if (commandAdapters[name]) commandAdapters[name] = guardWorkAccount(commandAdapters[name]);
 }
