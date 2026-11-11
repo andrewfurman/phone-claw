@@ -4,6 +4,7 @@ import { githubCliCommon, himalayaCreateForwardDraft, himalayaCreateReplyAllDraf
 import { sendgridEmailSend } from "./sendgrid-tools.mjs";
 import { photosEmail, photosFaces, photosAnalyze, photosEdit, imessageSendPhoto } from "./photos-tools.mjs";
 import { contactsSearch } from "./contacts-tools.mjs";
+import { calendarList, calendarEvents, calendarEdit } from "./calendar-tools.mjs";
 import { imessageSend } from "./imessage-tools.mjs";
 import { notesEdit } from "./notes-tools.mjs";
 import { whatsappChats, whatsappMessages, whatsappSearch, whatsappSend } from "./whatsapp-tools.mjs";
@@ -293,6 +294,24 @@ export const commandAdapters = {
     confirmed: context.confirmed,
   }),
   "contacts search": body => contactsSearch({ query: body.query || body.name, limit: body.limit }),
+  "calendar list": () => calendarList(),
+  "calendar events": body => calendarEvents({ from: body.from || body.start_date, to: body.to || body.end_date, date: body.date, calendar: body.calendar, query: body.query, limit: body.limit }),
+  "calendar edit": (body, context) => calendarEdit({
+    op: body.op || body.action,
+    id: body.id || body.event_id,
+    occurrence: body.occurrence,
+    span: body.span,
+    calendar: body.calendar,
+    title: body.title,
+    start: body.start,
+    end: body.end,
+    all_day: body.all_day,
+    location: body.location,
+    notes: body.notes,
+    expected_last_modified: body.expected_last_modified,
+    previewed: body.previewed,
+    confirmed: context.confirmed,
+  }),
   "whatsapp chats": body => whatsappChats({
     query: body.query || body.name,
     limit: body.limit || body.max_results,

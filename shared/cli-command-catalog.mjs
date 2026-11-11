@@ -418,6 +418,42 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "calendar list",
+    "legacy_path": "/cli/calendar/list",
+    "parameters": []
+  },
+  {
+    "command": "calendar events",
+    "legacy_path": "/cli/calendar/events",
+    "parameters": [
+      "from",
+      "to",
+      "date",
+      "calendar",
+      "query",
+      "limit"
+    ]
+  },
+  {
+    "command": "calendar edit",
+    "legacy_path": "/cli/calendar/edit",
+    "parameters": [
+      "op",
+      "id",
+      "occurrence",
+      "span",
+      "calendar",
+      "title",
+      "start",
+      "end",
+      "all_day",
+      "location",
+      "notes",
+      "expected_last_modified",
+      "previewed"
+    ]
+  },
+  {
     "command": "whatsapp chats",
     "legacy_path": "/cli/whatsapp/chats",
     "parameters": [

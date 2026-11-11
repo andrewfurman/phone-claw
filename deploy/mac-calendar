@@ -1,0 +1,12 @@
+#!/bin/bash
+# Thin SSH wrapper: Apple Calendar CLI (mac-tools/calendar.swift, compiled to ~/.local/bin/calendar-cli) on the Mac
+# that has the Exchange accounts (#152). MAC_CALENDAR_SSH_ALIAS picks it (default macincloud), separately from
+# MAC_SSH_ALIAS, because the Exchange accounts live only on that Mac.
+set -euo pipefail
+ALIAS="${MAC_CALENDAR_SSH_ALIAS:-macincloud}"
+REMOTE_PREFIX='export PATH="$HOME/.local/bin:/usr/bin:/bin:$PATH"; exec calendar-cli'
+quoted=()
+for arg in "$@"; do
+  quoted+=("$(printf '%q' "$arg")")
+done
+exec ssh -o BatchMode=yes -o ConnectTimeout=25 "$ALIAS" "$REMOTE_PREFIX ${quoted[*]}"
