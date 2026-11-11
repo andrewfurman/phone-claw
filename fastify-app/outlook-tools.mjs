@@ -20,6 +20,22 @@ const MAX_READ_MAX_BODY_CHARS = 60000;
 const DEFAULT_TIMEOUT_MS = 15000;
 const ET_TIMEZONE = "America/New_York";
 
+// `outlook messages` lists one well-known folder, Inbox by default. Listing all of
+// /me/messages mixes in Drafts and Sent Items, so an unsent draft looks like a sent reply.
+const MAIL_FOLDERS = {
+  inbox: "Inbox",
+  sent: "SentItems",
+  sentitems: "SentItems",
+  drafts: "Drafts",
+  deleted: "DeletedItems",
+  deleteditems: "DeletedItems",
+  archive: "Archive",
+  junk: "JunkEmail",
+  junkemail: "JunkEmail",
+};
+// Exchange rejects $orderby on a property that is not also the first $filter clause.
+const ALL_TIME_UTC = "1900-01-01T00:00:00Z";
+
 const ACCOUNT_CONFIG = {
   covernode: {
     cdpPort: Number(process.env.OUTLOOK_COVERNODE_CDP_PORT || 9230),
@@ -69,8 +85,18 @@ export async function outlookMessages({
   from,
   since,
   search,
+  folder = "inbox",
   maxRawBytes, // accepted but unused to preserve common signature style
 } = {}) {
+  const folderName = resolveMailFolder(folder);
+  if (!folderName) {
+    return {
+      ok: false,
+      status: "invalid_folder",
+      folder: String(folder),
+      answer_text: `Unknown Outlook folder "${folder}". Use inbox, sent, drafts, deleted, archive or junk.`,
+    };
+  }
   const targets = await resolveAccounts(account);
   const boundedLimit = clampInteger(limit, 1, MAX_LIST_LIMIT, DEFAULT_LIST_LIMIT);
   const queries = [];
@@ -90,42 +116,34 @@ export async function outlookMessages({
     const first = auth.api || preferredApiForToken(decodeJwtClaims(token));
     const attempt = async (api) => {
       if (api === "graph") {
-        const url = new URL("/v1.0/me/mailFolders/Inbox/messages", ensureTrailingSlash(GRAPH_BASE));
+        const url = new URL(`/v1.0/me/mailFolders/${folderName}/messages`, ensureTrailingSlash(GRAPH_BASE));
         const params = new URLSearchParams();
-        params.set("$select", "id,subject,from,receivedDateTime,isRead,conversationId,webLink");
-        params.set("$orderby", "receivedDateTime desc");
+        params.set("$select", "id,subject,from,receivedDateTime,isRead,isDraft,conversationId,webLink");
         params.set("$top", String(boundedLimit));
-        let usedSearch = false;
         if (normalizeString(search)) {
+          // Graph returns search hits by relevance and rejects $orderby with $search.
           params.set("$search", `"${normalizeString(search)}"`);
-          usedSearch = true;
         } else {
-          const filters = [];
-          if (toBoolean(unread)) filters.push("isRead eq false");
-          const sender = normalizeString(from);
-          if (sender) filters.push(`from/emailAddress/address eq '${escapeODataLiteral(sender)}'`);
-          const sinceIso = toIsoUtcString(since, { assumeEtMidnight: true });
-          if (sinceIso) filters.push(`receivedDateTime ge ${sinceIso}`);
-          if (filters.length) params.set("$filter", filters.join(" and "));
+          params.set("$orderby", "receivedDateTime desc");
+          const filter = listFilter({ unread, from, since }, { received: "receivedDateTime", isRead: "isRead", fromAddress: "from/emailAddress/address" });
+          if (filter) params.set("$filter", filter);
         }
         url.search = params.toString();
         const headers = graphHeaders(token, { needsConsistencyLevel: Boolean(params.get("$search")) });
         return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "graph" });
       } else {
-        const url = new URL("/api/v2.0/me/messages", ensureTrailingSlash(OUTLOOK_REST_BASE));
+        const url = new URL(`/api/v2.0/me/MailFolders/${folderName}/messages`, ensureTrailingSlash(OUTLOOK_REST_BASE));
         const params = new URLSearchParams();
-        params.set("$select", "Id,Subject,From,ReceivedDateTime,IsRead,ConversationId,WebLink");
-        params.set("$orderby", "ReceivedDateTime desc");
+        params.set("$select", "Id,Subject,From,ReceivedDateTime,IsRead,IsDraft,ConversationId,WebLink");
         params.set("$top", String(boundedLimit));
         // Outlook REST v2.0 supports $filter; $search support varies, prefer $filter when possible.
-        const filters = [];
-        if (toBoolean(unread)) filters.push("IsRead eq false");
-        const sender = normalizeString(from);
-        if (sender) filters.push(`From/EmailAddress/Address eq '${escapeODataLiteral(sender)}'`);
-        const sinceIso = toIsoUtcString(since, { assumeEtMidnight: true });
-        if (sinceIso) filters.push(`ReceivedDateTime ge ${sinceIso}`);
-        if (filters.length) params.set("$filter", filters.join(" and "));
-        if (!filters.length && normalizeString(search)) params.set("$search", `"${normalizeString(search)}"`);
+        const filter = listFilter({ unread, from, since }, { received: "ReceivedDateTime", isRead: "IsRead", fromAddress: "From/EmailAddress/Address" });
+        if (filter) params.set("$filter", filter);
+        if (!filter && normalizeString(search)) {
+          params.set("$search", `"${normalizeString(search)}"`);
+        } else {
+          params.set("$orderby", "ReceivedDateTime desc");
+        }
         url.search = params.toString();
         const headers = { authorization: `Bearer ${token}`, accept: "application/json" };
         return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "outlook_rest" });
@@ -151,8 +169,11 @@ export async function outlookMessages({
     }
     const isGraph = res.api === "graph";
     const rows = Array.isArray(res.body?.value) ? res.body.value : [];
-    const items = rows.map((m) => (isGraph ? compactGraphMessage(m, target.label) : compactOutlookRestMessage(m, target.label)));
-    queries.push({ ok: true, account: target.label, status: "ok", returned_count: items.length, items });
+    const items = rows.map((m) => ({
+      ...(isGraph ? compactGraphMessage(m, target.label) : compactOutlookRestMessage(m, target.label)),
+      folder: folderName,
+    }));
+    queries.push({ ok: true, account: target.label, status: "ok", folder: folderName, returned_count: items.length, items });
   }
   // Merge results for "all"
   const merged = mergeAccountLists(queries);
@@ -162,14 +183,15 @@ export async function outlookMessages({
     ok: !allFailed,
     status: allFailed ? "upstream_error" : "ok",
     scope: accountScopeLabel(account),
+    folder: folderName,
     returned_count: merged.length,
     items: merged,
     answer_text:
       merged.length === 0 && anyError
         ? "The Outlook upstream call failed."
         : merged.length === 0
-        ? "No messages matched."
-        : `Found ${merged.length} message${merged.length === 1 ? "" : "s"}.`,
+        ? `No messages matched in ${folderName}.`
+        : `Found ${merged.length} message${merged.length === 1 ? "" : "s"} in ${folderName}.`,
     accounts: queries,
   };
 }
@@ -193,14 +215,14 @@ export async function outlookRead({
       if (api === "graph") {
         const url = new URL(`/v1.0/me/messages/${encodeURIComponent(messageId)}`, ensureTrailingSlash(GRAPH_BASE));
         const params = new URLSearchParams();
-        params.set("$select", "id,subject,from,receivedDateTime,body,webLink");
+        params.set("$select", "id,subject,from,receivedDateTime,isDraft,body,webLink");
         url.search = params.toString();
         const headers = graphHeaders(token);
         return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "graph" });
       } else {
         const url = new URL(`/api/v2.0/me/messages/${encodeURIComponent(messageId)}`, ensureTrailingSlash(OUTLOOK_REST_BASE));
         const params = new URLSearchParams();
-        params.set("$select", "Id,Subject,From,ReceivedDateTime,Body,WebLink");
+        params.set("$select", "Id,Subject,From,ReceivedDateTime,IsDraft,Body,WebLink");
         url.search = params.toString();
         const headers = { authorization: `Bearer ${token}`, accept: "application/json" };
         return await fetchJsonDetailed(url, { headers, timeoutMs: DEFAULT_TIMEOUT_MS, api: "outlook_rest" });
@@ -227,9 +249,12 @@ export async function outlookRead({
       from: compact.from,
       received_at: compact.received_at,
       received_datetime: compact.received_datetime,
+      is_draft: compact.is_draft,
       web_link: compact.web_link || "",
       body_text: compact.body_text || "",
-      answer_text: compact.body_text
+      answer_text: compact.is_draft
+        ? `Unsent draft: ${compact.subject || "(no subject)"}.`
+        : compact.body_text
         ? `${compact.subject || "Email"} from ${compact.from?.address || "unknown sender"}.`
         : "Message has no readable body.",
     };
@@ -271,9 +296,8 @@ export async function outlookSearch({
       if (api === "graph") {
         const url = new URL("/v1.0/me/messages", ensureTrailingSlash(GRAPH_BASE));
         const params = new URLSearchParams();
-        params.set("$select", "id,subject,from,receivedDateTime,isRead,conversationId,webLink");
+        params.set("$select", "id,subject,from,receivedDateTime,isRead,isDraft,conversationId,webLink");
         params.set("$search", `"${normalizeString(query)}"`);
-        params.set("$orderby", "receivedDateTime desc");
         params.set("$top", String(boundedLimit));
         url.search = params.toString();
         const headers = graphHeaders(token, { needsConsistencyLevel: true });
@@ -281,7 +305,7 @@ export async function outlookSearch({
       } else {
         const url = new URL("/api/v2.0/me/messages", ensureTrailingSlash(OUTLOOK_REST_BASE));
         const params = new URLSearchParams();
-        params.set("$select", "Id,Subject,From,ReceivedDateTime,IsRead,ConversationId,WebLink");
+        params.set("$select", "Id,Subject,From,ReceivedDateTime,IsRead,IsDraft,ConversationId,WebLink");
         params.set("$top", String(boundedLimit));
         params.set("$search", `"${normalizeString(query)}"`); // best-effort; some tenants may not support it
         url.search = params.toString();
@@ -800,6 +824,22 @@ async function getBestTokenViaCdp({ cdpPort, mainUrl, label }, purpose) {
   }
 }
 
+function resolveMailFolder(folder) {
+  const key = normalizeString(folder || "inbox").toLowerCase().replace(/[\s_-]+/g, "");
+  return MAIL_FOLDERS[key] || null;
+}
+
+// The received-date clause goes first so `$orderby` on it is accepted with other filters.
+function listFilter({ unread, from, since }, fields) {
+  const sender = normalizeString(from);
+  const sinceIso = toIsoUtcString(since, { assumeEtMidnight: true });
+  const filters = [];
+  if (sinceIso || sender) filters.push(`${fields.received} ge ${sinceIso || ALL_TIME_UTC}`);
+  if (toBoolean(unread)) filters.push(`${fields.isRead} eq false`);
+  if (sender) filters.push(`${fields.fromAddress} eq '${escapeODataLiteral(sender)}'`);
+  return filters.join(" and ");
+}
+
 function compactGraphMessage(msg, account, { includeBody = false, maxBodyChars = DEFAULT_READ_MAX_BODY_CHARS } = {}) {
   const id = String(msg.id || "");
   const from = {
@@ -814,6 +854,7 @@ function compactGraphMessage(msg, account, { includeBody = false, maxBodyChars =
     subject: trimTo(String(msg.subject || ""), 400),
     from,
     is_unread: msg.isRead === false,
+    is_draft: msg.isDraft === true,
     received_datetime: receivedUtc,
     received_at: receivedEt,
     web_link: String(msg.webLink || ""),
@@ -865,6 +906,7 @@ function compactOutlookRestMessage(msg, account, { includeBody = false, maxBodyC
     subject: trimTo(String(msg.Subject || ""), 400),
     from,
     is_unread: msg.IsRead === false,
+    is_draft: msg.IsDraft === true,
     received_datetime: receivedUtc,
     received_at: receivedEt,
     web_link: String(msg.WebLink || ""),
