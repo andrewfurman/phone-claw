@@ -935,6 +935,7 @@ export const CLI_COMMAND_CATALOG = [
       "query",
       "search_query",
       "searchQuery",
+      "folder",
       "max_raw_bytes",
       "maxRawBytes"
     ]

@@ -121,7 +121,7 @@ export const commandAdapters = {
       const limit = body.page_size || body.pageSize || body.max_results || body.maxResults || body.limit;
       return query
         ? outlookSearch({ account: work, query, limit })
-        : outlookMessages({ account: work, limit, unread: body.unread, from: body.from, since: body.since, maxRawBytes: body.max_raw_bytes || body.maxRawBytes });
+        : outlookMessages({ account: work, limit, unread: body.unread, from: body.from, since: body.since, folder: body.folder, maxRawBytes: body.max_raw_bytes || body.maxRawBytes });
     }
     return himalayaEmailList({
     query: body.query || body.search_query || body.searchQuery,
@@ -549,6 +549,7 @@ export const commandAdapters = {
     from: body.from || body.sender || body.from_email || body.fromEmail,
     since: body.since || body.start_date || body.startDate,
     search: body.search || body.query || body.search_query || body.searchQuery,
+    folder: body.folder,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   }),
   "outlook read": (body, context) => outlookRead({

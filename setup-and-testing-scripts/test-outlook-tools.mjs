@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import http from "node:http";
 
 // Spin up a tiny fake upstream server simulating Graph and Outlook REST
+const requests = [];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "", `http://${req.headers.host}`);
+  requests.push(url);
   res.setHeader("content-type", "application/json; charset=utf-8");
   // Simple routing for Graph defaults (used by initial tests)
   if (url.pathname === "/v1.0/me/mailFolders/Inbox/messages") {
@@ -83,6 +85,27 @@ const server = http.createServer((req, res) => {
   if (url.pathname === "/graph/v1.0/me/mailFolders/Inbox/messages") {
     res.writeHead(401);
     res.end(JSON.stringify({ error: { code: "InvalidAuthenticationToken", message: "Bad token" } }));
+    return;
+  }
+  // Outlook REST v2.0 folder listing: Sent Items holds a sent reply, Drafts an unsent one
+  const folderList = url.pathname.match(/^\/api\/v2\.0\/me\/MailFolders\/(\w+)\/messages$/);
+  if (folderList) {
+    const folder = folderList[1];
+    res.writeHead(200);
+    res.end(JSON.stringify({
+      value: [
+        {
+          Id: `MSG_${folder}`,
+          Subject: "RE: Duplicate checks",
+          From: { EmailAddress: { Name: "AF (Shared)", Address: "andrew@ad-ga.com" } },
+          ReceivedDateTime: "2026-11-11T19:06:05Z",
+          IsRead: true,
+          IsDraft: folder === "Drafts",
+          ConversationId: "C9",
+          WebLink: `https://outlook.office.com/mail/deeplink/read/MSG_${folder}`,
+        },
+      ],
+    }));
     return;
   }
   // Outlook REST v2.0 simulation
@@ -190,6 +213,53 @@ const { outlookAgenda, outlookMessages, outlookRead, outlookSearch, outlookStatu
   assert.equal(r.returned_count, 2);
   assert.equal(r.items[0].id, "MSG_A");
   assert.equal(typeof r.items[0].received_at, "string");
+}
+
+// Outlook REST lists one folder, Inbox by default, and flags drafts (an unsent draft is not a sent reply)
+{
+  process.env.OUTLOOK_TEST_TOKEN_ADGA = `x.${Buffer.from(JSON.stringify({ aud: "https://outlook.office.com", scp: "Mail.Read" })).toString("base64url")}.y`;
+  const last = () => requests[requests.length - 1];
+
+  const inbox = await outlookMessages({ account: "adga", limit: 5 });
+  assert.equal(inbox.ok, true);
+  assert.equal(inbox.folder, "Inbox");
+  assert.equal(last().pathname, "/api/v2.0/me/MailFolders/Inbox/messages");
+  assert.equal(inbox.items[0].folder, "Inbox");
+  assert.equal(inbox.items[0].is_draft, false);
+
+  const sent = await outlookMessages({ account: "adga", folder: "sent" });
+  assert.equal(last().pathname, "/api/v2.0/me/MailFolders/SentItems/messages");
+  assert.equal(sent.items[0].folder, "SentItems");
+  assert.equal(sent.items[0].is_draft, false);
+
+  const drafts = await outlookMessages({ account: "adga", folder: "Drafts" });
+  assert.equal(drafts.items[0].is_draft, true);
+
+  const bad = await outlookMessages({ account: "adga", folder: "everything" });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.status, "invalid_folder");
+
+  // A sender filter alone still sorts by date: the date clause leads the filter.
+  await outlookMessages({ account: "adga", from: "dia@ad-ga.com" });
+  assert.equal(last().searchParams.get("$orderby"), "ReceivedDateTime desc");
+  assert.match(last().searchParams.get("$filter"), /^ReceivedDateTime ge 1900-01-01T00:00:00Z and From\/EmailAddress\/Address eq 'dia@ad-ga.com'$/);
+
+  // $search can't be combined with $orderby.
+  await outlookMessages({ account: "adga", search: "duplicate" });
+  assert.equal(last().searchParams.get("$search"), '"duplicate"');
+  assert.equal(last().searchParams.get("$orderby"), null);
+
+  delete process.env.OUTLOOK_TEST_TOKEN_ADGA;
+}
+
+// Graph lists the requested folder too, and searches without $orderby
+{
+  await outlookMessages({ account: "covernode", search: "invoice" });
+  const url = requests[requests.length - 1];
+  assert.equal(url.pathname, "/v1.0/me/mailFolders/Inbox/messages");
+  assert.equal(url.searchParams.get("$orderby"), null);
+  await outlookSearch({ account: "covernode", query: "invoice" });
+  assert.equal(requests[requests.length - 1].searchParams.get("$orderby"), null);
 }
 
 // read message

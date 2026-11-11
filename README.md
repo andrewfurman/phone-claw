@@ -193,6 +193,8 @@ The bridge exposes read-only Outlook access through two already-signed-in Chrome
 
 A cron job soft-reloads those tabs every ~20 minutes (`/usr/local/bin/outlook-refresh.mjs`). The CLI never navigates away from the main tab; it reads a short-lived Graph token from the page's MSAL cache via CDP and queries Microsoft Graph. No tokens are logged or printed. All commands are strictly read-only.
 
+`outlook messages` lists one folder, the Inbox unless `folder` says otherwise, and every item carries `folder` and `is_draft`. To check whether a reply went out, list `folder: "sent"`: a saved reply sits in Drafts with `is_draft: true` until it is sent, and must not be reported as sent.
+
 PhoneClaw CLI examples (JSON by default):
 
 ```bash
@@ -201,6 +203,8 @@ phoneclaw outlook status --json '{"account":"adga"}'
 
 # List recent Inbox messages (limit, unread, from, since, search)
 phoneclaw outlook messages --json '{"account":"covernode","limit":5}'
+# Another folder: inbox (default), sent, drafts, deleted, archive, junk
+phoneclaw outlook messages --json '{"account":"adga","folder":"sent","limit":5}'
 phoneclaw outlook messages --json '{"account":"adga","unread":true}'
 phoneclaw outlook messages --json '{"account":"adga","search":"invoice"}'
 
