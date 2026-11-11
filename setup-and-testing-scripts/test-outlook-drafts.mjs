@@ -31,6 +31,17 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(draft({ Body: body.Body })));
     return;
   }
+  if (req.method === "GET" && /\/api\/v2\.0\/me\/messages\/(DRAFT_OLD|MSG_SENT)$/.test(url.pathname)) {
+    const isDraft = url.pathname.endsWith("DRAFT_OLD");
+    res.writeHead(200);
+    res.end(JSON.stringify({ Id: isDraft ? "DRAFT_OLD" : "MSG_SENT", Subject: "RE: Status", IsDraft: isDraft }));
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/v2.0/me/messages/DRAFT_OLD/move") {
+    res.writeHead(201);
+    res.end(JSON.stringify({ Id: "DRAFT_OLD_MOVED" }));
+    return;
+  }
   if (req.method === "POST" && url.pathname === "/api/v2.0/me/messages") {
     res.writeHead(201);
     res.end(JSON.stringify({ Id: "NEW_1", Subject: body.Subject, IsDraft: true, ToRecipients: body.ToRecipients, CcRecipients: body.CcRecipients, WebLink: "" }));
@@ -46,7 +57,7 @@ const port = server.address().port;
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 process.env.OUTLOOK_TEST_TOKEN_ADGA = `${b64({ alg: "none" })}.${b64({ aud: "https://outlook.office.com", scp: "Mail.ReadWrite" })}.sig`;
 process.env.OUTLOOK_REST_BASE_URL = `http://127.0.0.1:${port}`;
-const { outlookDraftReply, outlookDraftNew } = await import("../fastify-app/outlook-tools.mjs");
+const { outlookDraftReply, outlookDraftNew, outlookDeleteDraft } = await import("../fastify-app/outlook-tools.mjs");
 const { commandAdapters } = await import("../fastify-app/cli-adapters.mjs");
 
 // 1. Like the other draft tools, nothing happens until it's confirmed.
@@ -98,7 +109,20 @@ assert.deepEqual(requests[0].body.ToRecipients, [
 ]);
 assert.deepEqual(requests[0].body.CcRecipients, [{ EmailAddress: { Address: "halie@example.com" } }]);
 
-// 7. Nothing ever went to a send endpoint.
+// 7. Deleting a draft moves it to Deleted Items, only after confirmation, and only drafts.
+requests.length = 0;
+assert.equal((await outlookDeleteDraft({ account: "adga", id: "DRAFT_OLD" })).status, "confirmation_required");
+assert.equal(requests.length, 0);
+const removed = await commandAdapters["outlook draft-delete"]({ account: "adga", id: "DRAFT_OLD" }, { confirmed: true });
+assert.equal(removed.status, "draft_deleted");
+assert.equal(requests.at(-1).path, "/api/v2.0/me/messages/DRAFT_OLD/move");
+assert.deepEqual(requests.at(-1).body, { DestinationId: "DeletedItems" });
+requests.length = 0;
+const refused = await outlookDeleteDraft({ account: "adga", id: "MSG_SENT", confirmed: true });
+assert.equal(refused.status, "not_a_draft");
+assert.ok(!requests.some((r) => r.method !== "GET"), "a non-draft is never moved");
+
+// 8. Nothing ever went to a send endpoint.
 assert.ok(!requests.some((r) => /\/send/i.test(r.path)));
 
 server.close();

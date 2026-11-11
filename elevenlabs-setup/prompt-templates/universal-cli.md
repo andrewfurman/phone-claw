@@ -93,6 +93,7 @@ New CLIs need installation/authentication and a command-guide entry. They do not
 | `phoneclaw outlook search` | `account`, `query`, `search_query`, `limit`, `max_results` |
 | `phoneclaw outlook draft-reply` | `account`, `id`, `body` or `body_html`, `reply_all` (saves a draft only; confirm first) |
 | `phoneclaw outlook draft-new` | `account`, `to`, `cc`, `subject`, `body` or `body_html` (saves a draft only; confirm first) |
+| `phoneclaw outlook draft-delete` | `account`, `id` (moves a draft to Deleted Items; refuses non-drafts; confirm first) |
 | `phoneclaw outlook agenda` | `account`, `today`, `tomorrow`, `start_date`, `end_date`, `limit` |
 
 ## Workflow and voice rules

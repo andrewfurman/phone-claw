@@ -235,6 +235,8 @@ phoneclaw outlook draft-reply --json '{"account":"adga","id":"<message-id>","rep
 phoneclaw outlook draft-reply --json '{"account":"adga","id":"<message-id>","body_html":"<p>Thanks!</p>"}' --confirmed
 # New message
 phoneclaw outlook draft-new --json '{"account":"covernode","to":"Name <a@b.com>, c@d.com","cc":"e@f.com","subject":"Hi","body":"..."}' --confirmed
+# Moves a draft to Deleted Items; refuses anything that isn't a draft.
+phoneclaw outlook draft-delete --json '{"account":"adga","id":"<draft-id>"}' --confirmed
 ```
 
 ### Work accounts through the generic email commands

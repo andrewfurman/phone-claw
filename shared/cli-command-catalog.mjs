@@ -1000,6 +1000,16 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "outlook draft-delete",
+    "legacy_path": "/cli/outlook/draft-delete",
+    "parameters": [
+      "account",
+      "id",
+      "message_id",
+      "messageId"
+    ]
+  },
+  {
     "command": "outlook agenda",
     "legacy_path": "/cli/outlook/agenda",
     "parameters": [
