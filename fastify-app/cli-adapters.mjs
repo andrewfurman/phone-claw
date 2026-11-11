@@ -11,7 +11,7 @@ import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSe
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
 import { slackAuthStatus, slackConversationsList, slackRead, slackSearchMessages, slackUnreadSummary, slackUserInfo, slackMessageSend, slackReact } from "./slack-tools.mjs";
-import { listWorkAccounts, outlookAgenda, outlookDraftNew, outlookDraftReply, outlookMessages, outlookRead, outlookSearch, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
+import { listWorkAccounts, outlookAgenda, outlookDeleteDraft, outlookDraftNew, outlookDraftReply, outlookMessages, outlookRead, outlookSearch, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
 
 // Existing domain behavior behind the phoneclaw CLI, including caches and async jobs.
 // Native CLIs do not need entries here: install/configure them and use run_cli args.
@@ -564,6 +564,11 @@ export const commandAdapters = {
   // Drafts only (like Outlook web's Reply / Reply all / New message). Never sends.
   "outlook draft-reply": (body, context) => workDraftReply(body, context, body.reply_all ?? body.replyAll),
   "outlook draft-new": (body, context) => workDraftNew(body, context),
+  "outlook draft-delete": (body, context) => outlookDeleteDraft({
+    account: body.account,
+    id: body.id || body.message_id || body.messageId,
+    confirmed: context.confirmed,
+  }),
   "outlook agenda": (body, context) => outlookAgenda({
     account: body.account,
     today: body.today,

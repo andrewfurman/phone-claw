@@ -475,6 +475,39 @@ export async function outlookDraftNew({
   return draftResult(target, created.body || {}, "Draft saved.");
 }
 
+// Moves a draft to Deleted Items (recoverable). Anything that isn't a draft is refused.
+export async function outlookDeleteDraft({ account, id, confirmed = false } = {}) {
+  const messageId = normalizeString(id);
+  if (!messageId) return missingField("id", "An Outlook draft id is required.");
+  const target = singleWorkAccount(account);
+  if (!target) return missingField("account", "Pick one work account: covernode or adga.");
+  if (!toBoolean(confirmed)) {
+    return draftConfirmationRequired(`Confirm that Andrew wants to delete a draft in ${target.label} Outlook.`);
+  }
+  const auth = await getDraftToken(target);
+  if (!auth) return noDraftToken(target);
+  const path = `me/messages/${encodeURIComponent(messageId)}`;
+  const found = await restWrite(auth.token, "GET", `${path}?$select=Subject,IsDraft`);
+  if (!found.ok) return draftUpstreamError(target, found, "delete_draft_failed");
+  if (found.body?.IsDraft !== true) {
+    return {
+      ok: false,
+      status: "not_a_draft",
+      account: target.label,
+      answer_text: "That message isn't a draft, so it was left alone.",
+    };
+  }
+  const moved = await restWrite(auth.token, "POST", `${path}/move`, { DestinationId: "DeletedItems" });
+  if (!moved.ok) return draftUpstreamError(target, moved, "delete_draft_failed");
+  return {
+    ok: true,
+    status: "draft_deleted",
+    account: target.label,
+    subject: String(found.body?.Subject || ""),
+    answer_text: `Draft moved to ${target.label} Outlook Deleted Items.`,
+  };
+}
+
 function singleWorkAccount(account) {
   const key = resolveWorkAccountAlias(account);
   return key && ACCOUNT_CONFIG[key] ? ACCOUNT_CONFIG[key] : null;
@@ -586,7 +619,7 @@ async function restWrite(token, method, path, payload) {
   const response = await fetch(url, {
     method,
     headers: { authorization: `Bearer ${token}`, accept: "application/json", "content-type": "application/json" },
-    body: JSON.stringify(payload),
+    body: payload === undefined ? undefined : JSON.stringify(payload),
     redirect: "error",
     signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
   });
