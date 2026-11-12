@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import http from "node:http";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 
 // Fake Outlook REST + Graph: a message with a pasted screenshot (inline cid image), a
 // signature logo, a PDF and an attached email. Records every request to prove reads only.
 const PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+// image001 is padded past one 1,000-byte range so the byte-range test needs several pieces.
+const SHOT = Buffer.concat([Buffer.from(PNG_1X1, "base64"), Buffer.alloc(2500, 7)]).toString("base64");
 const requests = [];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "", `http://${req.headers.host}`);
@@ -15,11 +14,16 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/api/v2.0/me/messages/MSG_SHOT/attachments") {
     res.writeHead(200);
     res.end(JSON.stringify({ value: [
-      { "@odata.type": "#Microsoft.OutlookServices.FileAttachment", Id: "A0", Name: "image001.png", ContentType: "image/png", Size: 68, IsInline: true, ContentId: "image001.png@01DD0000.00000000", ContentBytes: PNG_1X1 },
+      { "@odata.type": "#Microsoft.OutlookServices.FileAttachment", Id: "A0", Name: "image001.png", ContentType: "image/png", Size: 2568, IsInline: true, ContentId: "image001.png@01DD0000.00000000", ContentBytes: SHOT },
       { "@odata.type": "#Microsoft.OutlookServices.FileAttachment", Id: "A1", Name: "../../logo.png", ContentType: "image/png", Size: 68, IsInline: true, ContentId: "image002.png@01DD0000.00000000", ContentBytes: PNG_1X1 },
       { "@odata.type": "#Microsoft.OutlookServices.FileAttachment", Id: "A2", Name: "Statement.pdf", ContentType: "application/pdf", Size: 9, IsInline: false, ContentBytes: Buffer.from("%PDF-1.4\n").toString("base64") },
       { "@odata.type": "#Microsoft.OutlookServices.ItemAttachment", Id: "A3", Name: "Fwd: earlier", ContentType: null, Size: 2000, IsInline: false },
     ] }));
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/v2.0/me/messages/MSG_SHOT/attachments/A0") {
+    res.writeHead(200);
+    res.end(JSON.stringify({ "@odata.type": "#Microsoft.OutlookServices.FileAttachment", Id: "A0", Name: "image001.png", ContentType: "image/png", Size: 2568, IsInline: true, ContentId: "image001.png@01DD0000.00000000", ContentBytes: SHOT }));
     return;
   }
   if (req.method === "GET" && url.pathname === "/v1.0/me/messages/MSG_GRAPH/attachments") {
@@ -42,8 +46,6 @@ process.env.OUTLOOK_TEST_TOKEN_ADGA = restToken;
 process.env.OUTLOOK_TEST_TOKEN_COVERNODE = graphToken;
 process.env.OUTLOOK_REST_BASE_URL = `http://127.0.0.1:${port}`;
 process.env.OUTLOOK_GRAPH_BASE_URL = `http://127.0.0.1:${port}`;
-const saveRoot = await mkdtemp(path.join(tmpdir(), "outlook-att-test-"));
-process.env.OUTLOOK_ATTACHMENT_DIR = saveRoot;
 
 const { outlookAttachments, outlookAttachmentInspect } = await import("../fastify-app/outlook-tools.mjs");
 const { commandAdapters } = await import("../fastify-app/cli-adapters.mjs");
@@ -68,17 +70,29 @@ try {
   // 2. include_data + images_only through the CLI adapter.
   const withData = await commandAdapters["outlook attachments"]({ account: "adga", id: "MSG_SHOT", include_data: true, images_only: true }, {});
   assert.equal(withData.returned_count, 2);
-  assert.equal(withData.attachments[0].data_base64, PNG_1X1);
+  assert.equal(withData.attachments[0].data_base64, SHOT);
 
-  // 3. save: files land under OUTLOOK_ATTACHMENT_DIR with safe names (no path traversal).
-  const saved = await outlookAttachments({ account: "adga", id: "MSG_SHOT", save: true });
-  assert.ok(saved.save_dir.startsWith(saveRoot));
-  for (const att of saved.attachments.filter((x) => x.kind === "file")) {
-    assert.ok(att.saved_path.startsWith(saved.save_dir + path.sep), att.saved_path);
+  // 3. One attachment, whole or as byte ranges joined back together; nothing on disk.
+  const png = Buffer.from(SHOT, "base64");
+  const one = await outlookAttachments({ account: "adga", id: "MSG_SHOT", contentId: "<image001.png@01DD0000.00000000>" });
+  assert.equal(one.attachment.name, "image001.png");
+  assert.equal(one.total_bytes, png.length);
+  assert.equal(one.data_base64, SHOT);
+  const firstImage = await outlookAttachments({ account: "adga", id: "MSG_SHOT", index: 1, includeData: false });
+  assert.equal(firstImage.attachment.name, "../../logo.png");
+  assert.equal(await outlookAttachments({ account: "adga", id: "MSG_SHOT", index: 9 }).then((r) => r.status), "attachment_not_found");
+  const pieces = [];
+  let next = 0;
+  let piece = 0;
+  while (next !== null) {
+    const r = await commandAdapters["outlook attachments"]({ account: "adga", id: "MSG_SHOT", attachment_id: piece ? "A0" : undefined, index: piece ? undefined : 0, offset: next, length: 1000 }, {});
+    assert.equal(r.ok, true);
+    pieces.push(Buffer.from(r.data_base64, "base64"));
+    next = r.next_offset;
+    piece += 1;
   }
-  assert.equal(path.basename(saved.attachments[1].saved_path), "1-logo.png");
-  assert.deepEqual(await readFile(saved.attachments[0].saved_path), Buffer.from(PNG_1X1, "base64"));
-  assert.equal(saved.attachments[3].saved_path, undefined);
+  assert.deepEqual(Buffer.concat(pieces), png);
+  assert.ok(requests.some((r) => r.path.endsWith("/attachments/A0")), "later pieces fetch only that attachment");
 
   // 4. Graph token shape (camelCase) works too.
   const graph = await outlookAttachments({ account: "covernode", id: "MSG_GRAPH" });
@@ -98,7 +112,7 @@ try {
   assert.equal(first.ocr_text, "Reports\nSeptember 2026");
   assert.equal(calls[0].provider, "openrouter");
   assert.match(calls[0].prompt, /transcribe ALL visible text/);
-  assert.equal(calls[0].images[0].data_base64, PNG_1X1);
+  assert.equal(calls[0].images[0].data_base64, SHOT);
   const byCid = await outlookAttachmentInspect({ account: "adga", id: "MSG_SHOT", contentId: "<image002.png@01DD0000.00000000>", prompt: "Read it", visionAnalyze });
   assert.equal(byCid.image.index, 1);
   assert.equal(calls[1].prompt, "Read it");
@@ -124,5 +138,4 @@ try {
   console.log("test-outlook-images: ok");
 } finally {
   server.close();
-  await rm(saveRoot, { recursive: true, force: true });
 }

@@ -1,7 +1,3 @@
-import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { htmlToText } from "html-to-text";
 import { analyzeImagesWithGateway } from "./ai-gateway-vision.mjs";
 
@@ -24,11 +20,11 @@ const DEFAULT_READ_MAX_BODY_CHARS = 20000;
 const MAX_READ_MAX_BODY_CHARS = 60000;
 const DEFAULT_TIMEOUT_MS = 15000;
 const ET_TIMEZONE = "America/New_York";
-// `outlook attachments`: base64 is returned per file only up to this size; `save` writes
-// files up to the save cap under OUTLOOK_ATTACHMENT_DIR (default: tmp/phoneclaw-outlook-attachments).
+// `outlook attachments` returns base64 in the response only (nothing is written to disk):
+// whole files up to max_data_bytes, or a byte range (offset/length) of one attachment so a
+// caller with a small output limit, such as SSM, can pull a big image in pieces.
 const DEFAULT_ATTACHMENT_DATA_BYTES = 250_000;
 const MAX_ATTACHMENT_DATA_BYTES = 1_000_000;
-const MAX_ATTACHMENT_SAVE_BYTES = 25_000_000;
 const MAX_INSPECT_IMAGE_BYTES = 5_000_000;
 const ATTACHMENT_TIMEOUT_MS = 30000;
 const DEFAULT_ATTACHMENT_INSPECT_PROMPT =
@@ -285,33 +281,56 @@ export async function outlookRead({
 }
 
 // Lists a message's attachments, including inline images pasted into the body (the
-// cid: images Outlook calls image001.png). Read-only: GET requests only.
+// cid: images Outlook calls image001.png). Pick one with index, content_id or
+// attachment_id; offset/length return that byte range of it. Read-only: GET requests only.
 export async function outlookAttachments({
   account,
   id,
-  includeData = false,
+  includeData,
   maxDataBytes = DEFAULT_ATTACHMENT_DATA_BYTES,
-  save = false,
   imagesOnly = false,
+  index,
+  contentId,
+  attachmentId,
+  offset,
+  length,
 } = {}) {
   const messageId = normalizeString(id);
   if (!messageId) return missingField("id", "An Outlook message id is required.");
-  const listed = await fetchAttachments(account, messageId);
+  const listed = await fetchAttachments(account, messageId, normalizeString(attachmentId));
   if (!listed.ok) return listed;
-  const withData = toBoolean(includeData);
   const dataCap = clampInteger(maxDataBytes, 1_000, MAX_ATTACHMENT_DATA_BYTES, DEFAULT_ATTACHMENT_DATA_BYTES);
-  const doSave = toBoolean(save);
-  const saveDir = doSave ? attachmentSaveDir(listed.account, messageId) : "";
-  if (doSave) await mkdir(saveDir, { recursive: true, mode: 0o700 });
+  const wantsRange = offset !== undefined && offset !== null && offset !== "";
+  const pickOne = wantsRange || normalizeString(attachmentId) || normalizeString(contentId) || (index !== undefined && index !== null && index !== "");
+  if (pickOne) {
+    const att = selectAttachment(listed.attachments, { index, contentId, attachmentId });
+    if (!att) return { ok: false, status: "attachment_not_found", account: listed.account, id: messageId, answer_text: "No attachment matched that index, content id or attachment id." };
+    const { data_base64, ...item } = att;
+    const bytes = Buffer.from(data_base64 || "", "base64");
+    if (wantsRange) {
+      const start = clampInteger(offset, 0, bytes.length, 0);
+      const end = Math.min(bytes.length, start + clampInteger(length, 1_000, MAX_ATTACHMENT_DATA_BYTES, DEFAULT_ATTACHMENT_DATA_BYTES));
+      return {
+        ok: true, status: "ok", account: listed.account, id: messageId, attachment: item,
+        total_bytes: bytes.length, offset: start, returned_bytes: end - start,
+        next_offset: end < bytes.length ? end : null,
+        data_base64: bytes.subarray(start, end).toString("base64"),
+        answer_text: `Bytes ${start}-${end} of ${bytes.length} of ${item.name}.`,
+      };
+    }
+    const fits = bytes.length <= dataCap;
+    return {
+      ok: true, status: "ok", account: listed.account, id: messageId, attachment: item, total_bytes: bytes.length,
+      ...(toBoolean(includeData, true) && fits ? { data_base64 } : {}),
+      answer_text: fits ? `${item.name}, ${bytes.length} bytes.` : `${item.name} is ${bytes.length} bytes; fetch it in pieces with offset and length.`,
+    };
+  }
+  const withData = toBoolean(includeData);
   const items = [];
   for (const att of listed.attachments) {
     if (toBoolean(imagesOnly) && !att.is_image) continue;
     const { data_base64, ...item } = att;
-    if (withData && data_base64 && att.size <= dataCap) item.data_base64 = data_base64;
-    if (doSave && data_base64 && att.size <= MAX_ATTACHMENT_SAVE_BYTES) {
-      item.saved_path = path.join(saveDir, `${att.index}-${safeFileName(att.name, att.index)}`);
-      await writeFile(item.saved_path, Buffer.from(data_base64, "base64"), { mode: 0o600 });
-    }
+    if (withData && data_base64 && Buffer.byteLength(data_base64, "base64") <= dataCap) item.data_base64 = data_base64;
     items.push(item);
   }
   const images = items.filter((x) => x.is_image);
@@ -322,12 +341,20 @@ export async function outlookAttachments({
     id: messageId,
     returned_count: items.length,
     image_count: images.length,
-    ...(doSave ? { save_dir: saveDir } : {}),
     attachments: items,
     answer_text: items.length
       ? `${items.length} attachment${items.length === 1 ? "" : "s"}${images.length ? `, ${images.length} image${images.length === 1 ? "" : "s"}` : ""}: ${items.slice(0, 5).map((x) => x.name).join("; ")}.`
       : "That email has no attachments.",
   };
+}
+
+function selectAttachment(attachments, { index, contentId, attachmentId }) {
+  const aid = normalizeString(attachmentId);
+  if (aid) return attachments.find((x) => x.attachment_id === aid) || (attachments.length === 1 ? attachments[0] : null);
+  const cid = normalizeString(contentId).replace(/^<|>$/g, "").toLowerCase();
+  if (cid) return attachments.find((x) => x.content_id.toLowerCase() === cid) || null;
+  if (index !== undefined && index !== null && index !== "") return attachments.find((x) => x.index === Number(index)) || null;
+  return attachments.find((x) => x.is_image) || null;
 }
 
 // Sends one image attachment (default: the first image) to the vision model and returns a
@@ -345,11 +372,7 @@ export async function outlookAttachmentInspect({
   const listed = await fetchAttachments(account, messageId);
   if (!listed.ok) return listed;
   const images = listed.attachments.filter((x) => x.is_image && x.data_base64);
-  const cid = normalizeString(contentId).replace(/^<|>$/g, "").toLowerCase();
-  let image;
-  if (cid) image = images.find((x) => x.content_id.toLowerCase() === cid);
-  else if (index !== undefined && index !== null && index !== "") image = listed.attachments.find((x) => x.index === Number(index));
-  else image = images[0];
+  const image = selectAttachment(listed.attachments, { index, contentId });
   if (!image || !image.is_image || !image.data_base64) {
     return {
       ok: false,
@@ -386,16 +409,17 @@ export async function outlookAttachmentInspect({
   };
 }
 
-async function fetchAttachments(account, messageId) {
+async function fetchAttachments(account, messageId, attachmentId = "") {
   const targets = await resolveAccounts(account);
   for (const target of targets) {
     const auth = await safeGetBestToken(target, "mail");
     if (!auth?.token) continue;
     const first = auth.api || preferredApiForToken(decodeJwtClaims(auth.token));
     const attempt = async (api) => {
+      const one = attachmentId ? `/${encodeURIComponent(attachmentId)}` : "";
       const url = api === "graph"
-        ? new URL(`/v1.0/me/messages/${encodeURIComponent(messageId)}/attachments`, ensureTrailingSlash(GRAPH_BASE))
-        : new URL(`/api/v2.0/me/messages/${encodeURIComponent(messageId)}/attachments`, ensureTrailingSlash(OUTLOOK_REST_BASE));
+        ? new URL(`/v1.0/me/messages/${encodeURIComponent(messageId)}/attachments${one}`, ensureTrailingSlash(GRAPH_BASE))
+        : new URL(`/api/v2.0/me/messages/${encodeURIComponent(messageId)}/attachments${one}`, ensureTrailingSlash(OUTLOOK_REST_BASE));
       const headers = api === "graph" ? graphHeaders(auth.token) : { authorization: `Bearer ${auth.token}`, accept: "application/json" };
       return await fetchJsonDetailed(url, { headers, timeoutMs: ATTACHMENT_TIMEOUT_MS, api: api === "graph" ? "graph" : "outlook_rest" });
     };
@@ -405,7 +429,7 @@ async function fetchAttachments(account, messageId) {
       if (targets.length > 1 && res.status === 404) continue;
       return { ok: false, status: "attachments_failed", account: target.label, id: messageId, upstream_http_status: res.status, answer_text: "The Outlook upstream call failed." };
     }
-    const values = Array.isArray(res.body?.value) ? res.body.value : [];
+    const values = attachmentId ? (res.body ? [res.body] : []) : Array.isArray(res.body?.value) ? res.body.value : [];
     return { ok: true, account: target.label, attachments: values.map((raw, i) => compactAttachment(raw, i)) };
   }
   return { ok: false, status: "message_not_found", scope: accountScopeLabel(account), id: messageId, answer_text: "Message not found." };
@@ -429,16 +453,6 @@ function compactAttachment(raw = {}, index) {
     is_image: kind === "file" && contentType.startsWith("image/"),
     data_base64: kind === "file" ? String(pick("contentBytes") || "") : "",
   };
-}
-
-function attachmentSaveDir(account, messageId) {
-  const root = normalizeString(process.env.OUTLOOK_ATTACHMENT_DIR) || path.join(tmpdir(), "phoneclaw-outlook-attachments");
-  return path.join(root, account, createHash("sha256").update(messageId).digest("hex").slice(0, 16));
-}
-
-function safeFileName(name, index) {
-  const base = path.basename(String(name || "")).replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "").slice(0, 120);
-  return base || `attachment-${index}`;
 }
 
 export async function outlookSearch({

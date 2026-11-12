@@ -563,8 +563,12 @@ export const commandAdapters = {
     id: body.id || body.message_id || body.messageId,
     includeData: body.include_data ?? body.includeData,
     maxDataBytes: body.max_data_bytes || body.maxDataBytes,
-    save: body.save,
     imagesOnly: body.images_only ?? body.imagesOnly,
+    index: body.index ?? body.attachment_index ?? body.attachmentIndex,
+    contentId: body.content_id || body.contentId || body.cid,
+    attachmentId: body.attachment_id || body.attachmentId,
+    offset: body.offset,
+    length: body.length,
   }),
   "outlook attachment-inspect": (body, context) => outlookAttachmentInspect({
     account: body.account,
