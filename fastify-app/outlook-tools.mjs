@@ -631,6 +631,7 @@ export async function outlookDraftReply({
   body,
   bodyHtml,
   replyAll = false,
+  inlineImages,
   confirmed = false,
 } = {}) {
   const messageId = normalizeString(id);
@@ -653,7 +654,11 @@ export async function outlookDraftReply({
   const merged = prependToBody(existing, content);
   const patched = await restWrite(auth.token, "PATCH", `me/messages/${encodeURIComponent(draft.Id)}`, { Body: merged });
   if (!patched.ok) return draftUpstreamError(target, patched, "reply_draft_failed");
-  return draftResult(target, patched.body || draft, all ? "Reply-all draft saved." : "Reply draft saved.");
+  const saved = patched.body || draft;
+  const label = all ? "Reply-all draft saved" : "Reply draft saved";
+  const attached = await attachInlineImages(auth.token, draft.Id, inlineImages);
+  if (!attached.ok) return { ...draftResult(target, saved, `${label}, but an image couldn't be attached.`), ok: false, status: "inline_image_failed", error: attached.error };
+  return draftResult(target, saved, attached.count ? `${label} with ${attached.count} inline image(s).` : `${label}.`);
 }
 
 export async function outlookDraftNew({

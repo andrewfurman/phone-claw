@@ -47,7 +47,7 @@ const server = http.createServer(async (req, res) => {
     res.end(Buffer.from("PNGDATA"));
     return;
   }
-  if (req.method === "POST" && url.pathname === "/api/v2.0/me/messages/NEW_1/attachments") {
+  if (req.method === "POST" && /\/api\/v2\.0\/me\/messages\/(NEW_1|DRAFT_1)\/attachments$/.test(url.pathname)) {
     res.writeHead(201);
     res.end(JSON.stringify({ Id: "ATT_1" }));
     return;
@@ -146,7 +146,15 @@ assert.equal(Buffer.from(att.body.ContentBytes, "base64").toString(), "PNGDATA")
 const refusedImg = await commandAdapters["outlook draft-new"]({ account: "adga", to: "oscar@example.com", subject: "x", body_html: "x", inline_images: [{ url: "https://evil.example/x.png", content_id: "a" }] }, { confirmed: true });
 assert.equal(refusedImg.status, "inline_image_failed");
 
-// 9. Nothing ever went to a send endpoint.
+// 9. Reply-all drafts take inline images too, attached to the new draft.
+requests.length = 0;
+const replyImg = await commandAdapters["outlook draft-reply"]({ account: "adga", id: "MSG_4", reply_all: true, body_html: '<img src="cid:r1">', inline_images: [{ url: `http://127.0.0.1:${port}/img/shot.png`, content_id: "r1" }] }, { confirmed: true });
+assert.equal(replyImg.status, "draft_saved", JSON.stringify(replyImg));
+const replyAtt = requests.find((r) => r.path === "/api/v2.0/me/messages/DRAFT_1/attachments");
+assert.equal(replyAtt.body.ContentId, "r1");
+assert.equal(replyAtt.body.IsInline, true);
+
+// 10. Nothing ever went to a send endpoint.
 assert.ok(!requests.some((r) => /\/send/i.test(r.path)));
 
 server.close();
