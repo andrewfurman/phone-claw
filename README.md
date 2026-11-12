@@ -221,8 +221,8 @@ phoneclaw outlook search --json '{"account":"covernode","query":"meeting notes"}
 phoneclaw outlook attachments --json '{"account":"adga","id":"<message-id>"}'
 phoneclaw outlook attachments --json '{"account":"adga","id":"<message-id>","index":0}'
 phoneclaw outlook attachments --json '{"account":"adga","id":"<message-id>","index":0,"offset":0,"length":15000}'
-# Describe an image and transcribe all its text (vision model; OpenRouter when OPENROUTER_API_KEY
-# is set, else the AI gateway). Default: the first image; or pick by index or content_id.
+# Describe an image and transcribe all its text (DeepSeek V4.1 Flash on OpenRouter, pinned to
+# Baseten fast; see below). Default: the first image; or pick by index or content_id.
 phoneclaw outlook attachment-inspect --json '{"account":"adga","id":"<message-id>"}'
 phoneclaw outlook attachment-inspect --json '{"account":"adga","id":"<message-id>","index":1,"prompt":"What totals are shown?"}'
 
@@ -230,6 +230,25 @@ phoneclaw outlook attachment-inspect --json '{"account":"adga","id":"<message-id
 phoneclaw outlook agenda --json '{"account":"covernode","today":true}'
 phoneclaw outlook agenda --json '{"account":"adga","start_date":"2026-10-01","end_date":"2026-10-07"}'
 ```
+
+Image analysis for `outlook attachment-inspect` runs on OpenRouter: **DeepSeek V4.1 Flash 1017**
+(`deepseek/deepseek-v4.1-flash-1017`), pinned to **Baseten's fast endpoint** (`baseten/fast`, no
+fallback to other providers), with reasoning off.
+
+- **Why:** speed. Baseten fast runs at ~558 tok/s. In live tests on real screenshots it answered
+  in 0.8 to 1.4 s with a complete, accurate transcription.
+- **Cost:** $0.60 / $2.40 per million input/output tokens, about 2x the standard providers. That
+  is still well under a cent per screenshot: $0.0016 (1,117 in / 394 out tokens) and $0.0031
+  (681 in / 1,114 out) in the 2026-11-12 tests. With reasoning `low`, the same screenshot took
+  3.6 s and $0.0085.
+- **Reliability:** if Baseten's shared pool briefly rate-limits (HTTP 429), the client retries
+  twice before giving up, since the pin doesn't fall back.
+- **Changing it** (in `/etc/phoneclaw/bridge.env`, then `sudo systemctl restart phoneclaw-bridge`):
+  `OPENROUTER_VISION_MODEL` sets the model. `OPENROUTER_VISION_PROVIDER` sets the pinned endpoint
+  (comma-separated; empty = unpinned, normal OpenRouter routing). `OPENROUTER_VISION_REASONING`
+  is `off` (default), `low`, `medium` or `high`. Without `OPENROUTER_API_KEY` the command falls
+  back to the AI gateway (`AI_GATEWAY_API_KEY`, `PHONECLAW_VISION_MODEL`). The Gmail image
+  commands keep using the AI gateway unless `PHONECLAW_VISION_PROVIDER=openrouter`.
 
 Pulling a screenshot back to your machine over SSM (nothing is written on the bridge; SSM's inline
 output is ~24 KB, so the script fetches 15 KB byte ranges with `offset`/`length` and joins them):

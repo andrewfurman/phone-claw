@@ -19,7 +19,13 @@ INDEX="${3:-}"
 OUT="${4:-}"
 CHUNK=15000 # bytes per call: 20,000 base64 characters
 
-run_on_bridge() { # $1: JavaScript module source; prints its stdout
+run_on_bridge() { # $1: JavaScript module source; prints its stdout. Retries transient failures.
+  local try
+  for try in 1 2 3; do run_once "$1" && return 0; sleep $((try * 5)); done
+  return 1
+}
+
+run_once() {
   local b64 id status
   b64=$(printf '%s' "$1" | base64 | tr -d '\n')
   id=$(aws ssm send-command --region "$REGION" --instance-ids "$INSTANCE_ID" \
@@ -53,7 +59,7 @@ printf '%s\n' "$first" | sed -n 2p | base64 -d > "$OUT"
 aid=$(node -e 'console.log(JSON.parse(process.argv[1]).aid)' "$meta")
 next=$(node -e 'const m = JSON.parse(process.argv[1]); console.log(m.next ?? "")' "$meta")
 while [ -n "$next" ]; do
-  piece=$(run_on_bridge "$(js "$(args "{\"attachment_id\":$(node -e 'console.log(JSON.stringify(process.argv[1]))' "$aid"),\"offset\":$next,\"length\":$CHUNK}")" 'console.log(r.next_offset ?? ""); console.log(r.data_base64);')")
+  piece=$(run_on_bridge "$(js "$(args "{\"attachmentId\":$(node -e 'console.log(JSON.stringify(process.argv[1]))' "$aid"),\"offset\":$next,\"length\":$CHUNK}")" 'console.log(r.next_offset ?? ""); console.log(r.data_base64);')")
   printf '%s\n' "$piece" | sed -n 2p | base64 -d >> "$OUT"
   next=$(printf '%s\n' "$piece" | head -1)
 done

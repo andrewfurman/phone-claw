@@ -4,6 +4,14 @@
 export const DEFAULT_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
 export const DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 export const DEFAULT_VISION_MODEL = "google/gemini-3.8-flash";
+// OpenRouter default: DeepSeek V4.1 Flash on Baseten's fast endpoint, chosen for speed
+// (~558 tok/s; $0.60 / $2.40 per M input/output tokens, about 2x the standard providers).
+// OPENROUTER_VISION_MODEL changes the model; OPENROUTER_VISION_PROVIDER changes the pinned
+// endpoint ("" = OpenRouter's normal routing); OPENROUTER_VISION_REASONING is off by default
+// (a screenshot takes ~1 s and ~$0.002; "low" took ~4 s and ~$0.009 in testing).
+export const DEFAULT_OPENROUTER_VISION_MODEL = "deepseek/deepseek-v4.1-flash-1017";
+export const DEFAULT_OPENROUTER_VISION_PROVIDER = "baseten/fast";
+export const DEFAULT_OPENROUTER_VISION_REASONING = "off";
 
 const DEFAULT_TIMEOUT_MS = 45_000;
 const MAX_PROMPT_CHARS = 4_000;
@@ -21,9 +29,14 @@ export function resolveVisionGatewayConfig(env = process.env, { provider } = {})
   if (chosen === "openrouter" && !hasOpenRouter && hasGateway) chosen = "ai_gateway";
   if (chosen === "ai_gateway" && !hasGateway && hasOpenRouter) chosen = "openrouter";
   if (chosen === "openrouter") {
-    const model = String(env.OPENROUTER_VISION_MODEL || DEFAULT_VISION_MODEL).trim() || DEFAULT_VISION_MODEL;
+    const model = String(env.OPENROUTER_VISION_MODEL || DEFAULT_OPENROUTER_VISION_MODEL).trim() || DEFAULT_OPENROUTER_VISION_MODEL;
+    const pin = String(env.OPENROUTER_VISION_PROVIDER ?? DEFAULT_OPENROUTER_VISION_PROVIDER).trim();
+    const effort = String(env.OPENROUTER_VISION_REASONING ?? DEFAULT_OPENROUTER_VISION_REASONING).trim().toLowerCase();
     return {
       provider: "openrouter",
+      // Provider routing: only the pinned endpoint, no fallback to others.
+      routing: pin ? { order: pin.split(",").map((x) => x.trim()).filter(Boolean), allow_fallbacks: false } : null,
+      reasoning: !effort ? null : effort === "off" || effort === "none" ? { enabled: false } : { effort },
       apiKey: String(env.OPENROUTER_API_KEY || "").trim(),
       baseUrl: String(env.OPENROUTER_BASE_URL || DEFAULT_OPENROUTER_BASE_URL).trim().replace(/\/+$/, ""),
       model,
@@ -86,6 +99,7 @@ export async function analyzeImagesWithGateway({
   env = process.env,
   fetchImpl = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  retryDelayMs = 1_500,
 } = {}) {
   const config = resolveVisionGatewayConfig(env, { provider });
   if (!config.configured) {
@@ -115,9 +129,12 @@ export async function analyzeImagesWithGateway({
     };
   }
 
+  // No response_format: Baseten's endpoints don't support it, and the prompt asks for JSON.
   const body = {
     model: config.model,
     temperature: 0.2,
+    ...(config.routing ? { provider: config.routing } : {}),
+    ...(config.reasoning ? { reasoning: config.reasoning } : {}),
     messages: [
       {
         role: "system",
@@ -139,7 +156,7 @@ export async function analyzeImagesWithGateway({
     Math.max(1_000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS)
   );
   try {
-    const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+    const send = () => fetchImpl(`${config.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
@@ -148,6 +165,12 @@ export async function analyzeImagesWithGateway({
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+    // A pinned OpenRouter endpoint can't fall back, so retry a brief upstream rate limit.
+    let response = await send();
+    for (let retry = 1; response.status === 429 && config.routing && retry <= 2; retry += 1) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs * retry));
+      response = await send();
+    }
     const rawText = await response.text();
     if (!response.ok) {
       return {
@@ -180,6 +203,8 @@ export async function analyzeImagesWithGateway({
       ok: true,
       status: "ok",
       provider: config.provider,
+      // The upstream that served the request, e.g. "BaseTen" (OpenRouter only).
+      upstream_provider: payload?.provider || "",
       model: payload?.model || config.model,
       description: parsed.description,
       ocr_text: parsed.ocr_text,
