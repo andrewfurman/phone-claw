@@ -42,6 +42,16 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({ Id: "DRAFT_OLD_MOVED" }));
     return;
   }
+  if (req.method === "GET" && url.pathname === "/img/shot.png") {
+    res.writeHead(200, { "content-type": "image/png" });
+    res.end(Buffer.from("PNGDATA"));
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/v2.0/me/messages/NEW_1/attachments") {
+    res.writeHead(201);
+    res.end(JSON.stringify({ Id: "ATT_1" }));
+    return;
+  }
   if (req.method === "POST" && url.pathname === "/api/v2.0/me/messages") {
     res.writeHead(201);
     res.end(JSON.stringify({ Id: "NEW_1", Subject: body.Subject, IsDraft: true, ToRecipients: body.ToRecipients, CcRecipients: body.CcRecipients, WebLink: "" }));
@@ -57,6 +67,7 @@ const port = server.address().port;
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 process.env.OUTLOOK_TEST_TOKEN_ADGA = `${b64({ alg: "none" })}.${b64({ aud: "https://outlook.office.com", scp: "Mail.ReadWrite" })}.sig`;
 process.env.OUTLOOK_REST_BASE_URL = `http://127.0.0.1:${port}`;
+process.env.OUTLOOK_INLINE_IMAGE_HOSTS = "127.0.0.1";
 const { outlookDraftReply, outlookDraftNew, outlookDeleteDraft } = await import("../fastify-app/outlook-tools.mjs");
 const { commandAdapters } = await import("../fastify-app/cli-adapters.mjs");
 
@@ -122,7 +133,20 @@ const refused = await outlookDeleteDraft({ account: "adga", id: "MSG_SENT", conf
 assert.equal(refused.status, "not_a_draft");
 assert.ok(!requests.some((r) => r.method !== "GET"), "a non-draft is never moved");
 
-// 8. Nothing ever went to a send endpoint.
+// 8. Inline images are fetched from the allowed host and attached with IsInline + ContentId.
+requests.length = 0;
+const withImage = await commandAdapters["outlook draft-new"]({ account: "adga", to: "oscar@example.com", subject: "Shots", body_html: '<img src="cid:shot1">', inline_images: [{ url: `http://127.0.0.1:${port}/img/shot.png`, content_id: "shot1" }] }, { confirmed: true });
+assert.equal(withImage.status, "draft_saved", JSON.stringify(withImage));
+const att = requests.find((r) => r.path.endsWith("/attachments"));
+assert.equal(att.body.IsInline, true);
+assert.equal(att.body.ContentId, "shot1");
+assert.equal(att.body.ContentType, "image/png");
+assert.equal(Buffer.from(att.body.ContentBytes, "base64").toString(), "PNGDATA");
+// A host that isn't allowed is refused before anything is fetched.
+const refusedImg = await commandAdapters["outlook draft-new"]({ account: "adga", to: "oscar@example.com", subject: "x", body_html: "x", inline_images: [{ url: "https://evil.example/x.png", content_id: "a" }] }, { confirmed: true });
+assert.equal(refusedImg.status, "inline_image_failed");
+
+// 9. Nothing ever went to a send endpoint.
 assert.ok(!requests.some((r) => /\/send/i.test(r.path)));
 
 server.close();

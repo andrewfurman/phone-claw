@@ -52,6 +52,7 @@ function workDraftNew(body, context) {
     subject: body.subject,
     body: body.body || body.message || body.text,
     bodyHtml: body.body_html || body.bodyHtml || body.html,
+    inlineImages: body.inline_images || body.inlineImages,
     confirmed: context.confirmed,
   });
 }

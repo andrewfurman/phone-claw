@@ -997,7 +997,9 @@ export const CLI_COMMAND_CATALOG = [
       "text",
       "body_html",
       "bodyHtml",
-      "html"
+      "html",
+      "inline_images",
+      "inlineImages"
     ]
   },
   {
