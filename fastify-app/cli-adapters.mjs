@@ -40,6 +40,7 @@ function workDraftReply(body, context, replyAll) {
     body: body.body || body.message || body.text,
     bodyHtml: body.body_html || body.bodyHtml || body.html,
     replyAll,
+    inlineImages: body.inline_images || body.inlineImages,
     confirmed: context.confirmed,
   });
 }

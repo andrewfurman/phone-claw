@@ -1024,7 +1024,9 @@ export const CLI_COMMAND_CATALOG = [
       "bodyHtml",
       "html",
       "reply_all",
-      "replyAll"
+      "replyAll",
+      "inline_images",
+      "inlineImages"
     ]
   },
   {
