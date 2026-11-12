@@ -953,6 +953,40 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "outlook attachments",
+    "legacy_path": "/cli/outlook/attachments",
+    "parameters": [
+      "account",
+      "id",
+      "message_id",
+      "messageId",
+      "include_data",
+      "includeData",
+      "max_data_bytes",
+      "maxDataBytes",
+      "save",
+      "images_only",
+      "imagesOnly"
+    ]
+  },
+  {
+    "command": "outlook attachment-inspect",
+    "legacy_path": "/cli/outlook/attachment-inspect",
+    "parameters": [
+      "account",
+      "id",
+      "message_id",
+      "messageId",
+      "index",
+      "attachment_index",
+      "attachmentIndex",
+      "content_id",
+      "contentId",
+      "cid",
+      "prompt"
+    ]
+  },
+  {
     "command": "outlook search",
     "legacy_path": "/cli/outlook/search",
     "parameters": [

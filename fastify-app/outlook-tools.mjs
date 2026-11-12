@@ -1,4 +1,9 @@
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { htmlToText } from "html-to-text";
+import { analyzeImagesWithGateway } from "./ai-gateway-vision.mjs";
 
 // Read-only Outlook access via two already-signed-in Chrome sessions on the bridge VM.
 // This module talks to the local Chrome DevTools Protocol (CDP) to extract a short-lived
@@ -19,6 +24,16 @@ const DEFAULT_READ_MAX_BODY_CHARS = 20000;
 const MAX_READ_MAX_BODY_CHARS = 60000;
 const DEFAULT_TIMEOUT_MS = 15000;
 const ET_TIMEZONE = "America/New_York";
+// `outlook attachments`: base64 is returned per file only up to this size; `save` writes
+// files up to the save cap under OUTLOOK_ATTACHMENT_DIR (default: tmp/phoneclaw-outlook-attachments).
+const DEFAULT_ATTACHMENT_DATA_BYTES = 250_000;
+const MAX_ATTACHMENT_DATA_BYTES = 1_000_000;
+const MAX_ATTACHMENT_SAVE_BYTES = 25_000_000;
+const MAX_INSPECT_IMAGE_BYTES = 5_000_000;
+const ATTACHMENT_TIMEOUT_MS = 30000;
+const DEFAULT_ATTACHMENT_INSPECT_PROMPT =
+  "Describe this screenshot or image in detail, then transcribe ALL visible text verbatim in reading order " +
+  "(menus, labels, table cells, numbers, dates). Put the full transcription in ocr_text.";
 
 // `outlook messages` lists one well-known folder, Inbox by default. Listing all of
 // /me/messages mixes in Drafts and Sent Items, so an unsent draft looks like a sent reply.
@@ -267,6 +282,163 @@ export async function outlookRead({
     id: messageId,
     answer_text: "Message not found.",
   };
+}
+
+// Lists a message's attachments, including inline images pasted into the body (the
+// cid: images Outlook calls image001.png). Read-only: GET requests only.
+export async function outlookAttachments({
+  account,
+  id,
+  includeData = false,
+  maxDataBytes = DEFAULT_ATTACHMENT_DATA_BYTES,
+  save = false,
+  imagesOnly = false,
+} = {}) {
+  const messageId = normalizeString(id);
+  if (!messageId) return missingField("id", "An Outlook message id is required.");
+  const listed = await fetchAttachments(account, messageId);
+  if (!listed.ok) return listed;
+  const withData = toBoolean(includeData);
+  const dataCap = clampInteger(maxDataBytes, 1_000, MAX_ATTACHMENT_DATA_BYTES, DEFAULT_ATTACHMENT_DATA_BYTES);
+  const doSave = toBoolean(save);
+  const saveDir = doSave ? attachmentSaveDir(listed.account, messageId) : "";
+  if (doSave) await mkdir(saveDir, { recursive: true, mode: 0o700 });
+  const items = [];
+  for (const att of listed.attachments) {
+    if (toBoolean(imagesOnly) && !att.is_image) continue;
+    const { data_base64, ...item } = att;
+    if (withData && data_base64 && att.size <= dataCap) item.data_base64 = data_base64;
+    if (doSave && data_base64 && att.size <= MAX_ATTACHMENT_SAVE_BYTES) {
+      item.saved_path = path.join(saveDir, `${att.index}-${safeFileName(att.name, att.index)}`);
+      await writeFile(item.saved_path, Buffer.from(data_base64, "base64"), { mode: 0o600 });
+    }
+    items.push(item);
+  }
+  const images = items.filter((x) => x.is_image);
+  return {
+    ok: true,
+    status: "ok",
+    account: listed.account,
+    id: messageId,
+    returned_count: items.length,
+    image_count: images.length,
+    ...(doSave ? { save_dir: saveDir } : {}),
+    attachments: items,
+    answer_text: items.length
+      ? `${items.length} attachment${items.length === 1 ? "" : "s"}${images.length ? `, ${images.length} image${images.length === 1 ? "" : "s"}` : ""}: ${items.slice(0, 5).map((x) => x.name).join("; ")}.`
+      : "That email has no attachments.",
+  };
+}
+
+// Sends one image attachment (default: the first image) to the vision model and returns a
+// description plus the full transcribed text. OpenRouter is used when its key is set.
+export async function outlookAttachmentInspect({
+  account,
+  id,
+  index,
+  contentId,
+  prompt,
+  visionAnalyze = analyzeImagesWithGateway,
+} = {}) {
+  const messageId = normalizeString(id);
+  if (!messageId) return missingField("id", "An Outlook message id is required.");
+  const listed = await fetchAttachments(account, messageId);
+  if (!listed.ok) return listed;
+  const images = listed.attachments.filter((x) => x.is_image && x.data_base64);
+  const cid = normalizeString(contentId).replace(/^<|>$/g, "").toLowerCase();
+  let image;
+  if (cid) image = images.find((x) => x.content_id.toLowerCase() === cid);
+  else if (index !== undefined && index !== null && index !== "") image = listed.attachments.find((x) => x.index === Number(index));
+  else image = images[0];
+  if (!image || !image.is_image || !image.data_base64) {
+    return {
+      ok: false,
+      status: images.length ? "image_not_found" : "no_images",
+      account: listed.account,
+      id: messageId,
+      images: images.map(({ data_base64, ...x }) => x),
+      answer_text: images.length ? "No image matched that index or content id." : "That email has no images.",
+    };
+  }
+  if (image.size > MAX_INSPECT_IMAGE_BYTES) {
+    return { ok: false, status: "image_too_large", account: listed.account, id: messageId, answer_text: "That image is too large to inspect." };
+  }
+  const vision = await visionAnalyze({
+    provider: "openrouter",
+    prompt: normalizeString(prompt) || DEFAULT_ATTACHMENT_INSPECT_PROMPT,
+    images: [{ media_type: image.content_type, data_base64: image.data_base64, filename: image.name }],
+  });
+  const { data_base64, ...meta } = image;
+  if (!vision.ok) {
+    return { ok: false, status: vision.status || "vision_error", account: listed.account, id: messageId, image: meta, message: vision.message, answer_text: vision.message || "Vision analysis failed." };
+  }
+  return {
+    ok: true,
+    status: "ok",
+    account: listed.account,
+    id: messageId,
+    image: meta,
+    provider: vision.provider || "",
+    model: vision.model || "",
+    description: vision.description || "",
+    ocr_text: vision.ocr_text || "",
+    answer_text: vision.answer_text || vision.description || "I inspected the image.",
+  };
+}
+
+async function fetchAttachments(account, messageId) {
+  const targets = await resolveAccounts(account);
+  for (const target of targets) {
+    const auth = await safeGetBestToken(target, "mail");
+    if (!auth?.token) continue;
+    const first = auth.api || preferredApiForToken(decodeJwtClaims(auth.token));
+    const attempt = async (api) => {
+      const url = api === "graph"
+        ? new URL(`/v1.0/me/messages/${encodeURIComponent(messageId)}/attachments`, ensureTrailingSlash(GRAPH_BASE))
+        : new URL(`/api/v2.0/me/messages/${encodeURIComponent(messageId)}/attachments`, ensureTrailingSlash(OUTLOOK_REST_BASE));
+      const headers = api === "graph" ? graphHeaders(auth.token) : { authorization: `Bearer ${auth.token}`, accept: "application/json" };
+      return await fetchJsonDetailed(url, { headers, timeoutMs: ATTACHMENT_TIMEOUT_MS, api: api === "graph" ? "graph" : "outlook_rest" });
+    };
+    let res = await attempt(first);
+    if (!res.ok && shouldFallback(res)) res = await attempt(first === "graph" ? "outlook_rest" : "graph");
+    if (!res.ok) {
+      if (targets.length > 1 && res.status === 404) continue;
+      return { ok: false, status: "attachments_failed", account: target.label, id: messageId, upstream_http_status: res.status, answer_text: "The Outlook upstream call failed." };
+    }
+    const values = Array.isArray(res.body?.value) ? res.body.value : [];
+    return { ok: true, account: target.label, attachments: values.map((raw, i) => compactAttachment(raw, i)) };
+  }
+  return { ok: false, status: "message_not_found", scope: accountScopeLabel(account), id: messageId, answer_text: "Message not found." };
+}
+
+// Graph (camelCase) and Outlook REST (PascalCase) shapes -> one compact shape.
+function compactAttachment(raw = {}, index) {
+  const pick = (name) => raw[name] ?? raw[name.charAt(0).toUpperCase() + name.slice(1)];
+  const type = String(raw["@odata.type"] || "").split(".").pop().toLowerCase();
+  const kind = type.includes("file") ? "file" : type.includes("item") ? "item" : type.includes("reference") ? "reference" : type || "file";
+  const contentType = String(pick("contentType") || "").toLowerCase();
+  return {
+    index,
+    attachment_id: String(pick("id") || ""),
+    name: String(pick("name") || `attachment-${index}`),
+    content_type: contentType,
+    size: Number(pick("size") || 0),
+    is_inline: pick("isInline") === true,
+    content_id: String(pick("contentId") || "").replace(/^<|>$/g, ""),
+    kind,
+    is_image: kind === "file" && contentType.startsWith("image/"),
+    data_base64: kind === "file" ? String(pick("contentBytes") || "") : "",
+  };
+}
+
+function attachmentSaveDir(account, messageId) {
+  const root = normalizeString(process.env.OUTLOOK_ATTACHMENT_DIR) || path.join(tmpdir(), "phoneclaw-outlook-attachments");
+  return path.join(root, account, createHash("sha256").update(messageId).digest("hex").slice(0, 16));
+}
+
+function safeFileName(name, index) {
+  const base = path.basename(String(name || "")).replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "").slice(0, 120);
+  return base || `attachment-${index}`;
 }
 
 export async function outlookSearch({

@@ -214,6 +214,16 @@ phoneclaw outlook read --json '{"account":"adga","id":"<message-id>"}'
 # Search mail
 phoneclaw outlook search --json '{"account":"covernode","query":"meeting notes"}'
 
+# Attachments, including screenshots pasted into the body (inline cid images like image001.png).
+# include_data returns base64 (files up to max_data_bytes, default 250 KB); save writes every file
+# under $OUTLOOK_ATTACHMENT_DIR (default /tmp/phoneclaw-outlook-attachments/<account>/<hash>/).
+phoneclaw outlook attachments --json '{"account":"adga","id":"<message-id>"}'
+phoneclaw outlook attachments --json '{"account":"adga","id":"<message-id>","images_only":true,"save":true}'
+# Describe an image and transcribe all its text (vision model; OpenRouter when OPENROUTER_API_KEY
+# is set, else the AI gateway). Default: the first image; or pick by index or content_id.
+phoneclaw outlook attachment-inspect --json '{"account":"adga","id":"<message-id>"}'
+phoneclaw outlook attachment-inspect --json '{"account":"adga","id":"<message-id>","index":1,"prompt":"What totals are shown?"}'
+
 # Calendar agenda in America/New_York
 phoneclaw outlook agenda --json '{"account":"covernode","today":true}'
 phoneclaw outlook agenda --json '{"account":"adga","start_date":"2026-10-01","end_date":"2026-10-07"}'
