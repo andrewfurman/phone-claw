@@ -239,6 +239,9 @@ phoneclaw outlook draft-reply --json '{"account":"adga","id":"<message-id>","rep
 phoneclaw outlook draft-reply --json '{"account":"adga","id":"<message-id>","body_html":"<p>Thanks!</p>"}' --confirmed
 # New message
 phoneclaw outlook draft-new --json '{"account":"covernode","to":"Name <a@b.com>, c@d.com","cc":"e@f.com","subject":"Hi","body":"..."}' --confirmed
+# Inline images: reference them as <img src="cid:shot1"> and list them; each is fetched
+# from an OUTLOOK_INLINE_IMAGE_HOSTS host (default: our CloudFront) and attached inline.
+phoneclaw outlook draft-new --json '{"account":"adga","to":"a@b.com","subject":"Hi","body_html":"<img src=\"cid:shot1\">","inline_images":[{"url":"https://dmvr3d99h35se.cloudfront.net/x.png","content_id":"shot1"}]}' --confirmed
 # Moves a draft to Deleted Items; refuses anything that isn't a draft.
 phoneclaw outlook draft-delete --json '{"account":"adga","id":"<draft-id>"}' --confirmed
 ```

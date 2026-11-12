@@ -475,6 +475,7 @@ export async function outlookDraftNew({
   subject,
   body,
   bodyHtml,
+  inlineImages,
   confirmed = false,
 } = {}) {
   const toList = parseRecipients(to);
@@ -496,7 +497,46 @@ export async function outlookDraftNew({
     CcRecipients: parseRecipients(cc),
   });
   if (!created.ok) return draftUpstreamError(target, created, "new_draft_failed");
-  return draftResult(target, created.body || {}, "Draft saved.");
+  const draft = created.body || {};
+  const attached = await attachInlineImages(auth.token, draft.Id, inlineImages);
+  if (!attached.ok) return { ...draftResult(target, draft, "Draft saved, but an image couldn't be attached."), ok: false, status: "inline_image_failed", error: attached.error };
+  return draftResult(target, draft, attached.count ? `Draft saved with ${attached.count} inline image(s).` : "Draft saved.");
+}
+
+// Inline images for a draft body that references them as <img src="cid:...">.
+// Each image is fetched from an allowed host (OUTLOOK_INLINE_IMAGE_HOSTS) and
+// attached with IsInline, so it shows without "download pictures".
+const INLINE_IMAGE_HOSTS = new Set(
+  String(process.env.OUTLOOK_INLINE_IMAGE_HOSTS || "dmvr3d99h35se.cloudfront.net").split(",").map((h) => h.trim()).filter(Boolean)
+);
+const MAX_INLINE_IMAGE_BYTES = 3 * 1024 * 1024;
+
+async function attachInlineImages(token, draftId, images) {
+  const list = Array.isArray(images) ? images : [];
+  for (const img of list) {
+    const contentId = normalizeString(img?.content_id || img?.contentId);
+    let url;
+    try { url = new URL(String(img?.url || "")); } catch { return { ok: false, error: "Each inline image needs a valid url." }; }
+    const local = url.hostname === "127.0.0.1" || url.hostname === "localhost";
+    if (!contentId || !INLINE_IMAGE_HOSTS.has(url.hostname) || (url.protocol !== "https:" && !local)) {
+      return { ok: false, error: `Inline image must have a content_id and an https url on ${[...INLINE_IMAGE_HOSTS].join(", ")}.` };
+    }
+    const res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) }).catch(() => null);
+    const type = res?.headers.get("content-type") || "";
+    if (!res?.ok || !type.startsWith("image/")) return { ok: false, error: `Couldn't fetch image ${url.pathname}.` };
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.length > MAX_INLINE_IMAGE_BYTES) return { ok: false, error: `Image ${url.pathname} is over 3 MB.` };
+    const saved = await restWrite(token, "POST", `me/messages/${encodeURIComponent(draftId)}/attachments`, {
+      "@odata.type": "#Microsoft.OutlookServices.FileAttachment",
+      Name: normalizeString(img?.name) || url.pathname.split("/").pop(),
+      ContentType: type,
+      ContentBytes: bytes.toString("base64"),
+      ContentId: contentId,
+      IsInline: true,
+    });
+    if (!saved.ok) return { ok: false, error: saved.error || "Outlook rejected the image." };
+  }
+  return { ok: true, count: list.length };
 }
 
 // Moves a draft to Deleted Items (recoverable). Anything that isn't a draft is refused.
