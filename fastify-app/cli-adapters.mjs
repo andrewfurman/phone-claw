@@ -11,7 +11,7 @@ import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSe
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
 import { slackAuthStatus, slackConversationsList, slackRead, slackSearchMessages, slackUnreadSummary, slackUserInfo, slackMessageSend, slackReact } from "./slack-tools.mjs";
-import { listWorkAccounts, outlookAgenda, outlookDeleteDraft, outlookDraftNew, outlookDraftReply, outlookMessages, outlookRead, outlookSearch, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
+import { listWorkAccounts, outlookAgenda, outlookAttachmentInspect, outlookAttachments, outlookDeleteDraft, outlookDraftNew, outlookDraftReply, outlookMessages, outlookRead, outlookSearch, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
 
 // Existing domain behavior behind the phoneclaw CLI, including caches and async jobs.
 // Native CLIs do not need entries here: install/configure them and use run_cli args.
@@ -26,7 +26,7 @@ function workAccountBlocked(body) {
     ok: false,
     status: WORK_ACCOUNT_BLOCKED_STATUS,
     account: key,
-    answer_text: `For the ${key} work account I can list, search, read and save drafts, but not send, forward, archive or mark messages.`,
+    answer_text: `For the ${key} work account I can list, search, read, view attachments and images (outlook attachments, outlook attachment-inspect) and save drafts, but not send, forward, archive or mark messages.`,
   };
 }
 function guardWorkAccount(adapter) {
@@ -557,6 +557,21 @@ export const commandAdapters = {
     account: body.account,
     id: body.id || body.message_id || body.messageId,
     maxBodyChars: body.max_body_chars || body.maxBodyChars,
+  }),
+  "outlook attachments": (body, context) => outlookAttachments({
+    account: body.account,
+    id: body.id || body.message_id || body.messageId,
+    includeData: body.include_data ?? body.includeData,
+    maxDataBytes: body.max_data_bytes || body.maxDataBytes,
+    save: body.save,
+    imagesOnly: body.images_only ?? body.imagesOnly,
+  }),
+  "outlook attachment-inspect": (body, context) => outlookAttachmentInspect({
+    account: body.account,
+    id: body.id || body.message_id || body.messageId,
+    index: body.index ?? body.attachment_index ?? body.attachmentIndex,
+    contentId: body.content_id || body.contentId || body.cid,
+    prompt: body.prompt,
   }),
   "outlook search": (body, context) => outlookSearch({
     account: body.account,

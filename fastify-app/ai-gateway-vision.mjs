@@ -1,14 +1,35 @@
-// Lean OpenAI-compatible vision client for Vercel AI Gateway.
+// Lean OpenAI-compatible vision client for Vercel AI Gateway or OpenRouter.
 // Keep secrets in env only; never log API keys.
 
 export const DEFAULT_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
+export const DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 export const DEFAULT_VISION_MODEL = "google/gemini-3.8-flash";
 
 const DEFAULT_TIMEOUT_MS = 45_000;
 const MAX_PROMPT_CHARS = 4_000;
 const MAX_RESPONSE_CHARS = 8_000;
 
-export function resolveVisionGatewayConfig(env = process.env) {
+// provider: "openrouter" (OPENROUTER_API_KEY, OPENROUTER_VISION_MODEL) or "ai_gateway"
+// (AI_GATEWAY_API_KEY, PHONECLAW_VISION_MODEL). Without one, PHONECLAW_VISION_PROVIDER
+// decides, then the AI gateway if its key is set, then OpenRouter. A requested provider
+// without a key falls back to the other one.
+export function resolveVisionGatewayConfig(env = process.env, { provider } = {}) {
+  const hasGateway = Boolean(String(env.AI_GATEWAY_API_KEY || "").trim());
+  const hasOpenRouter = Boolean(String(env.OPENROUTER_API_KEY || "").trim());
+  let chosen = String(provider || env.PHONECLAW_VISION_PROVIDER || "").trim().toLowerCase();
+  if (chosen !== "openrouter" && chosen !== "ai_gateway") chosen = hasGateway || !hasOpenRouter ? "ai_gateway" : "openrouter";
+  if (chosen === "openrouter" && !hasOpenRouter && hasGateway) chosen = "ai_gateway";
+  if (chosen === "ai_gateway" && !hasGateway && hasOpenRouter) chosen = "openrouter";
+  if (chosen === "openrouter") {
+    const model = String(env.OPENROUTER_VISION_MODEL || DEFAULT_VISION_MODEL).trim() || DEFAULT_VISION_MODEL;
+    return {
+      provider: "openrouter",
+      apiKey: String(env.OPENROUTER_API_KEY || "").trim(),
+      baseUrl: String(env.OPENROUTER_BASE_URL || DEFAULT_OPENROUTER_BASE_URL).trim().replace(/\/+$/, ""),
+      model,
+      configured: hasOpenRouter,
+    };
+  }
   const apiKey = String(env.AI_GATEWAY_API_KEY || "").trim();
   const baseUrl = String(env.AI_GATEWAY_BASE_URL || DEFAULT_AI_GATEWAY_BASE_URL)
     .trim()
@@ -17,6 +38,7 @@ export function resolveVisionGatewayConfig(env = process.env) {
     String(env.PHONECLAW_VISION_MODEL || DEFAULT_VISION_MODEL).trim() ||
     DEFAULT_VISION_MODEL;
   return {
+    provider: "ai_gateway",
     apiKey,
     baseUrl,
     model,
@@ -29,7 +51,7 @@ export function redactGatewaySecrets(text, apiKey = "") {
   if (apiKey) value = value.split(apiKey).join("[redacted]");
   return value
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/AI_GATEWAY_API_KEY[=:]\s*\S+/gi, "AI_GATEWAY_API_KEY=[redacted]")
+    .replace(/(AI_GATEWAY_API_KEY|OPENROUTER_API_KEY)[=:]\s*\S+/gi, "$1=[redacted]")
     .replace(/sk-[A-Za-z0-9_-]{8,}/g, "[redacted]");
 }
 
@@ -60,17 +82,18 @@ export function buildVisionUserContent({ prompt, images }) {
 export async function analyzeImagesWithGateway({
   prompt,
   images,
+  provider,
   env = process.env,
   fetchImpl = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
-  const config = resolveVisionGatewayConfig(env);
+  const config = resolveVisionGatewayConfig(env, { provider });
   if (!config.configured) {
     return {
       ok: false,
       status: "ai_gateway_not_configured",
       message:
-        "AI gateway not configured. Set AI_GATEWAY_API_KEY on the bridge (for example in /etc/phoneclaw/bridge.env) and restart phoneclaw-bridge.",
+        "AI gateway not configured. Set AI_GATEWAY_API_KEY or OPENROUTER_API_KEY on the bridge (for example in /etc/phoneclaw/bridge.env) and restart phoneclaw-bridge.",
       model: config.model,
       base_url: config.baseUrl,
     };
@@ -156,6 +179,7 @@ export async function analyzeImagesWithGateway({
     return {
       ok: true,
       status: "ok",
+      provider: config.provider,
       model: payload?.model || config.model,
       description: parsed.description,
       ocr_text: parsed.ocr_text,
