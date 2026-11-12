@@ -94,6 +94,12 @@ try {
   assert.deepEqual(Buffer.concat(pieces), png);
   assert.ok(requests.some((r) => r.path.endsWith("/attachments/A0")), "later pieces fetch only that attachment");
 
+  // 3b. Attachments stay in memory for a few minutes: repeat calls don't hit Outlook again.
+  const before = requests.length;
+  await outlookAttachments({ account: "adga", id: "MSG_SHOT", index: 0, offset: 0, length: 1000 });
+  await outlookAttachments({ account: "adga", id: "MSG_SHOT", index: 0, offset: 1000, length: 1000 });
+  assert.equal(requests.length, before);
+
   // 4. Graph token shape (camelCase) works too.
   const graph = await outlookAttachments({ account: "covernode", id: "MSG_GRAPH" });
   assert.equal(graph.ok, true);

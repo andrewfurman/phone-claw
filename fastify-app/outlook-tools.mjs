@@ -27,6 +27,11 @@ const DEFAULT_ATTACHMENT_DATA_BYTES = 250_000;
 const MAX_ATTACHMENT_DATA_BYTES = 1_000_000;
 const MAX_INSPECT_IMAGE_BYTES = 5_000_000;
 const ATTACHMENT_TIMEOUT_MS = 30000;
+// The bridge keeps a message's attachments in memory for a few minutes (never on disk), so
+// pulling one image in many byte ranges downloads it from Outlook once, not once per piece.
+const ATTACHMENT_CACHE_TTL_MS = 5 * 60_000;
+const ATTACHMENT_CACHE_MAX_ENTRIES = 4;
+const attachmentCache = new Map();
 const DEFAULT_ATTACHMENT_INSPECT_PROMPT =
   "Describe this screenshot or image in detail, then transcribe ALL visible text verbatim in reading order " +
   "(menus, labels, table cells, numbers, dates). Put the full transcription in ocr_text.";
@@ -412,6 +417,19 @@ export async function outlookAttachmentInspect({
 }
 
 async function fetchAttachments(account, messageId, attachmentId = "") {
+  const key = JSON.stringify([normalizeString(account).toLowerCase(), messageId, attachmentId]);
+  const cached = attachmentCache.get(key);
+  if (cached && Date.now() - cached.at < ATTACHMENT_CACHE_TTL_MS) return cached.result;
+  const result = await fetchAttachmentsUncached(account, messageId, attachmentId);
+  if (result.ok) {
+    attachmentCache.delete(key);
+    attachmentCache.set(key, { at: Date.now(), result });
+    while (attachmentCache.size > ATTACHMENT_CACHE_MAX_ENTRIES) attachmentCache.delete(attachmentCache.keys().next().value);
+  }
+  return result;
+}
+
+async function fetchAttachmentsUncached(account, messageId, attachmentId) {
   const targets = await resolveAccounts(account);
   for (const target of targets) {
     const auth = await safeGetBestToken(target, "mail");
