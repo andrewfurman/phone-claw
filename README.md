@@ -250,8 +250,10 @@ fallback to other providers), with reasoning off.
   back to the AI gateway (`AI_GATEWAY_API_KEY`, `PHONECLAW_VISION_MODEL`). The Gmail image
   commands keep using the AI gateway unless `PHONECLAW_VISION_PROVIDER=openrouter`.
 
-Pulling a screenshot back to your machine over SSM (nothing is written on the bridge; SSM's inline
-output is ~24 KB, so the script fetches 15 KB byte ranges with `offset`/`length` and joins them):
+Pulling a screenshot back to your machine over SSM. Nothing is written on the bridge. SSM's inline
+output is ~24 KB, so the script runs `phoneclaw outlook attachments` against the running bridge
+for 13.5 KB byte ranges (`offset`/`length`) and joins them locally. The bridge keeps a message's
+attachments in memory for 5 minutes, so Outlook is only asked once per image:
 
 ```bash
 # List attachments, then save one by index
