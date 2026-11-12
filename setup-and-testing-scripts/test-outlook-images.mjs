@@ -49,7 +49,7 @@ process.env.OUTLOOK_GRAPH_BASE_URL = `http://127.0.0.1:${port}`;
 
 const { outlookAttachments, outlookAttachmentInspect } = await import("../fastify-app/outlook-tools.mjs");
 const { commandAdapters } = await import("../fastify-app/cli-adapters.mjs");
-const { resolveVisionGatewayConfig } = await import("../fastify-app/ai-gateway-vision.mjs");
+const { resolveVisionGatewayConfig, analyzeImagesWithGateway } = await import("../fastify-app/ai-gateway-vision.mjs");
 
 try {
   // 1. List: inline screenshots show up with content ids; no base64 unless asked.
@@ -134,6 +134,36 @@ try {
   assert.equal(or.configured, true);
   assert.equal(resolveVisionGatewayConfig({ AI_GATEWAY_API_KEY: "g" }, { provider: "openrouter" }).provider, "ai_gateway");
   assert.equal(resolveVisionGatewayConfig({ AI_GATEWAY_API_KEY: "g", OPENROUTER_API_KEY: "k", PHONECLAW_VISION_PROVIDER: "openrouter" }).provider, "openrouter");
+
+  // 8. OpenRouter request: DeepSeek V4.1 Flash pinned to Baseten fast, reasoning off, no
+  //    response_format (Baseten doesn't support it); a brief 429 is retried; env overrides.
+  assert.equal(or.model, "deepseek/deepseek-v4.1-flash-1017");
+  const sent = [];
+  let status = 429;
+  const fetchImpl = async (url, init) => {
+    sent.push({ url, body: JSON.parse(init.body) });
+    const s = status; status = 200;
+    return new Response(s === 200
+      ? JSON.stringify({ model: "deepseek/deepseek-v4.1-flash-1017", provider: "BaseTen", choices: [{ message: { content: '{"description":"d","ocr_text":"all text","answer_text":"a"}' } }], usage: { cost: 0.0016 } })
+      : JSON.stringify({ error: { message: "rate-limited upstream" } }), { status: s });
+  };
+  const v = await analyzeImagesWithGateway({ provider: "openrouter", env: { OPENROUTER_API_KEY: "k" }, prompt: "p", images: [{ media_type: "image/png", data_base64: PNG_1X1 }], fetchImpl, retryDelayMs: 1 });
+  assert.equal(v.ok, true);
+  assert.equal(v.upstream_provider, "BaseTen");
+  assert.equal(v.ocr_text, "all text");
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].url, "https://openrouter.ai/api/v1/chat/completions");
+  assert.deepEqual(sent[0].body.provider, { order: ["baseten/fast"], allow_fallbacks: false });
+  assert.deepEqual(sent[0].body.reasoning, { enabled: false });
+  assert.equal("response_format" in sent[0].body, false);
+  const custom = resolveVisionGatewayConfig({ OPENROUTER_API_KEY: "k", OPENROUTER_VISION_MODEL: "google/gemini-3.8-flash", OPENROUTER_VISION_PROVIDER: "", OPENROUTER_VISION_REASONING: "low" }, { provider: "openrouter" });
+  assert.equal(custom.model, "google/gemini-3.8-flash");
+  assert.equal(custom.routing, null);
+  assert.deepEqual(custom.reasoning, { effort: "low" });
+  // The AI gateway path is unchanged: no routing or reasoning fields.
+  const gw = resolveVisionGatewayConfig({ AI_GATEWAY_API_KEY: "g" });
+  assert.equal(gw.model, "google/gemini-3.8-flash");
+  assert.equal(gw.routing, undefined);
 
   console.log("test-outlook-images: ok");
 } finally {
