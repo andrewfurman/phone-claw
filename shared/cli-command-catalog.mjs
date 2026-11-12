@@ -964,9 +964,18 @@ export const CLI_COMMAND_CATALOG = [
       "includeData",
       "max_data_bytes",
       "maxDataBytes",
-      "save",
       "images_only",
-      "imagesOnly"
+      "imagesOnly",
+      "index",
+      "attachment_index",
+      "attachmentIndex",
+      "content_id",
+      "contentId",
+      "cid",
+      "attachment_id",
+      "attachmentId",
+      "offset",
+      "length"
     ]
   },
   {

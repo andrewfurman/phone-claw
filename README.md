@@ -215,10 +215,12 @@ phoneclaw outlook read --json '{"account":"adga","id":"<message-id>"}'
 phoneclaw outlook search --json '{"account":"covernode","query":"meeting notes"}'
 
 # Attachments, including screenshots pasted into the body (inline cid images like image001.png).
-# include_data returns base64 (files up to max_data_bytes, default 250 KB); save writes every file
-# under $OUTLOOK_ATTACHMENT_DIR (default /tmp/phoneclaw-outlook-attachments/<account>/<hash>/).
+# Nothing is written to disk: data comes back as base64 in the response. include_data adds it to
+# the list (files up to max_data_bytes, default 250 KB). index / content_id / attachment_id return
+# one attachment; offset + length return a byte range of it (for callers with small output limits).
 phoneclaw outlook attachments --json '{"account":"adga","id":"<message-id>"}'
-phoneclaw outlook attachments --json '{"account":"adga","id":"<message-id>","images_only":true,"save":true}'
+phoneclaw outlook attachments --json '{"account":"adga","id":"<message-id>","index":0}'
+phoneclaw outlook attachments --json '{"account":"adga","id":"<message-id>","index":0,"offset":0,"length":15000}'
 # Describe an image and transcribe all its text (vision model; OpenRouter when OPENROUTER_API_KEY
 # is set, else the AI gateway). Default: the first image; or pick by index or content_id.
 phoneclaw outlook attachment-inspect --json '{"account":"adga","id":"<message-id>"}'
@@ -227,6 +229,15 @@ phoneclaw outlook attachment-inspect --json '{"account":"adga","id":"<message-id
 # Calendar agenda in America/New_York
 phoneclaw outlook agenda --json '{"account":"covernode","today":true}'
 phoneclaw outlook agenda --json '{"account":"adga","start_date":"2026-10-01","end_date":"2026-10-07"}'
+```
+
+Pulling a screenshot back to your machine over SSM (nothing is written on the bridge; SSM's inline
+output is ~24 KB, so the script fetches 15 KB byte ranges with `offset`/`length` and joins them):
+
+```bash
+# List attachments, then save one by index
+INSTANCE_ID=<bridge-instance-id> AWS_PROFILE=<profile> deploy/ssm-outlook-attachment.sh adga '<message-id>'
+INSTANCE_ID=<bridge-instance-id> AWS_PROFILE=<profile> deploy/ssm-outlook-attachment.sh adga '<message-id>' 0 ./image001.png
 ```
 
 On-VM verification (bridge host, as `phoneclaw`):
