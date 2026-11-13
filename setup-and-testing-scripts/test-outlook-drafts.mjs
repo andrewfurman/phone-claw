@@ -154,7 +154,19 @@ const replyAtt = requests.find((r) => r.path === "/api/v2.0/me/messages/DRAFT_1/
 assert.equal(replyAtt.body.ContentId, "r1");
 assert.equal(replyAtt.body.IsInline, true);
 
-// 10. Nothing ever went to a send endpoint.
+// 10. Reply-all can add recipients; anyone already on the draft stays once.
+requests.length = 0;
+const widened = await commandAdapters["outlook draft-reply"]({ account: "adga", id: "MSG_5", reply_all: true, body: "ok", add_to: "oscar@example.com, rebecca@example.com", add_cc: ["Halie@example.com", "phil@example.com"] }, { confirmed: true });
+assert.equal(widened.status, "draft_saved", JSON.stringify(widened));
+const widenPatch = requests.find((r) => r.method === "PATCH").body;
+assert.deepEqual(widenPatch.ToRecipients.map((r) => r.EmailAddress.Address), ["halie@example.com", "oscar@example.com", "rebecca@example.com"]);
+assert.deepEqual(widenPatch.CcRecipients.map((r) => r.EmailAddress.Address), ["phil@example.com"]);
+// Without add_to/add_cc the recipients aren't touched.
+requests.length = 0;
+await commandAdapters["outlook draft-reply"]({ account: "adga", id: "MSG_6", reply_all: true, body: "ok" }, { confirmed: true });
+assert.equal(requests.find((r) => r.method === "PATCH").body.ToRecipients, undefined);
+
+// 11. Nothing ever went to a send endpoint.
 assert.ok(!requests.some((r) => /\/send/i.test(r.path)));
 
 server.close();

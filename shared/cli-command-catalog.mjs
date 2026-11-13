@@ -1025,6 +1025,10 @@ export const CLI_COMMAND_CATALOG = [
       "html",
       "reply_all",
       "replyAll",
+      "add_to",
+      "addTo",
+      "add_cc",
+      "addCc",
       "inline_images",
       "inlineImages"
     ]
