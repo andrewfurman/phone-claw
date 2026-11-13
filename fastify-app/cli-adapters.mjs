@@ -40,6 +40,8 @@ function workDraftReply(body, context, replyAll) {
     body: body.body || body.message || body.text,
     bodyHtml: body.body_html || body.bodyHtml || body.html,
     replyAll,
+    addTo: body.add_to || body.addTo,
+    addCc: body.add_cc || body.addCc,
     inlineImages: body.inline_images || body.inlineImages,
     confirmed: context.confirmed,
   });

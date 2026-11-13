@@ -649,6 +649,8 @@ export async function outlookDraftReply({
   body,
   bodyHtml,
   replyAll = false,
+  addTo,
+  addCc,
   inlineImages,
   confirmed = false,
 } = {}) {
@@ -670,7 +672,24 @@ export async function outlookDraftReply({
   const draft = created.body || {};
   const existing = draft.Body || {};
   const merged = prependToBody(existing, content);
-  const patched = await restWrite(auth.token, "PATCH", `me/messages/${encodeURIComponent(draft.Id)}`, { Body: merged });
+  // Optional extra recipients (e.g. the rest of the team on a reply-all);
+  // anyone already on the draft is kept once.
+  const patch = { Body: merged };
+  const extraTo = parseRecipients(addTo);
+  const extraCc = parseRecipients(addCc);
+  if (extraTo.length || extraCc.length) {
+    const seen = new Set();
+    const keep = (list) =>
+      (list || []).filter((r) => {
+        const key = String(r?.EmailAddress?.Address || "").toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    patch.ToRecipients = keep([...(draft.ToRecipients || []), ...extraTo]);
+    patch.CcRecipients = keep([...(draft.CcRecipients || []), ...extraCc]);
+  }
+  const patched = await restWrite(auth.token, "PATCH", `me/messages/${encodeURIComponent(draft.Id)}`, patch);
   if (!patched.ok) return draftUpstreamError(target, patched, "reply_draft_failed");
   const saved = patched.body || draft;
   const label = all ? "Reply-all draft saved" : "Reply draft saved";
