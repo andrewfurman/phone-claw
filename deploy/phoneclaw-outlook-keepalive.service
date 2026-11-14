@@ -1,0 +1,12 @@
+[Unit]
+Description=Renew PhoneClaw's saved Outlook web sessions (tokens and sign-in cookies)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=phoneclaw
+Group=phoneclaw
+WorkingDirectory=/opt/phoneclaw
+EnvironmentFile=/etc/phoneclaw/bridge.env
+ExecStart=/usr/bin/node bin/phoneclaw.mjs outlook session --json '{"rotate":true}'

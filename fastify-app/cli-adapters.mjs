@@ -12,7 +12,7 @@ import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
 import { slackAuthStatus, slackConversationsList, slackRead, slackSearchMessages, slackUnreadSummary, slackUserInfo, slackMessageSend, slackReact } from "./slack-tools.mjs";
 import { keyStats } from "./keystats-tools.mjs";
-import { listWorkAccounts, outlookAgenda, outlookAttachmentInspect, outlookAttachments, outlookDeleteDraft, outlookDraftNew, outlookDraftReply, outlookMessages, outlookRead, outlookSearch, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
+import { listWorkAccounts, outlookAgenda, outlookAttachmentInspect, outlookAttachments, outlookDeleteDraft, outlookDraftNew, outlookDraftReply, outlookMessages, outlookRead, outlookSearch, outlookSession, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
 
 // Existing domain behavior behind the phoneclaw CLI, including caches and async jobs.
 // Native CLIs do not need entries here: install/configure them and use run_cli args.
@@ -547,6 +547,8 @@ export const commandAdapters = {
   "outlook status": (body, context) => outlookStatus({
     account: body.account,
   }),
+  // Saved Outlook web sessions (outlook-web-cli): lifetimes, or refresh/rotate them now.
+  "outlook session": (body) => outlookSession({ refresh: body.refresh, rotate: body.rotate }),
   "outlook messages": (body, context) => outlookMessages({
     account: body.account,
     limit: body.limit || body.max_results || body.maxResults,

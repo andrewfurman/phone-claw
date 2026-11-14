@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew PhoneClaw's saved Outlook web sessions every 6 hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
