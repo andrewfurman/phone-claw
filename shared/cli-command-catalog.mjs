@@ -916,6 +916,14 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "outlook session",
+    "legacy_path": "/cli/outlook/session",
+    "parameters": [
+      "refresh",
+      "rotate"
+    ]
+  },
+  {
     "command": "outlook messages",
     "legacy_path": "/cli/outlook/messages",
     "parameters": [

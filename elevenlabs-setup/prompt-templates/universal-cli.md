@@ -88,6 +88,7 @@ New CLIs need installation/authentication and a command-guide entry. They do not
 | `phoneclaw history search` | `query`, `search_query`, `start_date`, `end_date`, `limit`, `max_results` |
 | `phoneclaw history get` | `conversation_id`, `id`, `include_transcript`, `include_tool_details`, `max_transcript_turns`, `max_tool_items` |
 | `phoneclaw outlook status` | `account` (`covernode` | `adga` | `all`) |
+| `phoneclaw outlook session` | none; `refresh` / `rotate` (true) renew the saved sign-in. Use only if Outlook says needs sign-in. |
 | `phoneclaw outlook messages` | `account`, `limit`, `max_results`, `unread`, `from`, `since`, `search`, `query`, `search_query` |
 | `phoneclaw outlook read` | `account`, `id`, `max_body_chars` |
 | `phoneclaw outlook attachments` | `account`, `id`, `images_only`, `include_data`, `max_data_bytes`, `index` / `content_id` / `attachment_id`, `offset`, `length` (lists attachments incl. inline screenshots, or returns one as base64; read-only, nothing saved) |

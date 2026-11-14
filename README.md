@@ -184,14 +184,18 @@ Use SendGrid for dedicated assistant emails from `aifurman.com`. Himalaya remain
 - Safety: `SENDGRID_OWNER_EMAIL` (`aifurman@gmail.com`) must appear in To or CC on every send; if missing, the bridge auto-adds it to CC and notes that in the response.
 - Requires verbal preview plus `previewed=true` and `confirmed=true` before the API call (not emergency-only).
 
-## Outlook (read-only, via signed-in browser sessions)
+## Outlook (read-only plus drafts, via saved Outlook web sessions)
 
-The bridge exposes read-only Outlook access through two already-signed-in Chrome sessions on the EC2 VM (Xvfb :1):
+Work Outlook comes from [andrewfurman/outlook-web-cli](https://github.com/andrewfurman/outlook-web-cli) (an npm dependency; `fastify-app/outlook-tools.mjs` configures it). Each mailbox signs in with its saved **Outlook web session** in `/home/phoneclaw/.config/outlook-web-cli/sessions/` (mode 0600). That session is Outlook web's refresh token plus the Microsoft sign-in cookies, renewed silently the way the web app does, so calls don't depend on Chrome. Tokens are for `outlook.office.com` (Outlook REST API) and are never logged.
+
+The two signed-in Chrome sessions on the EC2 VM (Xvfb :1) are where the sessions were imported from. If a saved session ever stops working, the library re-imports from them automatically:
 
 - CoverNode: DevTools `http://127.0.0.1:9230`, Outlook tab at `https://outlook.cloud.microsoft/mail/`
 - ADGA: DevTools `http://127.0.0.1:9231`, Outlook tab at `https://outlook.cloud.microsoft/mail/andrew@ad-ga.com/`
 
-A cron job soft-reloads those tabs every ~20 minutes (`/usr/local/bin/outlook-refresh.mjs`). The CLI never navigates away from the main tab; it reads a short-lived Graph token from the page's MSAL cache via CDP and queries Microsoft Graph. No tokens are logged or printed. All commands are strictly read-only.
+`deploy/phoneclaw-outlook-keepalive.timer` runs `phoneclaw outlook session --json '{"rotate":true}'` every 6 hours to renew tokens and sign-in cookies. Check lifetimes with `phoneclaw outlook session`. The sign-in cookie lasts until about three months after the last interactive sign-in. When it runs out, sign in again in the Chrome session over noVNC; the next call or keepalive picks it up.
+
+On the bridge, the standalone CLI is also available as `outlook-web` (for example `outlook-web auth status`).
 
 `outlook messages` lists one folder, the Inbox unless `folder` says otherwise, and every item carries `folder` and `is_draft`. To check whether a reply went out, list `folder: "sent"`: a saved reply sits in Drafts with `is_draft: true` until it is sent, and must not be reported as sent.
 
@@ -200,6 +204,7 @@ PhoneClaw CLI examples (JSON by default):
 ```bash
 # Status check (signed in vs needs_sign_in)
 phoneclaw outlook status --json '{"account":"adga"}'
+phoneclaw outlook session
 
 # List recent Inbox messages (limit, unread, from, since, search)
 phoneclaw outlook messages --json '{"account":"covernode","limit":5}'
