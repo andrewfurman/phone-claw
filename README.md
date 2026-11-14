@@ -195,7 +195,7 @@ The two signed-in Chrome sessions on the EC2 VM (Xvfb :1) are where the sessions
 
 `deploy/phoneclaw-outlook-keepalive.timer` runs `phoneclaw outlook session --json '{"rotate":true}'` every 6 hours to renew tokens and sign-in cookies. Check lifetimes with `phoneclaw outlook session`. The sign-in cookie lasts until about three months after the last interactive sign-in. When it runs out, sign in again in the Chrome session over noVNC; the next call or keepalive picks it up.
 
-On the bridge, the standalone CLI is also available as `outlook-web` (for example `outlook-web auth status`).
+On the bridge, the standalone CLI is also available as `outlook-web-cli` (for example `outlook-web-cli auth status`).
 
 `outlook messages` lists one folder, the Inbox unless `folder` says otherwise, and every item carries `folder` and `is_draft`. To check whether a reply went out, list `folder: "sent"`: a saved reply sits in Drafts with `is_draft: true` until it is sent, and must not be reported as sent.
 
