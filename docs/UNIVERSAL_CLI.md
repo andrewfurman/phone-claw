@@ -84,6 +84,22 @@ client accepts `--confirmed` as its final argument for an already approved actio
 In an HTTP/voice call, confirmation belongs on `run_cli.confirmed`; embedding
 `confirmed` inside `--json` cannot authorize anything.
 
+### Key stats (oil, 2028 odds, LLM leaders)
+
+`phoneclaw keystats get` (or just `phoneclaw keystats`) answers "what's oil at?",
+"who's leading for 2028?" and "which models are on top?" in one read-only call,
+with the same public, keyless sources as the family newspaper's Key Stats
+dashboard: CNBC front-month Brent/WTI futures (Yahoo Finance fallback), Kalshi's
+2028 presidential winner and party markets, and OpenRouter's daily rankings by
+tokens and by share of spend. Each section has its own deadline (default 20 s,
+10 s per request) and fails independently, so one source down returns the
+others plus an `errors` note and `status: "partial"`. Results are cached for
+five minutes (`fresh: true` skips the cache). No API keys or env vars are needed.
+
+```bash
+phoneclaw keystats get --json '{"only":["oil","odds"],"top":3}'
+```
+
 ## Results and limits
 
 Every command returns `ok`, `status`, `stdout`, `stderr`, `answer_text`, and

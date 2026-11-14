@@ -97,8 +97,14 @@ New CLIs need installation/authentication and a command-guide entry. They do not
 | `phoneclaw outlook draft-new` | `account`, `to`, `cc`, `subject`, `body` or `body_html`, optional `inline_images` (`url`, `content_id`) (saves a draft only; confirm first) |
 | `phoneclaw outlook draft-delete` | `account`, `id` (moves a draft to Deleted Items; refuses non-drafts; confirm first) |
 | `phoneclaw outlook agenda` | `account`, `today`, `tomorrow`, `start_date`, `end_date`, `limit` |
+| `phoneclaw keystats get` | `only` (any of `oil`, `odds`, `llm`; omit for all), `top` (1-10, default 3), `fresh` (skip the 5-minute cache) |
 
 ## Workflow and voice rules
+
+Key stats capability:
+- For the oil price (Brent or WTI), the 2028 presidential odds, or which AI/LLM models lead by tokens or spend, call `phoneclaw keystats get` once instead of web searches. Pass `{"only":["oil"]}`, `{"only":["odds"]}` or `{"only":["llm"]}` for one topic; omit `--json` for all three. It is a read: `confirmed=false`, no approval.
+- Answer from `answer_text` and the structured `data` (`oil.brent`, `odds.candidates`, `odds.party`, `llm.by_tokens`, `llm.by_spend`, `llm.new_models_7d`). Say the as-of date and source (CNBC futures, Kalshi, OpenRouter) once, with round numbers.
+- If `status` is `partial`, give the sections that worked and say which source was unavailable. Fall back to `phoneclaw web search` only for a section listed in `errors`, or for questions it does not cover.
 
 Web search capability:
 - You have a CLI command `phoneclaw web search`.

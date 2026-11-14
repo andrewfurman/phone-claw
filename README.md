@@ -352,6 +352,8 @@ The agent now uses one `run_cli` application tool. It can execute any installed 
 
 Existing email, GitHub, RSS, Otter, conversation history, SendGrid, web search/fetch and async Claude workflows are available as `phoneclaw` commands. The specialized tool names and URLs listed above describe compatibility routes, which are deprecated. Built-in call controls such as `end_call` remain separate.
 
+Key stats: `phoneclaw keystats get [--json '{"only":["oil","odds","llm"]}']` returns Brent/WTI oil (CNBC futures), Kalshi 2028 presidential odds and OpenRouter's top LLMs by tokens and by share of spend in one read-only call, with a short spoken summary. Public keyless sources; each section fails independently.
+
 See [Universal CLI setup and migration](docs/UNIVERSAL_CLI.md) and the [agent's Markdown command guide](elevenlabs-setup/prompt-templates/universal-cli.md). Agent configuration previews by default; apply it only after deploying the matching bridge.
 
 ## Local Development
