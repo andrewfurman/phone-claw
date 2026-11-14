@@ -1076,6 +1076,18 @@ export const CLI_COMMAND_CATALOG = [
       "max_results",
       "maxResults"
     ]
+  },
+  {
+    "command": "keystats get",
+    "legacy_path": "/cli/keystats/get",
+    "parameters": [
+      "only",
+      "sections",
+      "top",
+      "fresh",
+      "timeout_ms",
+      "timeoutMs"
+    ]
   }
 ];
 export const LEGACY_TOOL_PATHS = CLI_COMMAND_CATALOG.map(item => item.legacy_path);

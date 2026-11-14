@@ -182,6 +182,8 @@ async function runPhoneclaw(args, confirmed, timeoutMs) {
   if (!args.length || (args.length === 1 && ["help", "--help"].includes(args[0]))) {
     return { ok: true, status: "ok", stdout: "", stderr: "", exit_code: 0, data: CLI_COMMAND_CATALOG.map(({ command, parameters }) => ({ command, parameters })), answer_text: guidance };
   }
+  // `phoneclaw keystats` is shorthand for `phoneclaw keystats get`.
+  if (args[0] === "keystats" && (args.length === 1 || ["--json", "--help"].includes(args[1]))) args = ["keystats", "get", ...args.slice(1)];
   const name = args.slice(0, 2).join(" ");
   if (!Object.hasOwn(commandAdapters, name)) return failure("unknown_command", guidance);
   if (args.length === 3 && args[2] === "--help") {

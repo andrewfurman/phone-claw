@@ -11,6 +11,7 @@ import { rssConfiguredEntryFullText, rssConfiguredRecentEntries, rssConfiguredSe
 import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh, githubSummaryGh } from "./github-gh-tools.mjs";
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
 import { slackAuthStatus, slackConversationsList, slackRead, slackSearchMessages, slackUnreadSummary, slackUserInfo, slackMessageSend, slackReact } from "./slack-tools.mjs";
+import { keyStats } from "./keystats-tools.mjs";
 import { listWorkAccounts, outlookAgenda, outlookAttachmentInspect, outlookAttachments, outlookDeleteDraft, outlookDraftNew, outlookDraftReply, outlookMessages, outlookRead, outlookSearch, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
 
 // Existing domain behavior behind the phoneclaw CLI, including caches and async jobs.
@@ -600,6 +601,13 @@ export const commandAdapters = {
     start_date: body.start_date || body.startDate,
     end_date: body.end_date || body.endDate,
     limit: body.limit || body.max_results || body.maxResults,
+  }),
+  // Read-only: oil, Kalshi 2028 odds and OpenRouter LLM leaders in one call.
+  "keystats get": (body) => keyStats({
+    only: body.only ?? body.sections,
+    top: body.top,
+    fresh: body.fresh === true || body.fresh === "true",
+    timeoutMs: body.timeout_ms || body.timeoutMs,
   }),
 };
 
