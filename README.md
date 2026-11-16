@@ -412,6 +412,21 @@ npm run elevenlabs:claude-steering:test
 
 See [Automated call and functionality testing](docs/AUTOMATED_CALL_TESTING.md) for PR validation, isolated live previews, and real Twilio calls.
 
+## Google Photos CLI (bridge)
+
+The bridge has [`google-photos-web-cli`](https://github.com/andrewfurman/google-photos-web-cli) at `/usr/local/bin/google-photos-web-cli`, signed in as the `phoneclaw` user from the signed-in `pc-chrome-google` Chrome (DevTools on `127.0.0.1:9233`). The session is saved in `/home/phoneclaw/.config/google-photos-web-cli/.env` (mode 0600).
+
+`deploy/google-photos-keepalive.mjs` keeps it signed in: it runs `google-photos-web-cli auth status`, and only if that fails it reads the Google cookies from that Chrome, imports them with `auth cookies` from a private temp file that is deleted right away, and checks again. `--force` re-imports even when the session works. It prints no cookies.
+
+```bash
+sudo cp deploy/phoneclaw-google-photos-keepalive.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now phoneclaw-google-photos-keepalive.timer
+sudo -u phoneclaw -H google-photos-web-cli auth status
+sudo -u phoneclaw -H google-photos-web-cli search --person "Jane Doe" --limit 5
+```
+
+If Chrome itself is signed out, sign in to Google again through the noVNC desktop.
+
 ## Slack CLI (bridge-backed)
 
 The EC2 bridge has `slackcli` installed at `/usr/local/bin/slackcli` and authenticated (browser-session tokens) to the CoverNode workspace under the `phoneclaw` user. The protected `phoneclaw slack ...` commands wire Slack reads and two-step-gated sends into the universal CLI.

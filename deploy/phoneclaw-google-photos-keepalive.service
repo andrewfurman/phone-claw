@@ -1,0 +1,14 @@
+[Unit]
+Description=Keep google-photos-web-cli signed in on the bridge (re-import from pc-chrome-google when needed)
+Wants=network-online.target
+After=network-online.target pc-chrome-google.service
+
+[Service]
+Type=oneshot
+User=phoneclaw
+Group=phoneclaw
+# Needs no bridge secrets: it reads /home/phoneclaw/.config/google-photos-web-cli and Chrome's DevTools on 127.0.0.1:9233.
+Environment=HOME=/home/phoneclaw
+WorkingDirectory=/opt/phoneclaw
+ExecStart=/usr/bin/node /opt/phoneclaw/deploy/google-photos-keepalive.mjs
+TimeoutStartSec=180
