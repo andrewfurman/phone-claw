@@ -416,7 +416,7 @@ See [Automated call and functionality testing](docs/AUTOMATED_CALL_TESTING.md) f
 
 The bridge has [`google-photos-web-cli`](https://github.com/andrewfurman/google-photos-web-cli) at `/usr/local/bin/google-photos-web-cli`, signed in as the `phoneclaw` user from the signed-in `pc-chrome-google` Chrome (DevTools on `127.0.0.1:9233`). The session is saved in `/home/phoneclaw/.config/google-photos-web-cli/.env` (mode 0600).
 
-`deploy/google-photos-keepalive.mjs` keeps it signed in: it runs `google-photos-web-cli auth status`, and only if that fails it reads the Google cookies from that Chrome, imports them with `auth cookies` from a private temp file that is deleted right away, and checks again. `--force` re-imports even when the session works. It prints no cookies.
+`deploy/google-photos-keepalive.mjs` keeps it signed in, every 10 minutes (a copied Google sign-in stops working roughly 15-20 minutes after Chrome rotates its cookies, so a 6-hour check isn't enough): it runs `google-photos-web-cli auth status`, and only if that fails it reads the Google cookies from that Chrome, imports them with `auth cookies` from a private temp file that is deleted right away, and checks again. `--force` re-imports even when the session works. It prints no cookies.
 
 ```bash
 sudo cp deploy/phoneclaw-google-photos-keepalive.{service,timer} /etc/systemd/system/
