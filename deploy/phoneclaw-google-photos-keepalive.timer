@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the bridge Google Photos session every 6 hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
