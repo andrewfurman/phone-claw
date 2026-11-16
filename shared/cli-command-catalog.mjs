@@ -1086,6 +1086,30 @@ export const CLI_COMMAND_CATALOG = [
     ]
   },
   {
+    "command": "outlook freebusy",
+    "legacy_path": "/cli/outlook/freebusy",
+    "parameters": [
+      "account",
+      "emails",
+      "email",
+      "people",
+      "attendees",
+      "today",
+      "tomorrow",
+      "start_date",
+      "startDate",
+      "end_date",
+      "endDate",
+      "day_start",
+      "dayStart",
+      "day_end",
+      "dayEnd",
+      "min_minutes",
+      "minMinutes",
+      "weekends"
+    ]
+  },
+  {
     "command": "keystats get",
     "legacy_path": "/cli/keystats/get",
     "parameters": [

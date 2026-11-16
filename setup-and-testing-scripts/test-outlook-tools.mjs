@@ -1,334 +1,151 @@
 import assert from "node:assert/strict";
-import http from "node:http";
+import test, { after, beforeEach } from "node:test";
+import { installFakeOutlookCli } from "./outlook-fake-cli.mjs";
 
-// Spin up a tiny fake upstream server simulating Graph and Outlook REST
-const requests = [];
-const server = http.createServer((req, res) => {
-  const url = new URL(req.url || "", `http://${req.headers.host}`);
-  requests.push(url);
-  res.setHeader("content-type", "application/json; charset=utf-8");
-  // Simple routing for Graph defaults (used by initial tests)
-  if (url.pathname === "/v1.0/me/mailFolders/Inbox/messages") {
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      value: [
-        {
-          id: "MSG_A",
-          subject: "Hello A",
-          from: { emailAddress: { name: "Alice", address: "alice@example.com" } },
-          receivedDateTime: "2026-10-09T16:00:00Z",
-          isRead: false,
-          conversationId: "C1",
-          webLink: "https://outlook.office.com/mail/deeplink/read/MSG_A",
-        },
-        {
-          id: "MSG_B",
-          subject: "Hello B",
-          from: { emailAddress: { name: "Bob", address: "bob@example.com" } },
-          receivedDateTime: "2026-10-09T15:00:00Z",
-          isRead: true,
-          conversationId: "C2",
-          webLink: "https://outlook.office.com/mail/deeplink/read/MSG_B",
-        },
-      ],
-    }));
-    return;
-  }
-  if (url.pathname.startsWith("/v1.0/me/messages/")) {
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      id: url.pathname.split("/").pop(),
-      subject: "Read Test",
-      from: { emailAddress: { name: "Carol", address: "carol@example.com" } },
-      receivedDateTime: "2026-10-09T17:00:00Z",
-      body: { contentType: "html", content: "<p>Line 1<br>Line 2</p>" },
-      webLink: "https://outlook.office.com/mail/deeplink/read/READ_ID",
-    }));
-    return;
-  }
-  if (url.pathname === "/v1.0/me/messages" && url.searchParams.get("$search")) {
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      value: [
-        {
-          id: "MSG_S",
-          subject: "Search Hit",
-          from: { emailAddress: { name: "Dana", address: "dana@example.com" } },
-          receivedDateTime: "2026-10-09T18:00:00Z",
-          isRead: false,
-          conversationId: "S1",
-          webLink: "https://outlook.office.com/mail/deeplink/read/MSG_S",
-        },
-      ],
-    }));
-    return;
-  }
-  if (url.pathname === "/v1.0/me/calendarView") {
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      value: [
-        {
-          id: "EV1",
-          subject: "Standup",
-          isAllDay: false,
-          start: { dateTime: "2026-10-09T09:00:00", timeZone: "America/New_York" },
-          end: { dateTime: "2026-10-09T09:30:00", timeZone: "America/New_York" },
-          organizer: { emailAddress: { name: "Andrew", address: "andrew@example.com" } },
-          location: { displayName: "Zoom" },
-          webLink: "https://outlook.office.com/calendar/item/EV1",
-        },
-      ],
-    }));
-    return;
-  }
-  // Simulate Graph base override returning 401 to trigger fallback
-  if (url.pathname === "/graph/v1.0/me/mailFolders/Inbox/messages") {
-    res.writeHead(401);
-    res.end(JSON.stringify({ error: { code: "InvalidAuthenticationToken", message: "Bad token" } }));
-    return;
-  }
-  // Outlook REST v2.0 folder listing: Sent Items holds a sent reply, Drafts an unsent one
-  const folderList = url.pathname.match(/^\/api\/v2\.0\/me\/MailFolders\/(\w+)\/messages$/);
-  if (folderList) {
-    const folder = folderList[1];
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      value: [
-        {
-          Id: `MSG_${folder}`,
-          Subject: "RE: Duplicate checks",
-          From: { EmailAddress: { Name: "AF (Shared)", Address: "andrew@ad-ga.com" } },
-          ReceivedDateTime: "2026-11-11T19:06:05Z",
-          IsRead: true,
-          IsDraft: folder === "Drafts",
-          ConversationId: "C9",
-          WebLink: `https://outlook.office.com/mail/deeplink/read/MSG_${folder}`,
-        },
-      ],
-    }));
-    return;
-  }
-  // Outlook REST v2.0 simulation
-  if (url.pathname === "/outlook/api/v2.0/me/messages" || url.pathname === "/api/v2.0/me/messages") {
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      value: [
-        {
-          Id: "MSG_A",
-          Subject: "Hello A",
-          From: { EmailAddress: { Name: "Alice", Address: "alice@example.com" } },
-          ReceivedDateTime: "2026-10-09T16:00:00Z",
-          IsRead: false,
-          ConversationId: "C1",
-          WebLink: "https://outlook.office.com/mail/deeplink/read/MSG_A",
-        },
-        {
-          Id: "MSG_B",
-          Subject: "Hello B",
-          From: { EmailAddress: { Name: "Bob", Address: "bob@example.com" } },
-          ReceivedDateTime: "2026-10-09T15:00:00Z",
-          IsRead: true,
-          ConversationId: "C2",
-          WebLink: "https://outlook.office.com/mail/deeplink/read/MSG_B",
-        },
-      ],
-    }));
-    return;
-  }
-  if (url.pathname.startsWith("/outlook/api/v2.0/me/messages/") || url.pathname.startsWith("/api/v2.0/me/messages/")) {
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      Id: url.pathname.split("/").pop(),
-      Subject: "Read Test",
-      From: { EmailAddress: { Name: "Carol", Address: "carol@example.com" } },
-      ReceivedDateTime: "2026-10-09T17:00:00Z",
-      Body: { ContentType: "HTML", Content: "<p>Line 1<br>Line 2</p>" },
-      WebLink: "https://outlook.office.com/mail/deeplink/read/READ_ID",
-    }));
-    return;
-  }
-  if ((url.pathname === "/outlook/api/v2.0/me/messages" || url.pathname === "/api/v2.0/me/messages") && url.searchParams.get("$search")) {
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      value: [
-        {
-          Id: "MSG_S",
-          Subject: "Search Hit",
-          From: { EmailAddress: { Name: "Dana", Address: "dana@example.com" } },
-          ReceivedDateTime: "2026-10-09T18:00:00Z",
-          IsRead: false,
-          ConversationId: "S1",
-          WebLink: "https://outlook.office.com/mail/deeplink/read/MSG_S",
-        },
-      ],
-    }));
-    return;
-  }
-  if (url.pathname === "/outlook/api/v2.0/me/calendarview" || url.pathname === "/api/v2.0/me/calendarview") {
-    res.writeHead(200);
-    res.end(JSON.stringify({
-      value: [
-        {
-          Id: "EV1",
-          Subject: "Standup",
-          IsAllDay: false,
-          Start: { DateTime: "2026-10-09T09:00:00", TimeZone: "America/New_York" },
-          End: { DateTime: "2026-10-09T09:30:00", TimeZone: "America/New_York" },
-          Organizer: { EmailAddress: { Name: "Andrew", Address: "andrew@example.com" } },
-          Location: { DisplayName: "Zoom" },
-          WebLink: "https://outlook.office.com/calendar/item/EV1",
-        },
-      ],
-    }));
-    return;
-  }
-  res.writeHead(404);
-  res.end(JSON.stringify({ error: { code: "not_found", message: "not found" } }));
-});
+// Work Outlook runs the outlook-web-cli binary; here a fake binary records each call.
+const fake = installFakeOutlookCli();
+process.env.SOME_BRIDGE_API_KEY = "must-not-reach-the-binary";
+const tools = await import("../fastify-app/outlook-tools.mjs");
+const { commandAdapters } = await import("../fastify-app/cli-adapters.mjs");
+const { outlookAgenda, outlookFreeBusy, outlookMessages, outlookRead, outlookSearch, outlookSession, outlookStatus, resolveWorkAccountAlias, runOutlookCli } = tools;
 
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const { port } = server.address();
-const base = `http://127.0.0.1:${port}`;
+beforeEach(() => { fake.reset(); fake.scenario(""); });
+after(() => { fake.cleanup(); delete process.env.SOME_BRIDGE_API_KEY; });
+const last = () => fake.calls().at(-1);
 
-// Inject test API bases and token so CDP is not needed.
-process.env.OUTLOOK_GRAPH_BASE_URL = base;
-process.env.OUTLOOK_REST_BASE_URL = base;
-// token with a benign payload by default; specific tests will override
-process.env.OUTLOOK_TEST_TOKEN = `x.${Buffer.from(JSON.stringify({ aud: "https://graph.microsoft.com", scp: "Mail.Read" })).toString("base64url")}.y`;
-
-// Import after env is set so the module reads the overridden base.
-const { outlookAgenda, outlookMessages, outlookRead, outlookSearch, outlookStatus } = await import("../fastify-app/outlook-tools.mjs");
-
-// status
-{
+test("each command runs `outlook-web-cli <cmd> --json <snake_case body>` with aliases resolved", async () => {
   const s = await outlookStatus({ account: "covernode" });
   assert.equal(s.ok, true);
-  assert.equal(s.accounts?.[0]?.status, "signed_in");
-}
+  assert.equal(s.accounts[0].status, "signed_in");
+  assert.deepEqual(last().argv, ["status", "--json", '{"account":"covernode"}']);
 
-// list messages: simulate Graph 401 then Outlook REST success via base overrides and token aud
-{
-  const r = await outlookMessages({ account: "covernode", limit: 2, unread: false });
+  const m = await outlookMessages({ account: "AD-GA", limit: 5, unread: false, from: "dia@ad-ga.com", since: "2026-11-01", folder: "sent" });
+  assert.equal(m.items[0].id, "MSG_A");
+  assert.equal(last().cmd, "messages");
+  assert.deepEqual(last().body, { account: "adga", limit: 5, unread: false, from: "dia@ad-ga.com", since: "2026-11-01", folder: "sent" });
+  assert.equal(last().yes, false);
+
+  const r = await outlookRead({ account: "andrew@covernode.io", id: "READ_ID", maxBodyChars: 2000 });
+  assert.match(r.body_text, /Line 1/);
+  assert.deepEqual(last().body, { account: "covernode", id: "READ_ID", max_body_chars: 2000 });
+
+  await outlookSearch({ account: "adgaoutlook", query: "invoice", limit: 1 });
+  assert.deepEqual(last().body, { account: "adga", query: "invoice", limit: 1 });
+
+  const a = await outlookAgenda({ account: "all", today: true });
+  assert.equal(a.accounts[0].items[0].subject, "Standup");
+  assert.deepEqual(last().body, { account: "all", today: true });
+
+  // No account: every account (the binary decides); empty values are not sent.
+  await outlookMessages({ account: "", limit: undefined, search: null });
+  assert.deepEqual(last().body, {});
+});
+
+test("the child keeps HOME, gets the default inline image host, and no bridge secrets", async () => {
+  await outlookStatus({});
+  const { env } = last();
+  assert.equal(env.HOME, process.env.HOME);
+  assert.equal(env.OUTLOOK_INLINE_IMAGE_HOSTS, "dmvr3d99h35se.cloudfront.net");
+  assert.deepEqual(env.leaked, []);
+  process.env.OUTLOOK_INLINE_IMAGE_HOSTS = "img.example.com";
+  try {
+    await outlookStatus({});
+    assert.equal(last().env.OUTLOOK_INLINE_IMAGE_HOSTS, "img.example.com");
+  } finally {
+    delete process.env.OUTLOOK_INLINE_IMAGE_HOSTS;
+  }
+});
+
+test("ok=false answers (exit 1) are parsed; crashes, timeouts and a missing binary are compact failures", async () => {
+  const missing = await outlookFreeBusy({ tomorrow: true });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.status, "missing_emails");
+
+  fake.scenario("crash");
+  const crashed = await outlookStatus({});
+  assert.equal(crashed.ok, false);
+  assert.equal(crashed.status, "cli_failed");
+  assert.equal(crashed.exit_code, 101);
+  assert.doesNotMatch(crashed.message, /abc\.def/);
+
+  fake.scenario("garbage");
+  assert.equal((await outlookStatus({})).status, "cli_failed");
+
+  fake.scenario("slow");
+  const slow = await runOutlookCli(["status", "--json", "{}"], { timeoutMs: 300 });
+  assert.equal(slow.status, "cli_timeout");
+
+  const absent = await runOutlookCli(["status"], { deps: { bin: "/nonexistent/outlook-web-cli" } });
+  assert.equal(absent.status, "cli_not_installed");
+});
+
+test("injected execFile works without a binary", async () => {
+  const seen = [];
+  const execFile = (bin, args, opts, cb) => { seen.push({ bin, args, opts }); cb(Object.assign(new Error("exit 1"), { code: 1 }), '{"ok":false,"status":"needs_sign_in"}', ""); };
+  const r = await outlookStatus({ account: "adga", deps: { execFile, bin: "/usr/local/bin/outlook-web-cli" } });
+  assert.equal(r.status, "needs_sign_in");
+  assert.equal(seen[0].bin, "/usr/local/bin/outlook-web-cli");
+  assert.ok(seen[0].opts.timeout > 0 && seen[0].opts.maxBuffer >= 10_000_000);
+});
+
+test("freebusy: the adapter maps fields to snake_case", async () => {
+  const r = await commandAdapters["outlook freebusy"]({ emails: "pat@covernode.io,sam@covernode.io", tomorrow: true, day_start: "08:00", dayEnd: "18:00", min_minutes: 45 }, {});
   assert.equal(r.ok, true);
-  assert.equal(r.returned_count, 2);
-  assert.equal(r.items[0].id, "MSG_A");
-  assert.equal(typeof r.items[0].received_at, "string");
-}
+  assert.equal(r.free_for_all.length, 1);
+  assert.equal(last().cmd, "freebusy");
+  assert.deepEqual(last().body, { emails: "pat@covernode.io,sam@covernode.io", tomorrow: true, day_start: "08:00", day_end: "18:00", min_minutes: 45 });
+  await commandAdapters["outlook freebusy"]({ account: "cover node", people: ["a@covernode.io"], start: "2026-11-17T11:00", end_date: "2026-11-18" }, {});
+  assert.deepEqual(last().body, { account: "covernode", emails: ["a@covernode.io"], start_date: "2026-11-17T11:00", end_date: "2026-11-18" });
+});
 
-// Outlook REST lists one folder, Inbox by default, and flags drafts (an unsent draft is not a sent reply)
-{
-  process.env.OUTLOOK_TEST_TOKEN_ADGA = `x.${Buffer.from(JSON.stringify({ aud: "https://outlook.office.com", scp: "Mail.Read" })).toString("base64url")}.y`;
-  const last = () => requests[requests.length - 1];
+test("session: auth status, or auth refresh --all [--rotate]", async () => {
+  const s = await outlookSession();
+  assert.deepEqual(last().argv, ["auth", "status"]);
+  assert.equal(s.ok, true);
+  assert.equal(s.status, "ok");
+  assert.deepEqual(s.accounts.map((a) => a.account), ["covernode", "adga"]);
+  assert.equal("config_dir" in s, false);
+  fake.scenario("adga-unsaved");
+  assert.equal((await outlookSession()).ok, false);
+  fake.scenario("");
 
-  const inbox = await outlookMessages({ account: "adga", limit: 5 });
-  assert.equal(inbox.ok, true);
-  assert.equal(inbox.folder, "Inbox");
-  assert.equal(last().pathname, "/api/v2.0/me/MailFolders/Inbox/messages");
-  assert.equal(inbox.items[0].folder, "Inbox");
-  assert.equal(inbox.items[0].is_draft, false);
+  const refreshed = await commandAdapters["outlook session"]({ refresh: true }, {});
+  assert.deepEqual(last().argv, ["auth", "refresh", "--all"]);
+  assert.equal(refreshed.ok, true);
+  await commandAdapters["outlook session"]({ rotate: "true" }, {});
+  assert.deepEqual(last().argv, ["auth", "refresh", "--all", "--rotate"]);
+});
 
-  const sent = await outlookMessages({ account: "adga", folder: "sent" });
-  assert.equal(last().pathname, "/api/v2.0/me/MailFolders/SentItems/messages");
-  assert.equal(sent.items[0].folder, "SentItems");
-  assert.equal(sent.items[0].is_draft, false);
-
-  const drafts = await outlookMessages({ account: "adga", folder: "Drafts" });
-  assert.equal(drafts.items[0].is_draft, true);
-
-  const bad = await outlookMessages({ account: "adga", folder: "everything" });
-  assert.equal(bad.ok, false);
-  assert.equal(bad.status, "invalid_folder");
-
-  // A sender filter alone still sorts by date: the date clause leads the filter.
-  await outlookMessages({ account: "adga", from: "dia@ad-ga.com" });
-  assert.equal(last().searchParams.get("$orderby"), "ReceivedDateTime desc");
-  assert.match(last().searchParams.get("$filter"), /^ReceivedDateTime ge 1900-01-01T00:00:00Z and From\/EmailAddress\/Address eq 'dia@ad-ga.com'$/);
-
-  // $search can't be combined with $orderby.
-  await outlookMessages({ account: "adga", search: "duplicate" });
-  assert.equal(last().searchParams.get("$search"), '"duplicate"');
-  assert.equal(last().searchParams.get("$orderby"), null);
-
-  delete process.env.OUTLOOK_TEST_TOKEN_ADGA;
-}
-
-// Graph lists the requested folder too, and searches without $orderby
-{
-  await outlookMessages({ account: "covernode", search: "invoice" });
-  const url = requests[requests.length - 1];
-  assert.equal(url.pathname, "/v1.0/me/mailFolders/Inbox/messages");
-  assert.equal(url.searchParams.get("$orderby"), null);
-  await outlookSearch({ account: "covernode", query: "invoice" });
-  assert.equal(requests[requests.length - 1].searchParams.get("$orderby"), null);
-}
-
-// read message
-{
-  const r = await outlookRead({ account: "covernode", id: "READ_ID", maxBodyChars: 2000 });
-  assert.equal(r.ok, true);
-  assert.match(r.body_text || "", /Line 1/);
-}
-
-// search
-{
-  const r = await outlookSearch({ account: "covernode", query: "search words", limit: 1 });
-  assert.equal(r.ok, true);
-  assert.equal(r.returned_count, 1);
-  assert.equal(r.items[0].id, "MSG_S");
-}
-
-// agenda today should use ET-local day bounds (00:00..23:59 ET) via Prefer header
-{
-  const r = await outlookAgenda({ account: "covernode", today: true });
-  assert.equal(r.ok, true);
-  const acc = r.accounts?.[0];
-  assert.equal(acc?.status, "ok");
-  assert.ok((acc?.returned_count || 0) >= 1);
-  assert.equal(acc?.items?.[0]?.subject, "Standup");
-  // Start/end should be local ET times without Z
-  assert.match(String(r.start_date), /T00:00:00$/);
-  assert.match(String(r.end_date), /T23:59:59$/);
-}
-
-// work-account email routing through the generic himalaya email commands
-{
-  const { resolveWorkAccountAlias } = await import("../fastify-app/outlook-tools.mjs");
-  const { commandAdapters } = await import("../fastify-app/cli-adapters.mjs");
-  for (const a of ["covernode", "CoverNode", "cover node", "cover-node", "andrew@covernode.io", "covernode.io"]) assert.equal(resolveWorkAccountAlias(a), "covernode", a);
-  for (const a of ["adga", "AD-GA", "ad ga", "andrew@ad-ga.com", "ad-ga.com"]) assert.equal(resolveWorkAccountAlias(a), "adga", a);
+test("work-account email routing through the generic himalaya email commands", async () => {
+  for (const a of ["covernode", "CoverNode", "cover node", "cover-node", "andrew@covernode.io", "covernode.io", "covernodeoutlook", "covernodework"]) assert.equal(resolveWorkAccountAlias(a), "covernode", a);
+  for (const a of ["adga", "AD-GA", "ad ga", "andrew@ad-ga.com", "ad-ga.com", "adgaoutlook", "adgawork"]) assert.equal(resolveWorkAccountAlias(a), "adga", a);
   for (const a of ["", undefined, "all", "gmail", "default", "andrew@gmail.com"]) assert.equal(resolveWorkAccountAlias(a), null, String(a));
 
   const accounts = await commandAdapters["himalaya accounts"]({}, {});
   assert.deepEqual(accounts.accounts.map((a) => a.account), ["default", "covernode", "adga"]);
 
   const list = await commandAdapters["himalaya email-list"]({ account: "cover node", page_size: 2 }, {});
-  assert.equal(list.ok, true);
   assert.equal(list.items[0].id, "MSG_A");
+  assert.deepEqual(last().body, { account: "covernode", limit: 2 });
   const found = await commandAdapters["himalaya email-list"]({ account: "AD-GA", query: "x" }, {});
   assert.equal(found.items[0].id, "MSG_S");
+  assert.equal(last().cmd, "search");
   const read = await commandAdapters["himalaya email-read"]({ account: "andrew@covernode.io", id: "READ_ID" }, {});
-  assert.equal(read.ok, true);
-  assert.match(read.body_text || "", /Line 1/);
-
-  // aliases also work on the outlook commands themselves
-  const viaAlias = await outlookMessages({ account: "ad-ga", limit: 1 });
-  assert.equal(viaAlias.ok, true);
+  assert.match(read.body_text, /Line 1/);
 
   // send/forward/archive/media on a work account are refused, never sent to Gmail
+  fake.reset();
   for (const name of ["himalaya email-send", "himalaya email-archive", "himalaya email-forward", "himalaya forward-draft", "himalaya email-images"]) {
     const blocked = await commandAdapters[name]({ account: "covernode", id: "1", to: "a@b.c", subject: "s", body: "b" }, { confirmed: true });
     assert.equal(blocked.ok, false, name);
     assert.equal(blocked.status, "work_account_read_only", name);
   }
+  assert.equal(fake.calls().length, 0);
 
   // drafts on a work account go to Outlook (and still need confirmation), never to Gmail
   for (const name of ["himalaya draft-create", "himalaya reply-all-draft", "himalaya draft-reply"]) {
     const pending = await commandAdapters[name]({ account: "covernode", id: "1", to: "a@b.c", subject: "s", body: "b" }, {});
     assert.equal(pending.status, "confirmation_required", name);
+    assert.equal(last().yes, false, name);
   }
-}
-
-server.close();
-
-console.log(JSON.stringify({ ok: true, status: "ok", tests: "outlook-tools", http_port: port }, null, 2));
-
+});

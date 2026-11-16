@@ -7,6 +7,9 @@ After=network-online.target
 Type=oneshot
 User=phoneclaw
 Group=phoneclaw
-WorkingDirectory=/opt/phoneclaw
-EnvironmentFile=/etc/phoneclaw/bridge.env
-ExecStart=/usr/bin/node bin/phoneclaw.mjs outlook session --json '{"rotate":true}'
+# The outlook-web-cli binary reads /home/phoneclaw/.config/outlook-web-cli (config.json + sessions).
+# It needs no bridge secrets, so bridge.env is not loaded here.
+Environment=HOME=/home/phoneclaw
+WorkingDirectory=/home/phoneclaw
+ExecStart=/usr/local/bin/outlook-web-cli auth refresh --all --rotate
+TimeoutStartSec=300
