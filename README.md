@@ -186,16 +186,38 @@ Use SendGrid for dedicated assistant emails from `aifurman.com`. Himalaya remain
 
 ## Outlook (read-only plus drafts, via saved Outlook web sessions)
 
-Work Outlook comes from [andrewfurman/outlook-web-cli](https://github.com/andrewfurman/outlook-web-cli) (an npm dependency; `fastify-app/outlook-tools.mjs` configures it). Each mailbox signs in with its saved **Outlook web session** in `/home/phoneclaw/.config/outlook-web-cli/sessions/` (mode 0600). That session is Outlook web's refresh token plus the Microsoft sign-in cookies, renewed silently the way the web app does, so calls don't depend on Chrome. Tokens are for `outlook.office.com` (Outlook REST API) and are never logged.
+Work Outlook runs the [andrewfurman/outlook-web-cli](https://github.com/andrewfurman/outlook-web-cli) **binary** (Rust, v1.0.0 or newer). `fastify-app/outlook-tools.mjs` calls it as `outlook-web-cli <command> --json '<snake_case body>'` (plus `--yes` only for a confirmed draft), parses its JSON (it exits 1 with JSON when `ok` is false), and resolves the voice aliases (`covernode.io`, `covernodeoutlook`, `covernodework`, `ad-ga.com`, `adgaoutlook`, `adgawork`, email addresses) to `covernode` / `adga` before calling. The child process gets `HOME`, `PATH` and `OUTLOOK_*` variables only, never the bridge's API keys.
 
-The two signed-in Chrome sessions on the EC2 VM (Xvfb :1) are where the sessions were imported from. If a saved session ever stops working, the library re-imports from them automatically:
+Install the binary on the bridge (no Node dependency any more):
 
-- CoverNode: DevTools `http://127.0.0.1:9230`, Outlook tab at `https://outlook.cloud.microsoft/mail/`
-- ADGA: DevTools `http://127.0.0.1:9231`, Outlook tab at `https://outlook.cloud.microsoft/mail/andrew@ad-ga.com/`
+```bash
+cargo install --locked --git https://github.com/andrewfurman/outlook-web-cli
+sudo install -m 0755 ~/.cargo/bin/outlook-web-cli /usr/local/bin/outlook-web-cli
+# or copy a release build (cargo build --locked --release) to /usr/local/bin/outlook-web-cli
+```
 
-`deploy/phoneclaw-outlook-keepalive.timer` runs `phoneclaw outlook session --json '{"rotate":true}'` every 6 hours to renew tokens and sign-in cookies. Check lifetimes with `phoneclaw outlook session`. The sign-in cookie lasts until about three months after the last interactive sign-in. When it runs out, sign in again in the Chrome session over noVNC; the next call or keepalive picks it up.
+Bridge settings (`/etc/phoneclaw/bridge.env`, all optional):
 
-On the bridge, the standalone CLI is also available as `outlook-web-cli` (for example `outlook-web-cli auth status`).
+- `OUTLOOK_WEB_CLI_BIN`: path to the binary (default `outlook-web-cli` on `PATH`; the bridge uses `/usr/local/bin/outlook-web-cli`).
+- `OUTLOOK_INLINE_IMAGE_HOSTS`: hosts draft inline images may be fetched from (default: our CloudFront host).
+- `OUTLOOK_WEB_CONFIG_DIR`: config directory, if not `~/.config/outlook-web-cli`.
+
+Each mailbox signs in with its saved **Outlook web session** in `/home/phoneclaw/.config/outlook-web-cli/sessions/` (mode 0600). That session is Outlook web's refresh token plus the Microsoft sign-in cookies, renewed silently the way the web app does, so calls don't depend on Chrome. Tokens are for `outlook.office.com` (Outlook REST API) and are never logged.
+
+`/home/phoneclaw/.config/outlook-web-cli/config.json` names the accounts and the two signed-in Chrome sessions on the EC2 VM (Xvfb :1) the sessions were imported from. If a saved session ever stops working, the binary re-imports from them automatically:
+
+```json
+{
+  "accounts": [
+    { "name": "covernode", "aliases": ["covernode.io", "covernodeoutlook", "covernodework"], "email_domain": "covernode.io",
+      "cdp_port": 9230, "mailbox_url": "https://outlook.cloud.microsoft/mail/" },
+    { "name": "adga", "aliases": ["ad-ga.com", "adgaoutlook", "adgawork"], "email_domain": "ad-ga.com",
+      "cdp_port": 9231, "mailbox_url": "https://outlook.cloud.microsoft/mail/andrew@ad-ga.com/" }
+  ]
+}
+```
+
+`deploy/phoneclaw-outlook-keepalive.timer` runs `outlook-web-cli auth refresh --all --rotate` (as `phoneclaw`) every 6 hours to renew tokens and sign-in cookies. Check lifetimes with `phoneclaw outlook session` (or `outlook-web-cli auth status`). The sign-in cookie lasts until about three months after the last interactive sign-in. When it runs out, sign in again in the Chrome session over noVNC; the next call or keepalive picks it up.
 
 `outlook messages` lists one folder, the Inbox unless `folder` says otherwise, and every item carries `folder` and `is_draft`. To check whether a reply went out, list `folder: "sent"`: a saved reply sits in Drafts with `is_draft: true` until it is sent, and must not be reported as sent.
 
@@ -234,6 +256,13 @@ phoneclaw outlook attachment-inspect --json '{"account":"adga","id":"<message-id
 # Calendar agenda in America/New_York
 phoneclaw outlook agenda --json '{"account":"covernode","today":true}'
 phoneclaw outlook agenda --json '{"account":"adga","start_date":"2026-10-01","end_date":"2026-10-07"}'
+
+# When are coworkers free (Outlook's Scheduling Assistant; no calendar sharing needed).
+# today / tomorrow or start_date / end_date (dates, or YYYY-MM-DDTHH:MM); day_start / day_end
+# (default 09:00-17:00 Eastern), min_minutes (default 30), weekends. The account defaults to
+# the one matching the email domain.
+phoneclaw outlook freebusy --json '{"emails":"pat@covernode.io,sam@covernode.io","tomorrow":true}'
+phoneclaw outlook freebusy --json '{"emails":"pat@ad-ga.com","start_date":"2026-11-17T11:00","end_date":"2026-11-18","min_minutes":45}'
 ```
 
 Image analysis for `outlook attachment-inspect` runs on OpenRouter: **DeepSeek V4.1 Flash 1017**
@@ -257,8 +286,8 @@ fallback to other providers), with reasoning off.
 
 Pulling a screenshot back to your machine over SSM. Nothing is written on the bridge. SSM's inline
 output is ~24 KB, so the script runs `phoneclaw outlook attachments` against the running bridge
-for 13.5 KB byte ranges (`offset`/`length`) and joins them locally. The bridge keeps a message's
-attachments in memory for 5 minutes, so Outlook is only asked once per image:
+for 13.5 KB byte ranges (`offset`/`length`) and joins them locally. The bridge keeps the
+attachment in memory for 5 minutes, so Outlook is only asked once per image:
 
 ```bash
 # List attachments, then save one by index

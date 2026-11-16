@@ -12,7 +12,7 @@ import { githubCliCatGh, githubCliLsGh, githubIssueCreateGh, githubIssueUpdateGh
 import { basicWebSearch } from "../shared/basic-web-search.mjs";
 import { slackAuthStatus, slackConversationsList, slackRead, slackSearchMessages, slackUnreadSummary, slackUserInfo, slackMessageSend, slackReact } from "./slack-tools.mjs";
 import { keyStats } from "./keystats-tools.mjs";
-import { listWorkAccounts, outlookAgenda, outlookAttachmentInspect, outlookAttachments, outlookDeleteDraft, outlookDraftNew, outlookDraftReply, outlookMessages, outlookRead, outlookSearch, outlookSession, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
+import { listWorkAccounts, outlookAgenda, outlookAttachmentInspect, outlookAttachments, outlookDeleteDraft, outlookDraftNew, outlookDraftReply, outlookFreeBusy, outlookMessages, outlookRead, outlookSearch, outlookSession, outlookStatus, resolveWorkAccountAlias } from "./outlook-tools.mjs";
 
 // Existing domain behavior behind the phoneclaw CLI, including caches and async jobs.
 // Native CLIs do not need entries here: install/configure them and use run_cli args.
@@ -543,11 +543,11 @@ export const commandAdapters = {
     confirmation_id: body.confirmation_id || body.confirm_id,
     maxRawBytes: body.max_raw_bytes || body.maxRawBytes,
   }, { confirmed: context.confirmed }),
-  // Outlook (read-only) – backed by signed-in Chrome sessions on the bridge VM
+  // Outlook (read-only plus drafts) – the outlook-web-cli binary with saved Outlook web sessions
   "outlook status": (body, context) => outlookStatus({
     account: body.account,
   }),
-  // Saved Outlook web sessions (outlook-web-cli): lifetimes, or refresh/rotate them now.
+  // Saved Outlook web sessions: `outlook-web-cli auth status`, or `auth refresh --all [--rotate]`.
   "outlook session": (body) => outlookSession({ refresh: body.refresh, rotate: body.rotate }),
   "outlook messages": (body, context) => outlookMessages({
     account: body.account,
@@ -603,6 +603,19 @@ export const commandAdapters = {
     start_date: body.start_date || body.startDate,
     end_date: body.end_date || body.endDate,
     limit: body.limit || body.max_results || body.maxResults,
+  }),
+  // When coworkers are free or busy (Outlook's Scheduling Assistant), and the common free slots.
+  "outlook freebusy": (body) => outlookFreeBusy({
+    account: body.account,
+    emails: body.emails ?? body.email ?? body.people ?? body.attendees,
+    today: body.today,
+    tomorrow: body.tomorrow,
+    start_date: body.start_date || body.startDate || body.start,
+    end_date: body.end_date || body.endDate || body.end,
+    day_start: body.day_start || body.dayStart,
+    day_end: body.day_end || body.dayEnd,
+    min_minutes: body.min_minutes ?? body.minMinutes,
+    weekends: body.weekends,
   }),
   // Read-only: oil, Kalshi 2028 odds and OpenRouter LLM leaders in one call.
   "keystats get": (body) => keyStats({
