@@ -1,10 +1,11 @@
 [Unit]
-Description=Check the bridge Google Photos session every 6 hours
+Description=Check the bridge Google Photos session every 10 minutes
 
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=6h
-RandomizedDelaySec=10min
+# Copies of a Google sign-in stop working roughly 15-20 minutes after Chrome rotates its cookies,
+# so check often; the script only re-imports from pc-chrome-google when the check fails.
+OnBootSec=2min
+OnUnitActiveSec=10min
 Persistent=true
 
 [Install]
